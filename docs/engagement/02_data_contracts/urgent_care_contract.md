@@ -2,13 +2,13 @@
 
 ## 1) Source Overview
 
-**Source name:** Urgent Care Postgres Mirror  
-**Ownership:** Trust IT / ED System Team  
-**Access pattern:** Read-only Postgres replica  
-**Cadence:** Daily incremental updates (nightly)  
+**Source name:** Urgent Care Postgres Mirror
+**Ownership:** Trust IT / ED System Team
+**Access pattern:** Read-only Postgres replica
+**Cadence:** Daily incremental updates (nightly)
 **Purpose in access-iq:** Urgent care flow analytics (arrival, triage, first clinician, discharge), waiting times, throughput, and cohort comparisons.
 
-**Authoritative stance:**  
+**Authoritative stance:**
 Authoritative for **urgent care flow timestamps** and urgent care attendance-level facts. If similar timestamps exist elsewhere (e.g., EHR), this source wins for urgent care metrics.
 
 ---
@@ -17,8 +17,8 @@ Authoritative for **urgent care flow timestamps** and urgent care attendance-lev
 
 ### 2.1 urgent_care_logs
 
-**Grain:** 1 row per urgent care attendance (encounter)  
-**Primary key:** `uc_encounter_id` (unique, non-null)  
+**Grain:** 1 row per urgent care attendance (encounter)
+**Primary key:** `uc_encounter_id` (unique, non-null)
 **Linkage key (preferred):** `patient_id` (FK to EHR) or a documented person-key if patient_id unavailable.
 
 **Schema (expected)**
@@ -92,8 +92,8 @@ Authoritative for **urgent care flow timestamps** and urgent care attendance-lev
 
 ## 7) Authoritative Conflict Rules (Explicit)
 
-1. For urgent care waiting time metrics, **urgent_care_logs timestamps win** over any EHR-derived equivalents.  
-2. For patient cohort slicing, **EHR patient_demographics wins**; urgent care demographics fields (if present) are not used as the cohort truth.  
+1. For urgent care waiting time metrics, **urgent_care_logs timestamps win** over any EHR-derived equivalents.
+2. For patient cohort slicing, **EHR patient_demographics wins**; urgent care demographics fields (if present) are not used as the cohort truth.
 3. For provider/site naming, **Provider/Site Reference wins**.
 
 ---

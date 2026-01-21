@@ -2,21 +2,21 @@
 
 ## 1) Source Overview
 
-**Source name:** Trust-owned S3 Reference File (Provider/Site Reference)  
-**Ownership:** Trust Performance / Informatics Team  
-**Access pattern:** Excel file stored in Trust S3 bucket  
-**Cadence:** Ad hoc (infrequent); checked daily for changes  
+**Source name:** Trust-owned S3 Reference File (Provider/Site Reference)
+**Ownership:** Trust Performance / Informatics Team
+**Access pattern:** Excel file stored in Trust S3 bucket
+**Cadence:** Ad hoc (infrequent); checked daily for changes
 **Purpose in access-iq:** Canonical mapping for provider/site codes, names, and groupings used for benchmarking and consistent dashboard filters.
 
-**Authoritative stance:**  
+**Authoritative stance:**
 This reference is **authoritative for provider/site naming and grouping**. Facts from operational systems join to this dimension; unmapped codes are treated as DQ issues, not silently ignored.
 
 ---
 
 ## 2) Delivery Contract (S3 Object-Level)
 
-**Bucket:** Provided via environment config  
-**Key (expected stable path):** `reference/provider_site_reference.xlsx` (or equivalent)  
+**Bucket:** Provided via environment config
+**Key (expected stable path):** `reference/provider_site_reference.xlsx` (or equivalent)
 **Format:** `.xlsx` workbook (machine-readable; no merged headers)
 
 **Audit requirements:**
@@ -28,8 +28,8 @@ This reference is **authoritative for provider/site naming and grouping**. Facts
 
 ## 3) Schema (Contracted)
 
-**Dataset:** provider_site_reference (Excel)  
-**Grain:** 1 row per provider_site_code  
+**Dataset:** provider_site_reference (Excel)
+**Grain:** 1 row per provider_site_code
 **Primary key:** `provider_site_code` (unique, non-null)
 
 **Columns (expected)**
@@ -92,8 +92,8 @@ This reference is **authoritative for provider/site naming and grouping**. Facts
 
 ## 8) Authoritative Conflict Rules (Explicit)
 
-1. **Provider/site naming and grouping:** this reference wins over raw names in any operational source.  
-2. If two sources use different text names for the same provider_site_code, the reference name is used everywhere.  
+1. **Provider/site naming and grouping:** this reference wins over raw names in any operational source.
+2. If two sources use different text names for the same provider_site_code, the reference name is used everywhere.
 3. If an operational fact contains a provider_site_code not in the reference:
    - map to `Unknown`
    - retain the fact

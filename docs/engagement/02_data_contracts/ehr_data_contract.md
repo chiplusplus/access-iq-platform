@@ -2,14 +2,14 @@
 
 ## 1) Source Overview
 
-**Source name:** EHR Postgres Mirror  
-**Ownership:** Trust IT / Clinical Systems  
-**Access pattern:** Read-only Postgres replica  
-**Cadence:** Daily incremental updates (nightly)  
+**Source name:** EHR Postgres Mirror
+**Ownership:** Trust IT / Clinical Systems
+**Access pattern:** Read-only Postgres replica
+**Cadence:** Daily incremental updates (nightly)
 **Purpose in access-iq:** Patient cohort attributes + encounter-level activity for access, utilisation, and inequality analysis.
 
-**Authoritative stance:**  
-- Authoritative for **patient demographics** (as current-state attributes) and **encounter records** originating in the EHR domain.  
+**Authoritative stance:**
+- Authoritative for **patient demographics** (as current-state attributes) and **encounter records** originating in the EHR domain.
 - Not authoritative for urgent care flow timestamps (see Urgent Care mirror).
 
 ---
@@ -20,7 +20,7 @@
 
 ### 2.1 patient_demographics
 
-**Grain:** 1 row per patient (current-state snapshot)  
+**Grain:** 1 row per patient (current-state snapshot)
 **Primary key:** `patient_id` (unique, non-null)
 
 **Schema (expected)**
@@ -42,8 +42,8 @@
 
 ### 2.2 encounters
 
-**Grain:** 1 row per encounter  
-**Primary key:** `encounter_id` (unique, non-null)  
+**Grain:** 1 row per encounter
+**Primary key:** `encounter_id` (unique, non-null)
 **Foreign key:** `patient_id` → patient_demographics.patient_id
 
 **Schema (expected)**
@@ -66,7 +66,7 @@
 
 ### 2.3 diagnoses (Optional)
 
-**Grain:** 1 row per (encounter_id, diagnosis_code)  
+**Grain:** 1 row per (encounter_id, diagnosis_code)
 **Key:** (encounter_id, diagnosis_code)
 
 **Schema (expected)**
@@ -81,7 +81,7 @@
 
 ### 2.4 procedures (Optional)
 
-**Grain:** 1 row per (encounter_id, procedure_code)  
+**Grain:** 1 row per (encounter_id, procedure_code)
 **Key:** (encounter_id, procedure_code)
 
 **Schema (expected)**
@@ -145,9 +145,9 @@
 
 When conflicts occur between sources for similar concepts:
 
-1. **Urgent care flow timestamps** (arrival/triage/clinician/discharge for ED flow): **Urgent Care Postgres Mirror wins.**  
-2. **Patient demographics** used for cohort slicing: **EHR patient_demographics wins** (current-state snapshot), with missingness surfaced as `Unknown`.  
-3. **Provider/site naming and grouping:** **Provider/Site Reference wins**; codes not found are labelled `Unknown` and counted.  
+1. **Urgent care flow timestamps** (arrival/triage/clinician/discharge for ED flow): **Urgent Care Postgres Mirror wins.**
+2. **Patient demographics** used for cohort slicing: **EHR patient_demographics wins** (current-state snapshot), with missingness surfaced as `Unknown`.
+3. **Provider/site naming and grouping:** **Provider/Site Reference wins**; codes not found are labelled `Unknown` and counted.
 4. If an encounter appears in multiple extracts with differing fields, **latest update wins** per survivorship rules.
 
 ---

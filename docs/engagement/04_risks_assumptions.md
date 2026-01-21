@@ -24,10 +24,10 @@ The engagement assumes that:
 - EHR, urgent care, appointments, and diagnostics data collectively provide adequate coverage to analyse access and utilisation patterns.
 - Gaps in data completeness are measurable and manageable through quality indicators.
 
-**Impact if false:**  
+**Impact if false:**
 Some access metrics may be partially interpretable or require scope reduction.
 
-**Mitigation:**  
+**Mitigation:**
 Explicit data quality metrics and visible unknown categories are built into all outputs.
 
 ---
@@ -36,10 +36,10 @@ Explicit data quality metrics and visible unknown categories are built into all 
 
 The platform assumes that recorded timestamps (arrival, triage, clinician contact, discharge, booking) are directionally correct, even if delayed or incomplete.
 
-**Impact if false:**  
+**Impact if false:**
 Wait-time metrics could be biased or misleading.
 
-**Mitigation:**  
+**Mitigation:**
 - Implausible durations are excluded from metric calculations.
 - Timestamp completeness is tracked and surfaced alongside metrics.
 
@@ -51,10 +51,10 @@ The engagement assumes demographic attributes (ethnicity, postcode, sex) are:
 - Incomplete and inconsistently coded
 - Still useful for inequality analysis when treated cautiously
 
-**Impact if false:**  
+**Impact if false:**
 Cohort-level comparisons may underrepresent certain groups.
 
-**Mitigation:**  
+**Mitigation:**
 - Unknown categories are explicitly included.
 - Metrics with high missingness are flagged with warnings.
 
@@ -66,10 +66,10 @@ The platform assumes:
 - Raw access metrics are acceptable for descriptive benchmarking in Phase 1.
 - Case-mix or clinical risk adjustment is out of scope.
 
-**Impact if false:**  
+**Impact if false:**
 Stakeholders may misinterpret variance as performance differences.
 
-**Mitigation:**  
+**Mitigation:**
 - Clear documentation stating metrics are descriptive, not causal.
 - Volume context and warnings included in benchmarking views.
 
@@ -81,10 +81,10 @@ The engagement assumes:
 - All upstream sources are accessed read-only.
 - Near-real-time data is not required.
 
-**Impact if false:**  
+**Impact if false:**
 Architecture would need to change significantly.
 
-**Mitigation:**  
+**Mitigation:**
 Platform explicitly designed for daily batch analytics.
 
 ---
@@ -93,13 +93,13 @@ Platform explicitly designed for daily batch analytics.
 
 ### R1. Missing or Incomplete Timestamps
 
-**Description:**  
+**Description:**
 Urgent care and appointment data may have missing or late timestamps.
 
-**Impact:**  
+**Impact:**
 Underestimation or distortion of wait-time metrics.
 
-**Mitigation:**  
+**Mitigation:**
 - Exclude invalid intervals from calculations
 - Track and surface completeness rates
 - Avoid imputing missing times
@@ -108,13 +108,13 @@ Underestimation or distortion of wait-time metrics.
 
 ### R2. Ambiguous Appointment Status Semantics
 
-**Description:**  
+**Description:**
 Inconsistent use of statuses (DNA vs late cancellation vs reschedule).
 
-**Impact:**  
+**Impact:**
 Incorrect DNA rates and utilisation metrics.
 
-**Mitigation:**  
+**Mitigation:**
 - Explicit status mapping contract
 - Versioned status logic
 - Regression tests on status changes
@@ -123,13 +123,13 @@ Incorrect DNA rates and utilisation metrics.
 
 ### R3. Late-Arriving Updates and Corrections
 
-**Description:**  
+**Description:**
 Discharge times, appointment statuses, and diagnostic results may update after initial ingestion.
 
-**Impact:**  
+**Impact:**
 Historical metrics may change over time.
 
-**Mitigation:**  
+**Mitigation:**
 - Incremental reconciliation logic in Silver layer
 - Backfill windows and controlled reprocessing
 - Clear documentation of metric revision behavior
@@ -138,13 +138,13 @@ Historical metrics may change over time.
 
 ### R4. Inconsistent Provider/Site Coding Across Sources
 
-**Description:**  
+**Description:**
 Different systems may use slightly different provider/site codes.
 
-**Impact:**  
+**Impact:**
 Broken joins and misleading benchmarking.
 
-**Mitigation:**  
+**Mitigation:**
 - Authoritative provider/site reference contract
 - Unknown mapping with explicit DQ metrics
 - Fail-fast behavior for reference inconsistencies
@@ -153,13 +153,13 @@ Broken joins and misleading benchmarking.
 
 ### R5. Schema Drift in Source Systems
 
-**Description:**  
+**Description:**
 Upstream systems may add, remove, or rename fields without notice.
 
-**Impact:**  
+**Impact:**
 Pipeline failures or silent data corruption.
 
-**Mitigation:**  
+**Mitigation:**
 - Schema validation at ingestion
 - CI checks on expected columns
 - Fail ingestion on breaking schema changes
@@ -168,13 +168,13 @@ Pipeline failures or silent data corruption.
 
 ### R6. Overinterpretation of Inequality Metrics
 
-**Description:**  
+**Description:**
 Stakeholders may interpret descriptive differences as causal or individual-level effects.
 
-**Impact:**  
+**Impact:**
 Misguided operational or policy decisions.
 
-**Mitigation:**  
+**Mitigation:**
 - Clear framing in documentation and dashboards
 - No patient-level drill-downs
 - Explicit disclaimers on interpretation
@@ -183,13 +183,13 @@ Misguided operational or policy decisions.
 
 ### R7. Performance and Cost Constraints
 
-**Description:**  
+**Description:**
 Large volumes or inefficient queries could impact performance or cost.
 
-**Impact:**  
+**Impact:**
 Slow dashboards or excessive cloud spend.
 
-**Mitigation:**  
+**Mitigation:**
 - Pre-aggregated Gold marts
 - Query optimisation and cost monitoring
 - Explicit cost/performance trade-offs documented
@@ -222,5 +222,5 @@ All changes are versioned in Git.
 
 ## Summary
 
-access-iq is designed to surface access patterns and inequalities using imperfect operational data.  
+access-iq is designed to surface access patterns and inequalities using imperfect operational data.
 By making assumptions and risks explicit, the platform prioritises transparency, trust, and defensible analysis over false precision.

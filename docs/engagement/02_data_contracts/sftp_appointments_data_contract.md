@@ -2,22 +2,22 @@
 
 ## 1) Source Overview
 
-**Source name:** SFTP Outbound Drops (Appointments/Bookings)  
-**Ownership:** Trust Scheduling / PAS Team  
-**Access pattern:** Nightly CSV drops under `/upload/outbound/appointments/`  
-**Cadence:** Daily (expected by 07:00 local time)  
+**Source name:** SFTP Outbound Drops (Appointments/Bookings)
+**Ownership:** Trust Scheduling / PAS Team
+**Access pattern:** Nightly CSV drops under `/upload/outbound/appointments/`
+**Cadence:** Daily (expected by 07:00 local time)
 **Purpose in access-iq:** Scheduled care access metrics (appointment wait time), DNAs, cancellations, utilisation trends, service/site benchmarking.
 
-**Authoritative stance:**  
+**Authoritative stance:**
 Authoritative for **appointment booking/attendance status** and **scheduled appointment timing**. When conflicts occur between files or updates, **the latest status update wins** per rules below.
 
 ---
 
 ## 2) Delivery Contract (File-Level)
 
-**SFTP Path:** `/upload/outbound/appointments/`  
-**Expected file naming:** `appointments_YYYY-MM-DD.csv` (or includes timestamp/sequence)  
-**Format:** CSV, UTF-8, header row required  
+**SFTP Path:** `/upload/outbound/appointments/`
+**Expected file naming:** `appointments_YYYY-MM-DD.csv` (or includes timestamp/sequence)
+**Format:** CSV, UTF-8, header row required
 **Compression:** none (optional `.gz` supported if documented)
 
 **File-level audit requirements (captured in manifest):**
@@ -31,7 +31,7 @@ Authoritative for **appointment booking/attendance status** and **scheduled appo
 
 ## 3) Schema (Contracted)
 
-**Dataset:** appointments_export (CSV)  
+**Dataset:** appointments_export (CSV)
 **Grain (expected):** 1 row per appointment instance (preferred) OR 1 row per appointment status event (acceptable if documented)
 
 ### 3.1 Keys
