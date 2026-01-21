@@ -2,7 +2,7 @@
 
 ## Purpose of This Document
 
-This document defines the delivery plan for the access-iq engagement.  
+This document defines the delivery plan for the access-iq engagement.
 It translates scope, metrics, data contracts, and risks into a **structured execution plan** with clear phases, checkpoints, and acceptance criteria.
 
 The plan is designed to:
@@ -237,5 +237,5 @@ Explicitly deferred items:
 
 ## Summary
 
-This delivery plan prioritises quality, traceability, and trust.  
+This delivery plan prioritises quality, traceability, and trust.
 By sequencing work deliberately and defining clear acceptance criteria, access-iq is positioned to deliver a portfolio-grade analytics platform that reflects senior data engineering practice.

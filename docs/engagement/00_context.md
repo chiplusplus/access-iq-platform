@@ -45,13 +45,13 @@ access-iq is not a generic BI dashboard. It is a structured analytics foundation
 
 The primary users of access-iq are:
 
-- **Operational and performance leads**  
+- **Operational and performance leads**
   Monitoring waiting times, DNAs, utilisation, and flow; identifying pressure points and underperforming pathways.
 
-- **Service and clinical managers**  
+- **Service and clinical managers**
   Understanding how access varies across patient groups and sites; prioritising interventions.
 
-- **Executive leadership**  
+- **Executive leadership**
   Receiving a consolidated, defensible view of access performance and inequality trends.
 
 Secondary users include analytics and informatics teams who require a stable data model and clear definitions to support deeper analysis.

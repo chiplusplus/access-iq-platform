@@ -2,22 +2,22 @@
 
 ## 1) Source Overview
 
-**Source name:** Trust-owned S3 Exports (Diagnostics Orders)  
-**Ownership:** Trust Diagnostics / Informatics Team  
-**Access pattern:** Daily CSV exports in Trust S3 bucket (partitioned by export date)  
-**Cadence:** Daily (expected by 07:00 local time)  
+**Source name:** Trust-owned S3 Exports (Diagnostics Orders)
+**Ownership:** Trust Diagnostics / Informatics Team
+**Access pattern:** Daily CSV exports in Trust S3 bucket (partitioned by export date)
+**Cadence:** Daily (expected by 07:00 local time)
 **Purpose in access-iq:** Diagnostics utilisation trends and (where available) turnaround metrics (order → result).
 
-**Authoritative stance:**  
+**Authoritative stance:**
 Trust S3 exports are the **source of truth** for diagnostics extracts used by access-iq. The simulator local cache is development-only and never treated as authoritative.
 
 ---
 
 ## 2) Delivery Contract (S3 Object-Level)
 
-**Bucket:** Provided via environment config  
-**Prefix/partitioning (expected):** `diagnostics_orders/export_date=YYYY-MM-DD/`  
-**Format:** CSV, UTF-8, header row required  
+**Bucket:** Provided via environment config
+**Prefix/partitioning (expected):** `diagnostics_orders/export_date=YYYY-MM-DD/`
+**Format:** CSV, UTF-8, header row required
 **Overwrite behavior:** Partitions may be overwritten/corrected.
 
 **Object-level audit requirements (manifest):**
@@ -31,7 +31,7 @@ Trust S3 exports are the **source of truth** for diagnostics extracts used by ac
 
 ## 3) Schema (Contracted)
 
-**Dataset:** diagnostics_orders_export (CSV)  
+**Dataset:** diagnostics_orders_export (CSV)
 **Grain:** 1 row per diagnostic order (or order line; must be consistent and documented)
 
 ### 3.1 Keys
@@ -105,8 +105,8 @@ Trust S3 exports are the **source of truth** for diagnostics extracts used by ac
 
 ## 8) Authoritative Conflict Rules (Explicit)
 
-1. For diagnostics metrics, **Trust S3 exports win** over any local cache or secondary sources.  
-2. If the same order appears in multiple partitions (historical window exports), **latest ingested record wins** by updated_at/ingested_at.  
+1. For diagnostics metrics, **Trust S3 exports win** over any local cache or secondary sources.
+2. If the same order appears in multiple partitions (historical window exports), **latest ingested record wins** by updated_at/ingested_at.
 3. Provider/site grouping uses **Provider/Site Reference** as conformance; unknown codes are mapped to `Unknown` and counted.
 
 ---

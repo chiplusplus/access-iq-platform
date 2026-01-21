@@ -1,13 +1,13 @@
 ## Summary
 
-**What does this change do?**  
+**What does this change do?**
 (1–3 sentences. Be concrete. Assume the reviewer hasn’t read the ticket/commit history.)
 
 ---
 
 ## Context
 
-**Why is this change needed?**  
+**Why is this change needed?**
 - What problem does it solve?
 - Which phase / deliverable does this relate to? (e.g. Phase 2 – Bronze ingestion)
 
@@ -53,14 +53,14 @@ If yes, explain briefly:
 
 ## Assumptions & Trade-offs
 
-**What assumptions are baked into this change?**  
+**What assumptions are baked into this change?**
 (Especially important for healthcare data.)
 
-- 
-- 
+-
+-
 
 **Known limitations or follow-ups:**
-- 
+-
 
 ---
 

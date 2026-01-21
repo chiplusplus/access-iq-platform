@@ -2,10 +2,10 @@
 
 ## Purpose of This Document
 
-This document defines the core metrics produced by the access-iq platform.  
+This document defines the core metrics produced by the access-iq platform.
 It acts as the **single source of truth** for how access, utilisation, and inequality metrics are calculated, interpreted, and displayed.
 
-All downstream models, dashboards, and analyses must align with these definitions.  
+All downstream models, dashboards, and analyses must align with these definitions.
 Where trade-offs or assumptions exist, they are documented explicitly.
 
 ---
@@ -41,15 +41,15 @@ Partial periods (e.g. current month) are flagged and may be excluded from compar
 
 ### 1. Arrival → Triage Time (Urgent Care)
 
-**Definition**  
+**Definition**
 Time elapsed between a patient’s arrival at urgent care and recorded triage timestamp.
 
-**Formula**  
+**Formula**
 ```
 triage_timestamp - arrival_timestamp
 ```
 
-**Grain**  
+**Grain**
 Urgent care encounter
 
 **Inclusions**
@@ -68,7 +68,7 @@ Urgent care encounter
 
 ### 2. Triage → First Clinician Time (Urgent Care)
 
-**Definition**  
+**Definition**
 Time elapsed between triage and first clinician contact.
 
 **Formula**
@@ -76,7 +76,7 @@ Time elapsed between triage and first clinician contact.
 first_clinician_timestamp - triage_timestamp
 ```
 
-**Grain**  
+**Grain**
 Urgent care encounter
 
 **Inclusions**
@@ -94,7 +94,7 @@ Urgent care encounter
 
 ### 3. Arrival → Discharge Time (Urgent Care LOS)
 
-**Definition**  
+**Definition**
 Total length of stay in urgent care.
 
 **Formula**
@@ -102,7 +102,7 @@ Total length of stay in urgent care.
 discharge_timestamp - arrival_timestamp
 ```
 
-**Grain**  
+**Grain**
 Urgent care encounter
 
 **Inclusions**
@@ -120,7 +120,7 @@ Urgent care encounter
 
 ### 4. Appointment Wait Time
 
-**Definition**  
+**Definition**
 Time between appointment booking date and attended appointment date.
 
 **Formula**
@@ -128,7 +128,7 @@ Time between appointment booking date and attended appointment date.
 appointment_date - booking_date
 ```
 
-**Grain**  
+**Grain**
 Appointment
 
 **Inclusions**
@@ -148,7 +148,7 @@ Appointment
 
 ### 5. Diagnostic Turnaround Time (where available)
 
-**Definition**  
+**Definition**
 Time between diagnostic order and result availability.
 
 **Formula**
@@ -156,7 +156,7 @@ Time between diagnostic order and result availability.
 result_timestamp - order_timestamp
 ```
 
-**Grain**  
+**Grain**
 Diagnostic order
 
 **Inclusions**
@@ -176,10 +176,10 @@ Diagnostic order
 
 ### 6. Appointment Volume
 
-**Definition**  
+**Definition**
 Count of scheduled appointments.
 
-**Grain**  
+**Grain**
 Appointment
 
 **Dimensions**
@@ -196,7 +196,7 @@ Appointment
 
 ### 7. DNA Rate (Did Not Attend)
 
-**Definition**  
+**Definition**
 Proportion of scheduled appointments where the patient did not attend.
 
 **Formula**
@@ -204,7 +204,7 @@ Proportion of scheduled appointments where the patient did not attend.
 DNAs / (Attended + DNAs)
 ```
 
-**Grain**  
+**Grain**
 Appointment
 
 **Inclusions**
@@ -222,10 +222,10 @@ Appointment
 
 ### 8. Encounter Volume
 
-**Definition**  
+**Definition**
 Count of completed encounters.
 
-**Grain**  
+**Grain**
 Encounter (urgent care or inpatient/outpatient as available)
 
 **Notes**
@@ -238,7 +238,7 @@ Encounter (urgent care or inpatient/outpatient as available)
 
 ### 9. Median and P90 Wait Times
 
-**Definition**  
+**Definition**
 Distributional statistics calculated over defined reporting windows.
 
 **Metrics**
@@ -256,7 +256,7 @@ Distributional statistics calculated over defined reporting windows.
 
 ### 10. Provider / Site Variance
 
-**Definition**  
+**Definition**
 Comparison of access metrics across providers or sites within the Trust.
 
 **Approach**
