@@ -3,7 +3,7 @@ name = "access-iq"
 version = "0.1.0"
 description = "NHS Trust access and inequality analytics platform."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
@@ -17,7 +17,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src"]
 fix = true
 
@@ -30,7 +30,7 @@ testpaths = ["tests"]
 addopts = "--maxfail=1"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 mypy_path = "src"
 packages = ["access_iq"]
 warn_return_any = true
