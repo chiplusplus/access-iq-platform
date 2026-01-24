@@ -27,6 +27,7 @@ ignore = ["E501"]                   # handled by formatter/line-length
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = "--maxfail=1"
 
 [tool.mypy]

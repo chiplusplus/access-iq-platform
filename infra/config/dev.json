@@ -1,0 +1,12 @@
+{
+  "app_name": "access-iq",
+  "env_name": "dev",
+  "account_id": "222308823356",
+  "region": "eu-west-2",
+  "tags": {
+    "Environment": "dev",
+    "Project": "access-iq",
+    "ManagedBy": "cdk",
+    "CostCenter": "project"
+  }
+}

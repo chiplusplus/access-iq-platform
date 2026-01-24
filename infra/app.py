@@ -1,0 +1,25 @@
+from access_iq_infra.settings import load_env_config
+from access_iq_infra.stacks.core import CoreStack
+from access_iq_infra.tagging import apply_tags
+from aws_cdk import App, Environment
+
+app = App()
+
+env_name = app.node.try_get_context("env")
+if env_name not in {"dev", "prod"}:
+    raise ValueError("Pass the environment: -c env=dev or -c env=prod")
+
+cfg = load_env_config(env_name)
+
+# Apply tags globally to everything in this CDK app
+apply_tags(app, cfg.tags)
+
+cdk_env = Environment(account=cfg.account_id, region=cfg.region)
+
+CoreStack(
+    app,
+    f"core-resources-{cfg.app_name}",
+    cfg=cfg,
+    env=cdk_env,
+)
+app.synth()
