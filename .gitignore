@@ -50,6 +50,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+.pytest_cache/
 
 # Translations
 *.mo
@@ -205,3 +206,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+# AWS CDK
+cdk.out/
