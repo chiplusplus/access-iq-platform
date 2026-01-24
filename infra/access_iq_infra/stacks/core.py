@@ -1,25 +1,20 @@
 from __future__ import annotations
 
-from access_iq_infra.settings import EnvConfig
 from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
-    Tags,
 )
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
+from access_iq_infra.settings import EnvConfig
+
 
 class CoreStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, *, cfg: EnvConfig, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-
-        # Tags: cost allocation + maturity signal
-        Tags.of(self).add("Project", cfg.app_name)
-        Tags.of(self).add("Environment", cfg.env_name)
-        Tags.of(self).add("ManagedBy", "cdk")
 
         # Central log group (you'll use this later for pipeline/app logs)
         logs.LogGroup(

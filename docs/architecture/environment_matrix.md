@@ -46,8 +46,8 @@ The goal is to keep environments **simple but credible**:
 | AWS account | Separate account| Separate account |
 | AWS region | Same region as prod | Same region as dev |
 | Naming | `access-iq-dev-*` | `access-iq-prod-*` |
-| Tags | `Environment=dev`, `Project=access-iq` | `Environment=prod`,`Project=access-iq` |
-| S3 buckets | `access-iq-dev-<acct>-<region>` | `access-iq-prod-<acct>-<region>` |
+| Tags | `Environment=dev\|prod`, `Project=access-iq`,`CostCenter=project` | `Environment=prod`, `Project=access-iq`,`CostCenter=project` |
+| S3 buckets | `access-iq-<purpose>-dev-<acct>` | `access-iq-<purpose>-prod-<acct>` |
 | S3 prefixes | `bronze/`, `silver/`, `gold/` under dev bucket | Same prefixes under prod bucket |
 | Redshift | smaller / cheaper (or Redshift Serverless minimal) | stable sizing (or serverless with guardrails) |
 | Redshift DB/schema | `dev` DB or schema namespace | `prod` DB or schema namespace |
