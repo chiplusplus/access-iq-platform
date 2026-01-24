@@ -1,4 +1,4 @@
-.PHONY: setup install fmt lint type test ci infra-install infra-bootstrap infra-diff infra-deploy infra-destroy
+.PHONY: setup install fmt lint type test ci infra-bootstrap infra-diff infra-deploy infra-destroy
 
 ENV= . .venv/bin/activate
 setup:
@@ -22,9 +22,6 @@ test:
 	$(ENV) && pytest --cov=access_iq
 
 ci: fmt lint type test
-
-infra-install:
-	$(ENV) && cd infra && pip install -r requirements.txt -r requirements-dev.txt
 
 infra-bootstrap:
 	$(ENV) && cd infra && cdk bootstrap -c env=$(CDK_ENV)
