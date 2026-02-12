@@ -1,0 +1,15 @@
+{
+  "app_name": "access-iq",
+  "env_name": "dev",
+  "account_id": "YOUR_AWS_ACCOUNT_ID",
+  "region": "eu-west-2",
+  "tags": {
+    "Environment": "dev",
+    "Project": "access-iq",
+    "ManagedBy": "cdk",
+    "CostCenter": "project"
+  },
+  "s3": {
+    "removal_policy": "DESTROY"
+  }
+}

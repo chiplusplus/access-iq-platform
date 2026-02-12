@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "NHS Trust access and inequality analytics platform."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["aws-cdk-lib==2.236.0", "constructs==10.4.5"]
+dependencies = [
+    "aws-cdk-lib==2.236.0",
+    "constructs==10.4.5",
+    "python-dotenv==1.2.1",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -13,6 +17,10 @@ dev = [
     "pytest-cov==7.0.0",
     "ruff==0.14.13",
     "mypy==1.19.1",
+    "types-psycopg2",
+    "types-boto3",
+    "types-boto3-s3",
+    "boto3-stubs[s3]",
 ]
 
 [tool.ruff]
@@ -38,6 +46,7 @@ warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
+exclude = "infra/cdk.out/.*"
 
 [tool.coverage.run]
 source = ["access_iq"]

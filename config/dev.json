@@ -1,0 +1,16 @@
+{
+  "aws_region": "eu-west-2",
+  "platform_bucket": "access-iq-dev-222308823356",
+  "sources": {
+    "postgres": {
+      "ehr_postgres": {
+        "dsn_env": "EHR_DSN",
+        "tables": ["patient_demographics", "encounters"]
+      },
+      "urgent_care_postgres": {
+        "dsn_env": "URGENT_CARE_DSN",
+        "tables": ["urgent_care_logs"]
+      }
+    }
+  }
+}
