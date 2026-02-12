@@ -8,5 +8,8 @@
     "Project": "access-iq",
     "ManagedBy": "cdk",
     "CostCenter": "project"
+  },
+  "s3": {
+    "removal_policy": "DESTROY"
   }
 }

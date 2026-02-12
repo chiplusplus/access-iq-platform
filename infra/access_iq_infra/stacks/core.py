@@ -13,7 +13,7 @@ from access_iq_infra.settings import EnvConfig
 
 
 class CoreStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, *, cfg: EnvConfig, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, cfg: EnvConfig, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # Central log group (you'll use this later for pipeline/app logs)

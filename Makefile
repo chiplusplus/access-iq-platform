@@ -24,13 +24,13 @@ test:
 ci: fmt lint type test
 
 infra-bootstrap:
-	$(ENV) && cd infra && cdk bootstrap -c env=$(CDK_ENV)
+	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk bootstrap -c env=$(CDK_ENV)
 
 infra-diff:
-	$(ENV) && cd infra && cdk diff -c env=$(CDK_ENV)
+	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk diff -c env=$(CDK_ENV)
 
 infra-deploy:
-	$(ENV) && cd infra && cdk deploy --require-approval never -c env=$(CDK_ENV)
+	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk deploy --require-approval never -c env=$(CDK_ENV)
 
 infra-destroy:
-	$(ENV) && cd infra && cdk destroy --force -c env=$(CDK_ENV)
+	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk destroy --force -c env=$(CDK_ENV)

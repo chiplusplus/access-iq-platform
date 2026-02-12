@@ -1,5 +1,5 @@
 from access_iq_infra.settings import load_env_config
-from access_iq_infra.stacks.core import CoreStack
+from access_iq_infra.stacks.s3 import PlatformBucketStack
 from access_iq_infra.tagging import apply_tags
 from aws_cdk import App, Environment
 
@@ -16,9 +16,9 @@ apply_tags(app, cfg.tags)
 
 cdk_env = Environment(account=cfg.account_id, region=cfg.region)
 
-CoreStack(
+PlatformBucketStack(
     app,
-    f"core-resources-{cfg.app_name}",
+    f"platform-bucket-{cfg.app_name}",
     cfg=cfg,
     env=cdk_env,
 )
