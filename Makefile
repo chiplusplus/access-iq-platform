@@ -30,7 +30,7 @@ infra-diff:
 	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk diff -c env=$(CDK_ENV)
 
 infra-deploy:
-	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk deploy --require-approval never -c env=$(CDK_ENV)
+	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk deploy $(CDK_STACK) --require-approval never -c env=$(CDK_ENV)
 
 infra-destroy:
 	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk destroy --force -c env=$(CDK_ENV)

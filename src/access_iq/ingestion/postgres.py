@@ -15,6 +15,7 @@ def utc_now() -> str:
 
 
 def ingest_table_to_bronze(
+    *,
     dsn: str,
     db: str,
     table: str,
