@@ -1,0 +1,12 @@
+{
+  "app_name": "access-iq",
+  "env_name": "prod",
+  "account_id": "YOUR_AWS_ACCOUNT_ID",
+  "region": "eu-west-2",
+  "tags": {
+    "Environment": "prod",
+    "Project": "access-iq",
+    "ManagedBy": "cdk",
+    "CostCenter": "project"
+  }
+}

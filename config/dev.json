@@ -1,0 +1,40 @@
+{
+  "aws_region": "eu-west-2",
+  "platform_bucket": "access-iq-dev-222308823356",
+  "sources": {
+    "postgres": {
+      "ehr_postgres": {
+        "dsn_env": "EHR_DSN",
+        "tables": ["patient_demographics", "encounters"]
+      },
+      "urgent_care_postgres": {
+        "dsn_env": "URGENT_CARE_DSN",
+        "tables": ["urgent_care_logs"]
+      }
+    },
+    "sftp": {
+      "appointments": {
+        "host_env": "SFTP_HOST",
+        "port_env": "SFTP_PORT",
+        "user_env": "SFTP_USER",
+        "password_env": "SFTP_PASSWORD",
+        "remote_dir": "/upload/outbound/appointments/",
+        "source_name": "sftp_appointments"
+      }
+    },
+    "trust_s3": {
+      "base": {
+        "bucket": "northshire-trust-external-exports",
+        "profile": "access-iq-dev-ingestion"
+      },
+      "diagnostics": {
+        "prefix_root": "diagnostics",
+        "source_name": "trust_s3_diagnostics"
+      },
+      "provider_ref": {
+        "key": "providers/sites_and_services_master.xlsx",
+        "source_name": "trust_s3_provider_ref"
+      }
+    }
+  }
+}

@@ -1,8 +1,8 @@
 {
   "app_name": "access-iq",
   "env_name": "dev",
-  "account_id": "222308823356",
-  "user_name": "AWSReservedSSO_CHI-Engineer_56b619fe880e8582/chia",
+  "account_id": "YOUR_AWS_ACCOUNT_ID",
+  "user_name": "YOUR_ROLE_NAME/YOUR_USER",
   "region": "eu-west-2",
   "tags": {
     "Environment": "dev",
@@ -14,6 +14,6 @@
     "removal_policy": "DESTROY"
   },
   "iam": {
-    "external_bucket": "northshire-trust-external-exports"
+    "external_bucket": "YOUR_EXTERNAL_BUCKET_NAME"
   }
 }

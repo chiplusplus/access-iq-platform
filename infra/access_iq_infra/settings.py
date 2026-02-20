@@ -8,8 +8,11 @@ from typing import Any
 class EnvConfig:
     app_name: str
     env_name: str
+    user_name: str
     account_id: str
     region: str
+    s3: dict[str, Any]
+    iam: dict[str, Any]
     tags: dict[str, str]
 
 
@@ -34,8 +37,11 @@ def load_env_config(env_name: str) -> EnvConfig:
         return EnvConfig(
             app_name=str(raw["app_name"]),
             env_name=str(raw["env_name"]),
+            user_name=str(raw["user_name"]),
             account_id=str(raw["account_id"]),
             region=str(raw["region"]),
+            s3=dict(raw.get("s3", {})),
+            iam=dict(raw.get("iam", {})),
             tags=dict(raw.get("tags", {})),
         )
     except KeyError as e:
