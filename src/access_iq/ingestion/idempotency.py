@@ -27,4 +27,4 @@ def should_skip_if_already_successful(*, s3: Any, bucket: str, manifest_prefix: 
     body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
     manifest = json.loads(body)
 
-    return manifest.get("status") == "success"
+    return bool(manifest.get("status") == "success")

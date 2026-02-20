@@ -22,7 +22,8 @@ dev = [
     "types-psycopg2",
     "types-boto3",
     "types-boto3-s3",
-    "boto3-stubs[s3]",
+    "boto3-stubs",
+    "types-paramiko",
 ]
 
 [tool.ruff]
