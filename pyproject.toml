@@ -9,6 +9,7 @@ dependencies = [
     "constructs==10.4.5",
     "python-dotenv==1.2.1",
     "paramiko==4.0.0",
+    "pydantic==2.12.5",
 ]
 
 [project.optional-dependencies]
