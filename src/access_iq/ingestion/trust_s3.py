@@ -105,7 +105,7 @@ def ingest_trust_diagnostics_export_date_to_bronze(
 ) -> dict[str, Any]:
     """
     Copy all objects under:
-      <prefix_root>/export_date=YYYY-MM-DD/
+      <prefix_root>/export_date=YYYYMMDD/
 
     into platform bronze:
       bronze/source=trust_s3_diagnostics/entity=diagnostics_orders/export_date=.../run_id=.../<filename>

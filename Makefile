@@ -7,7 +7,7 @@ setup:
 	$(ENV) && pre-commit install
 
 install:
-	$(ENV) && uv pip install -r pyproject.toml --all-extras
+	$(ENV) && uv pip install -e ".[dev]"
 
 fmt:
 	$(ENV) && ruff format .

@@ -2,6 +2,7 @@
   "app_name": "access-iq",
   "env_name": "dev",
   "account_id": "YOUR_AWS_ACCOUNT_ID",
+  "user_name": "YOUR_ROLE_NAME/YOUR_USER",
   "region": "eu-west-2",
   "tags": {
     "Environment": "dev",
@@ -11,5 +12,8 @@
   },
   "s3": {
     "removal_policy": "DESTROY"
+  },
+  "iam": {
+    "external_bucket": "YOUR_EXTERNAL_BUCKET_NAME"
   }
 }
