@@ -179,6 +179,9 @@ def ingest_trust_diagnostics_export_date_to_bronze(
         if status == "failed" and fail_fast:
             break
 
+    if not results:
+        print(f"Warning: No objects found in {trust_bucket}/{trust_prefix}")
+
     finished_at = utc_now()
 
     manifest = {

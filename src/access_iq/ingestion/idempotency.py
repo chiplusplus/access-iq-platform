@@ -25,6 +25,14 @@ def should_skip_if_already_successful(*, s3: Any, bucket: str, manifest_prefix: 
         return False
 
     body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
-    manifest = json.loads(body)
+    try:
+        manifest = json.loads(body)
+    except (TypeError, json.JSONDecodeError):
+        print(f"Warning: could not decode manifest JSON from s3://{bucket}/{key}. Not skipping.")
+        return False
+
+    if not isinstance(manifest, dict):
+        print(f"Warning: manifest JSON from s3://{bucket}/{key} is not a dict. Not skipping.")
+        return False
 
     return bool(manifest.get("status") == "success")

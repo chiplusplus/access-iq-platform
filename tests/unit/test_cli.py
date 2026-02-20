@@ -169,7 +169,7 @@ def test_main_ingest_trust_s3_success(monkeypatch):
         postgres_sources={},
         sftp_sources={},
         trust_s3={
-            "base": {"profile": "trust-profile", "bucket": "trust-bucket"},
+            "base": {"profile": "chi-dev", "bucket": "trust-bucket"},
             "diagnostics": {"prefix_root": "diag/"},
             "provider_ref": {"key": "provider_references.json"},
         },
@@ -180,15 +180,16 @@ def test_main_ingest_trust_s3_success(monkeypatch):
 
     class FakeSession:
         def __init__(self, profile_name, region_name):
-            assert profile_name == "trust-profile"
+            assert profile_name == "chi-dev"
             assert region_name == "us-east-1"
 
         def client(self, name):
             assert name == "s3"
             return object()
 
-    fake_boto3 = types.SimpleNamespace(Session=FakeSession)
-    monkeypatch.setitem(sys.modules, "boto3", fake_boto3)
+    # Patch symbols used by cli directly (not sys.modules["boto3"])
+    monkeypatch.setattr(cli, "boto3", types.SimpleNamespace(Session=FakeSession), raising=False)
+    monkeypatch.setattr(cli, "Session", FakeSession, raising=False)
 
     prov_called = {}
     diag_called = {}

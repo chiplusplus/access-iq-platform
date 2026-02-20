@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import stat
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
@@ -97,7 +98,6 @@ def ingest_sftp_directory_to_bronze(
                 # ensure it's a file
                 attr = sftp.stat(remote_path)
                 # crude dir check: S_ISDIR bit
-                import stat
 
                 if attr.st_mode is not None and stat.S_ISDIR(attr.st_mode):
                     continue

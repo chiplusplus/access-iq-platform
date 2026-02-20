@@ -18,7 +18,6 @@ if "psycopg2" not in sys.modules:
     cast(Any, psycopg2_module).connect = None
     sys.modules["psycopg2"] = psycopg2_module
 
-
 pg = importlib.import_module("access_iq.ingestion.postgres")
 
 
@@ -36,6 +35,9 @@ class FakeCursor:
     def __exit__(self, exc_type, exc, tb):
         return False
 
+    def close(self):
+        pass
+
 
 class FakeConn:
     def __init__(self, cursor):
@@ -49,6 +51,9 @@ class FakeConn:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+    def close(self):
+        pass
 
 
 class FakeS3:
@@ -89,6 +94,15 @@ def test_ingest_table_to_bronze_uploads_expected_key(monkeypatch):
     monkeypatch.setattr(pg, "utc_now", lambda: "2026-02-20T00:00:00+00:00")
     monkeypatch.setattr(pg.psycopg2, "connect", lambda dsn: conn)
 
+    # psycopg2.sql.Identifier.as_string() calls extensions.quote_ident(...),
+    # which normally requires a real psycopg cursor/connection C type.
+    # Patch it so this unit test can run with FakeCursor/FakeConn.
+    monkeypatch.setattr(
+        pg.psycopg2.extensions,
+        "quote_ident",
+        lambda ident, _ctx: f'"{ident}"',
+    )
+
     out = pg.ingest_table_to_bronze(
         dsn="postgres://dsn",
         db="ehr",
@@ -109,7 +123,7 @@ def test_ingest_table_to_bronze_uploads_expected_key(monkeypatch):
     assert len(s3.uploads) == 1
     assert s3.uploads[0]["bucket"] == "platform"
     assert "id,name" in s3.uploads[0]["body"]
-    assert cursor.copy_calls[0] == "COPY (SELECT * FROM patients) TO STDOUT WITH CSV HEADER"
+    assert cursor.copy_calls[0] == 'COPY (SELECT * FROM "patients") TO STDOUT WITH CSV HEADER'
 
 
 def test_ingest_postgres_source_skips_when_latest_manifest_success(monkeypatch):

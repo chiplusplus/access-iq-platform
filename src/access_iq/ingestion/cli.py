@@ -6,6 +6,7 @@ import os
 from datetime import date
 from pathlib import Path
 
+import boto3
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -59,7 +60,7 @@ def main() -> None:
     parser.add_argument("cmd", choices=["ingest-postgres", "ingest-sftp", "ingest-trust-s3"])
     parser.add_argument("--db", default="all", help="ehr_postgres | urgent_care_postgres | all")
     parser.add_argument("--ingest-date", default=date.today().isoformat())
-    parser.add_argument("--fail-fast", action="store_true", default=True)
+    parser.add_argument("--fail-fast", action="store_true", default=False)
     parser.add_argument("--name", default="appointments")
     args = parser.parse_args()
 
@@ -95,7 +96,13 @@ def main() -> None:
             print(f"{db}: {manifest['status']} (run_id={manifest['run_id']})")
 
     elif args.cmd == "ingest-sftp":
-        sftp_cfg = config.sftp_sources[args.name]
+        try:
+            sftp_cfg = config.sftp_sources[args.name]
+        except KeyError:
+            raise SystemExit(
+                f"Unknown SFTP source '{args.name}'. Known: {list(config.sftp_sources.keys())}"
+            ) from None
+
         host = os.getenv(sftp_cfg["host_env"])
         if not host:
             raise SystemExit(f"Missing required env var: {sftp_cfg['host_env']}")
@@ -121,13 +128,12 @@ def main() -> None:
             env=config.env,
             aws_region=config.aws_region,
             aws_profile_platform=config.aws_profile,
-            fail_fast=True,
+            fail_fast=args.fail_fast,
         )
-        print(manifest["status"], manifest["run_id"])
+
+        print(f"{source_name}: {manifest['status']} (run_id={manifest['run_id']})")
 
     elif args.cmd == "ingest-trust-s3":
-        import boto3
-
         trust_cfg = config.trust_s3
 
         base_cfg = trust_cfg["base"]
@@ -159,7 +165,7 @@ def main() -> None:
             platform_bucket=config.platform_bucket,
             env=config.env,
             source_name=diagnostics_cfg.get("source_name", "trust_s3_diagnostics"),
-            fail_fast=False,
+            fail_fast=args.fail_fast,
         )
         print("diagnostics:", diagnostics_manifest["status"], diagnostics_manifest["run_id"])
 

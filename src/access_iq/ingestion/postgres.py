@@ -8,6 +8,7 @@ from typing import Any
 
 import boto3
 import psycopg2
+from psycopg2 import sql
 
 from access_iq.ingestion.idempotency import should_skip_if_already_successful
 
@@ -36,14 +37,21 @@ def ingest_table_to_bronze(
     conn = psycopg2.connect(dsn)
     cursor = conn.cursor()
 
-    copy_sql = f"COPY (SELECT * FROM {table}) TO STDOUT WITH CSV HEADER"
+    copy_sql = (
+        sql.SQL("COPY (SELECT * FROM {}) TO STDOUT WITH CSV HEADER")
+        .format(sql.Identifier(table))
+        .as_string(cursor)
+    )
 
-    with cursor, conn:
+    try:
         s3_client.upload_fileobj(
             Fileobj=_copy_stream(cursor, copy_sql),
             Bucket=platform_bucket,
             Key=bronze_key,
         )
+    finally:
+        cursor.close()
+        conn.close()
 
     finished_at = utc_now()
 
@@ -97,7 +105,7 @@ def ingest_postgres_source_to_bronze(
 
     results: list[dict[str, Any]] = []
     status = "success"
-    error: str | None = None
+    error: list[str] | None = None
 
     for table in tables:
         try:
@@ -114,7 +122,10 @@ def ingest_postgres_source_to_bronze(
             )
         except Exception as e:
             status = "failed"
-            error = f"{type(e).__name__}: {e}"
+            if error is None:
+                error = [f"{type(e).__name__}: {e}"]
+            else:
+                error.append(f"{type(e).__name__}: {e}")
             results.append(
                 {
                     "db": db,
