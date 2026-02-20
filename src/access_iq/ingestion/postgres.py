@@ -9,6 +9,8 @@ from typing import Any
 import boto3
 import psycopg2
 
+from access_iq.ingestion.idempotency import should_skip_if_already_successful
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -78,6 +80,20 @@ def ingest_postgres_source_to_bronze(
 
     session = boto3.Session(profile_name=aws_profile, region_name=aws_region)
     s3 = session.client("s3")
+    manifest_prefix = f"_manifests/source={db}/ingest_date={ingest_date.isoformat()}"
+
+    if should_skip_if_already_successful(
+        s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
+    ):
+        print("Ingest already successful for this date and source. Skipping.")
+        return {
+            "source": db,
+            "run_id": run_id,
+            "env": env,
+            "ingest_date": ingest_date.isoformat(),
+            "status": "skipped",
+            "reason": "latest_manifest_success",
+        }
 
     results: list[dict[str, Any]] = []
     status = "success"
@@ -105,6 +121,7 @@ def ingest_postgres_source_to_bronze(
                     "table": table,
                     "status": "failed",
                     "error": error,
+                    "run_id": run_id,
                     "started_at": utc_now(),
                     "finished_at": utc_now(),
                 }

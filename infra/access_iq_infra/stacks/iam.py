@@ -51,6 +51,8 @@ class IngestionRoleStack(Stack):
                     resources=[
                         f"arn:aws:s3:::{cfg.iam['external_bucket']}",
                         f"arn:aws:s3:::{cfg.iam['external_bucket']}/*",
+                        f"arn:aws:s3:::{platform_bucket.bucket_name}/_manifests",
+                        f"arn:aws:s3:::{platform_bucket.bucket_name}/_manifests/*",
                     ],
                 ),
                 iam.PolicyStatement(

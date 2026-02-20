@@ -5,6 +5,8 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import Any
 
+from access_iq.ingestion.idempotency import should_skip_if_already_successful
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -34,6 +36,21 @@ def ingest_trust_provider_ref_to_bronze(
     """
     run_id = str(uuid.uuid4())
     started_at = utc_now()
+
+    manifest_prefix = f"_manifests/source={source_name}/ingest_date={ingest_date.isoformat()}"
+
+    if should_skip_if_already_successful(
+        s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
+    ):
+        print("Ingest already successful for this date and source. Skipping.")
+        return {
+            "source": source_name,
+            "run_id": run_id,
+            "env": env,
+            "ingest_date": ingest_date.isoformat(),
+            "status": "skipped",
+            "reason": "latest_manifest_success",
+        }
 
     bronze_key = (
         f"bronze/source={source_name}/entity=provider_site_reference/"
@@ -98,9 +115,23 @@ def ingest_trust_diagnostics_export_date_to_bronze(
     run_id = str(uuid.uuid4())
     started_at = utc_now()
 
+    manifest_prefix = f"_manifests/source={source_name}/ingest_date={export_date.isoformat()}"
+
+    if should_skip_if_already_successful(
+        s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
+    ):
+        print("Ingest already successful for this date and source. Skipping.")
+        return {
+            "source": source_name,
+            "env": env,
+            "ingest_date": export_date.isoformat(),
+            "run_id": run_id,
+            "status": "skipped",
+            "reason": "latest_manifest_success",
+        }
+
     prefix_root = prefix_root.rstrip("/")
     trust_prefix = f"{prefix_root}/export_date={export_date.isoformat().replace('-', '')}/"
-    print(f"Looking for objects in s3://{trust_bucket}/{trust_prefix}...")
 
     results: list[dict[str, Any]] = []
     status = "success"
@@ -117,7 +148,7 @@ def ingest_trust_diagnostics_export_date_to_bronze(
                 filename = trust_key.split("/")[-1] or "part.csv"
                 bronze_key = (
                     f"bronze/source={source_name}/entity=diagnostics_orders/"
-                    f"export_date={export_date.isoformat()}/run_id={run_id}/{filename}"
+                    f"ingest_date={export_date.isoformat()}/run_id={run_id}/{filename}"
                 )
 
                 s3.copy_object(
@@ -154,7 +185,7 @@ def ingest_trust_diagnostics_export_date_to_bronze(
         "source": source_name,
         "env": env,
         "run_id": run_id,
-        "export_date": export_date.isoformat(),
+        "ingest_date": export_date.isoformat(),
         "started_at": started_at,
         "finished_at": finished_at,
         "status": status,
@@ -170,6 +201,6 @@ def ingest_trust_diagnostics_export_date_to_bronze(
         },
     }
 
-    manifest_key = f"_manifests/source={source_name}/export_date={export_date.isoformat()}/run_id={run_id}.json"
+    manifest_key = f"_manifests/source={source_name}/ingest_date={export_date.isoformat()}/run_id={run_id}.json"
     _put_manifest(s3=s3, bucket=platform_bucket, key=manifest_key, manifest=manifest)
     return manifest

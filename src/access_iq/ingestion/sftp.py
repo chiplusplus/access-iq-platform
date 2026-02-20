@@ -11,6 +11,8 @@ from typing import Any
 import boto3
 import paramiko
 
+from access_iq.ingestion.idempotency import should_skip_if_already_successful
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -58,6 +60,20 @@ def ingest_sftp_directory_to_bronze(
 
     session = boto3.Session(profile_name=aws_profile_platform, region_name=aws_region)
     s3 = session.client("s3")
+    manifest_prefix = f"_manifests/source={source_name}/ingest_date={ingest_date.isoformat()}"
+
+    if should_skip_if_already_successful(
+        s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
+    ):
+        print("Ingest already successful for this date and source. Skipping.")
+        return {
+            "source": source_name,
+            "run_id": run_id,
+            "env": env,
+            "ingest_date": ingest_date.isoformat(),
+            "status": "skipped",
+            "reason": "latest_manifest_success",
+        }
 
     results: list[FileResult] = []
     status = "success"
