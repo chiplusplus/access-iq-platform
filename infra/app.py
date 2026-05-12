@@ -1,8 +1,9 @@
+from aws_cdk import App, Environment
+
 from access_iq_infra.settings import load_env_config
 from access_iq_infra.stacks.iam import IngestionRoleStack
 from access_iq_infra.stacks.s3 import PlatformBucketStack
 from access_iq_infra.tagging import apply_tags
-from aws_cdk import App, Environment
 
 app = App()
 
