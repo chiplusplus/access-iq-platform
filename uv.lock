@@ -4,10 +4,28 @@ requires-python = ">=3.12"
 
 [manifest]
 members = [
+    "access-iq-dashboard",
+    "access-iq-dbt",
+    "access-iq-flows",
     "access-iq-infra",
     "access-iq-ingestion",
     "access-iq-workspace",
 ]
+
+[[package]]
+name = "access-iq-dashboard"
+version = "0.1.0"
+source = { editable = "dashboard" }
+
+[[package]]
+name = "access-iq-dbt"
+version = "0.1.0"
+source = { editable = "dbt" }
+
+[[package]]
+name = "access-iq-flows"
+version = "0.1.0"
+source = { editable = "flows" }
 
 [[package]]
 name = "access-iq-infra"
