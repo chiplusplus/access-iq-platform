@@ -29,7 +29,7 @@ def _clear_access_iq_env(monkeypatch):
 
 def test_missing_required_platform_bucket_raises():
     with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=None)
+        Settings(_env_file=None)  # type: ignore[call-arg]
     assert "platform_bucket" in str(excinfo.value).lower()
 
 
@@ -38,7 +38,7 @@ def test_all_required_set_returns_typed_settings(monkeypatch):
     monkeypatch.setenv("ACCESS_IQ_AWS_REGION", "eu-west-2")
     monkeypatch.setenv("ACCESS_IQ_ENV", "dev")
 
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert s.platform_bucket == "bucket-foo"
     assert s.aws_region == "eu-west-2"
@@ -57,7 +57,7 @@ def test_postgres_sources_json_decodes_to_typed_dict(monkeypatch):
         json.dumps({"ehr": {"dsn_env": "EHR_DSN", "tables": ["patient", "encounter"]}}),
     )
 
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert "ehr" in s.postgres_sources
     assert isinstance(s.postgres_sources["ehr"], PostgresSourceCfg)
@@ -81,7 +81,7 @@ def test_trust_s3_nested_json_validates(monkeypatch):
         ),
     )
 
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert s.trust_s3 is not None
     assert s.trust_s3.base.bucket == "trust-bucket"
@@ -95,13 +95,13 @@ def test_malformed_json_raises_validation_error(monkeypatch):
     monkeypatch.setenv("ACCESS_IQ_POSTGRES_SOURCES", "{not valid json")
 
     with pytest.raises((ValidationError, SettingsError)):
-        Settings(_env_file=None)
+        Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 def test_pseudonym_key_arn_defaults_to_none(monkeypatch):
     monkeypatch.setenv("ACCESS_IQ_PLATFORM_BUCKET", "bucket-foo")
 
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert s.pseudonym_key_secret_arn is None
 
@@ -113,7 +113,7 @@ def test_pseudonym_key_arn_loads_from_env(monkeypatch):
         "arn:aws:secretsmanager:eu-west-2:111:secret:access-iq/dev/pseudonym-key",
     )
 
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert s.pseudonym_key_secret_arn is not None
     assert "pseudonym-key" in s.pseudonym_key_secret_arn
@@ -125,6 +125,6 @@ def test_settings_does_not_read_cwd_config_dir(monkeypatch, tmp_path):
     monkeypatch.setenv("ACCESS_IQ_PLATFORM_BUCKET", "bucket-foo")
 
     # Must not raise FileNotFoundError or otherwise touch the cwd.
-    s = Settings(_env_file=None)
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert s.platform_bucket == "bucket-foo"
