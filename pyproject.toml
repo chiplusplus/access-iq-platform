@@ -21,6 +21,7 @@ dev = [
     "types-boto3-s3",
     "boto3-stubs",
     "types-paramiko",
+    "moto[s3]>=5.0,<6",
 ]
 
 [tool.ruff]

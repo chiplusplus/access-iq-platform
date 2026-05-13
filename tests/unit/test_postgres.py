@@ -19,6 +19,7 @@ if "psycopg2" not in sys.modules:
     sys.modules["psycopg2"] = psycopg2_module
 
 pg = importlib.import_module("access_iq.ingestion.postgres")
+manifests_mod = importlib.import_module("access_iq.ingestion.manifests")
 
 
 class FakeCursor:
@@ -91,7 +92,7 @@ def test_ingest_table_to_bronze_uploads_expected_key(monkeypatch):
     conn = FakeConn(cursor)
     s3 = FakeS3()
 
-    monkeypatch.setattr(pg, "utc_now", lambda: "2026-02-20T00:00:00+00:00")
+    monkeypatch.setattr(pg, "utc_now_iso", lambda: "2026-02-20T00:00:00+00:00")
     monkeypatch.setattr(pg.psycopg2, "connect", lambda dsn: conn)
 
     # psycopg2.sql.Identifier.as_string() calls extensions.quote_ident(...),
@@ -130,7 +131,7 @@ def test_ingest_postgres_source_skips_when_latest_manifest_success(monkeypatch):
     s3 = FakeS3()
 
     monkeypatch.setattr(pg.uuid, "uuid4", lambda: "run-skip")
-    monkeypatch.setattr(pg, "utc_now", lambda: "now")
+    monkeypatch.setattr(pg, "utc_now_iso", lambda: "now")
     monkeypatch.setattr(
         pg.boto3,
         "Session",
@@ -157,7 +158,7 @@ def test_ingest_postgres_source_success_writes_manifest(monkeypatch):
     s3 = FakeS3()
 
     monkeypatch.setattr(pg.uuid, "uuid4", lambda: "run-ok")
-    monkeypatch.setattr(pg, "utc_now", lambda: "now")
+    monkeypatch.setattr(pg, "utc_now_iso", lambda: "now")
     monkeypatch.setattr(
         pg.boto3,
         "Session",
@@ -199,7 +200,7 @@ def test_ingest_postgres_source_fail_fast_true_stops_on_first_error(monkeypatch)
     s3 = FakeS3()
 
     monkeypatch.setattr(pg.uuid, "uuid4", lambda: "run-fail-fast")
-    monkeypatch.setattr(pg, "utc_now", lambda: "now")
+    monkeypatch.setattr(pg, "utc_now_iso", lambda: "now")
     monkeypatch.setattr(
         pg.boto3,
         "Session",
@@ -235,7 +236,7 @@ def test_ingest_postgres_source_fail_fast_false_continues(monkeypatch):
     s3 = FakeS3()
 
     monkeypatch.setattr(pg.uuid, "uuid4", lambda: "run-no-fast")
-    monkeypatch.setattr(pg, "utc_now", lambda: "now")
+    monkeypatch.setattr(pg, "utc_now_iso", lambda: "now")
     monkeypatch.setattr(
         pg.boto3,
         "Session",

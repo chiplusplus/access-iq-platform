@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date
 
+from access_iq.ingestion import manifests as manifests_mod
 from access_iq.ingestion import trust_s3 as mod
 
 
@@ -31,19 +32,6 @@ class FakeS3:
         self.puts.append(kwargs)
 
 
-def test_put_manifest_writes_json_bytes():
-    s3 = FakeS3()
-    manifest = {"a": 1, "b": "x"}
-
-    mod._put_manifest(s3=s3, bucket="bucket", key="k.json", manifest=manifest)
-
-    assert len(s3.puts) == 1
-    assert s3.puts[0]["Bucket"] == "bucket"
-    assert s3.puts[0]["Key"] == "k.json"
-    body = json.loads(s3.puts[0]["Body"].decode("utf-8"))
-    assert body == manifest
-
-
 def test_provider_ref_skip_when_idempotent(monkeypatch):
     s3 = FakeS3()
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: True)
@@ -68,7 +56,8 @@ def test_provider_ref_success_copies_and_writes_manifest(monkeypatch):
     s3 = FakeS3()
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: False)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "run-1")
-    monkeypatch.setattr(mod, "utc_now", lambda: "now")
+    monkeypatch.setattr(manifests_mod, "utc_now_iso", lambda: "now")
+    monkeypatch.setattr(mod, "utc_now_iso", lambda: "now")
 
     out = mod.ingest_trust_provider_ref_to_bronze(
         s3=s3,
@@ -119,7 +108,8 @@ def test_diagnostics_success_multiple_objects(monkeypatch):
     s3 = FakeS3(pages=pages)
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: False)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "run-2")
-    monkeypatch.setattr(mod, "utc_now", lambda: "now")
+    monkeypatch.setattr(manifests_mod, "utc_now_iso", lambda: "now")
+    monkeypatch.setattr(mod, "utc_now_iso", lambda: "now")
 
     out = mod.ingest_trust_diagnostics_export_date_to_bronze(
         s3=s3,
@@ -144,7 +134,8 @@ def test_diagnostics_fail_fast_true_breaks_on_first_error(monkeypatch):
 
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: False)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "run-3")
-    monkeypatch.setattr(mod, "utc_now", lambda: "now")
+    monkeypatch.setattr(manifests_mod, "utc_now_iso", lambda: "now")
+    monkeypatch.setattr(mod, "utc_now_iso", lambda: "now")
 
     def fail_copy(**kwargs):
         raise RuntimeError("copy failed")
@@ -162,7 +153,8 @@ def test_diagnostics_fail_fast_true_breaks_on_first_error(monkeypatch):
     )
 
     assert out["status"] == "failed"
-    assert out["error"] is not None
+    assert isinstance(out["error"], list)
+    assert len(out["error"]) == 1
     assert out["outputs"]["objects_failed"] == 1
     assert out["outputs"]["objects_written"] == 0
     assert len(s3.puts) == 1
@@ -181,7 +173,8 @@ def test_diagnostics_fail_fast_false_continues(monkeypatch):
 
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: False)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "run-4")
-    monkeypatch.setattr(mod, "utc_now", lambda: "now")
+    monkeypatch.setattr(manifests_mod, "utc_now_iso", lambda: "now")
+    monkeypatch.setattr(mod, "utc_now_iso", lambda: "now")
 
     calls = {"n": 0}
 
@@ -204,7 +197,8 @@ def test_diagnostics_fail_fast_false_continues(monkeypatch):
     )
 
     assert out["status"] == "failed"
-    assert out["error"] is None
+    assert isinstance(out["error"], list)
+    assert len(out["error"]) == 1
     assert out["outputs"]["objects_failed"] == 1
     assert out["outputs"]["objects_written"] == 1
     assert len(s3.puts) == 1

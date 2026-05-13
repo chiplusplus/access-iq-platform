@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import pytest
-from aws_cdk import App
-from aws_cdk.assertions import Match, Template
 
-from access_iq_infra.settings import EnvConfig
-from access_iq_infra.stacks.lake import LakeStack
+aws_cdk = pytest.importorskip("aws_cdk")
+from aws_cdk import App  # noqa: E402
+from aws_cdk.assertions import Match, Template  # noqa: E402
+
+from access_iq_infra.settings import EnvConfig  # noqa: E402
+from access_iq_infra.stacks.lake import LakeStack  # noqa: E402
 
 
 def _cfg(env_name: str = "dev") -> EnvConfig:
