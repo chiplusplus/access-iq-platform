@@ -6,6 +6,7 @@ from aws_cdk import (
     Stack,
 )
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_kms as kms
 from aws_cdk.aws_s3 import IBucket
 from constructs import Construct
 
@@ -24,6 +25,7 @@ class IngestionRoleStack(Stack):
         *,
         cfg: EnvConfig,
         platform_bucket: IBucket,
+        lake_key: kms.IKey,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -80,5 +82,7 @@ class IngestionRoleStack(Stack):
         )
 
         ingestion_role.attach_inline_policy(ingestion_policy)
+
+        lake_key.grant_encrypt_decrypt(ingestion_role)
 
         self.ingestion_role = ingestion_role
