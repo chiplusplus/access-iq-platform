@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
-from aws_cdk import (
-    Stack,
-)
+from aws_cdk import Stack
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
+from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk.aws_s3 import IBucket
 from constructs import Construct
 
@@ -26,7 +25,8 @@ class IngestionRoleStack(Stack):
         cfg: EnvConfig,
         platform_bucket: IBucket,
         lake_key: kms.IKey,
-        **kwargs,
+        pseudonymisation_key_secret: secretsmanager.ISecret | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
@@ -84,5 +84,17 @@ class IngestionRoleStack(Stack):
         ingestion_role.attach_inline_policy(ingestion_policy)
 
         lake_key.grant_encrypt_decrypt(ingestion_role)
+
+        # Grant secretsmanager:GetSecretValue manually instead of using
+        # grant_read(), which also adds a KMS key policy on the lake key —
+        # that creates a cross-stack cyclic dependency (lake ↔ ingestion-role).
+        # KMS decrypt is already covered by lake_key.grant_encrypt_decrypt above.
+        if pseudonymisation_key_secret is not None:
+            ingestion_role.add_to_principal_policy(
+                iam.PolicyStatement(
+                    actions=["secretsmanager:GetSecretValue"],
+                    resources=[pseudonymisation_key_secret.secret_arn],
+                )
+            )
 
         self.ingestion_role = ingestion_role
