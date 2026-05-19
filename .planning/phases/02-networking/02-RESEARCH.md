@@ -744,7 +744,7 @@ def test_ecs_sg_deny_all_outbound() -> None:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Trust Northshire simulator: peering-accepter role current state**
    - What we know: D-02 identifies this as a hard prerequisite; role does not yet exist.
