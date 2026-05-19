@@ -26,8 +26,8 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
 @pytest.mark.parametrize("env_name", ["dev", "prod"])
 def test_ecr_creates_one_repo_with_retain(env_name: str) -> None:
     app = App()
-    EcrStack(app, f"EcrStack-{env_name}", cfg=_cfg(env_name))
-    tpl = Template.from_stack(app.node.find_child(f"EcrStack-{env_name}"))
+    stack = EcrStack(app, f"EcrStack-{env_name}", cfg=_cfg(env_name))
+    tpl = Template.from_stack(stack)
 
     tpl.resource_count_is("AWS::ECR::Repository", 1)
     tpl.has_resource("AWS::ECR::Repository", {"DeletionPolicy": "Retain"})
@@ -43,8 +43,8 @@ def test_ecr_creates_one_repo_with_retain(env_name: str) -> None:
 
 def test_ecr_exports_repo_uri() -> None:
     app = App()
-    EcrStack(app, "EcrStack", cfg=_cfg())
-    tpl = Template.from_stack(app.node.find_child("EcrStack"))
+    stack = EcrStack(app, "EcrStack", cfg=_cfg())
+    tpl = Template.from_stack(stack)
 
     tpl.has_output(
         "IngestionRepoUri",

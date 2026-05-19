@@ -85,7 +85,7 @@ def test_ingestion_role_has_secret_grant(env_name: str) -> None:
     from aws_cdk.assertions import Match, Template
 
     ingestion_stack = app.node.find_child(f"ingestion-role-access-iq-{env_name}")
-    tpl = Template.from_stack(ingestion_stack)
+    tpl = Template.from_stack(ingestion_stack)  # type: ignore
     tpl.has_resource_properties(
         "AWS::IAM::Policy",
         {

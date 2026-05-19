@@ -26,8 +26,8 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
 @pytest.mark.parametrize("env_name", ["dev", "prod"])
 def test_catalog_creates_glue_database_with_retain(env_name: str) -> None:
     app = App()
-    CatalogStack(app, f"CatalogStack-{env_name}", cfg=_cfg(env_name))
-    tpl = Template.from_stack(app.node.find_child(f"CatalogStack-{env_name}"))
+    stack = CatalogStack(app, f"CatalogStack-{env_name}", cfg=_cfg(env_name))
+    tpl = Template.from_stack(stack)
 
     tpl.resource_count_is("AWS::Glue::Database", 1)
     tpl.has_resource("AWS::Glue::Database", {"DeletionPolicy": "Retain"})
@@ -43,8 +43,8 @@ def test_catalog_creates_glue_database_with_retain(env_name: str) -> None:
 
 def test_catalog_exports_database_name() -> None:
     app = App()
-    CatalogStack(app, "CatalogStack", cfg=_cfg())
-    tpl = Template.from_stack(app.node.find_child("CatalogStack"))
+    stack = CatalogStack(app, "CatalogStack", cfg=_cfg())
+    tpl = Template.from_stack(stack)
 
     tpl.has_output(
         "BronzeDatabaseName",
