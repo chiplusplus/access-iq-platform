@@ -1,36 +1,34 @@
-.PHONY: setup install fmt lint type test ci infra-bootstrap infra-diff infra-deploy infra-destroy
+.PHONY: setup fmt fmt-check lint type test ci infra-bootstrap infra-diff infra-deploy infra-destroy
 
-ENV= . .venv/bin/activate
 setup:
-	uv venv
-	$(ENV) && uv pip install -e ".[dev]"
-	$(ENV) && pre-commit install
-
-install:
-	$(ENV) && uv pip install -e ".[dev]"
+	uv sync --all-packages
+	uv run pre-commit install
 
 fmt:
-	$(ENV) && ruff format .
+	uv run ruff format .
+
+fmt-check:
+	uv run ruff format --check .
 
 lint:
-	$(ENV) && ruff check .
+	uv run ruff check .
 
 type:
-	$(ENV) && mypy .
+	uv run mypy .
 
 test:
-	$(ENV) && pytest --cov=access_iq
+	uv run pytest --cov=access_iq
 
-ci: fmt lint type test
+ci: fmt-check lint type test
 
 infra-bootstrap:
-	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk bootstrap -c env=$(CDK_ENV)
+	cd infra && AWS_PROFILE=$(AWS_PROFILE) uv run cdk bootstrap -c env=$(CDK_ENV)
 
 infra-diff:
-	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk diff -c env=$(CDK_ENV)
+	cd infra && AWS_PROFILE=$(AWS_PROFILE) uv run cdk diff -c env=$(CDK_ENV)
 
 infra-deploy:
-	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk deploy $(CDK_STACK) --require-approval never -c env=$(CDK_ENV)
+	cd infra && AWS_PROFILE=$(AWS_PROFILE) uv run cdk deploy $(CDK_STACK) --require-approval never -c env=$(CDK_ENV)
 
 infra-destroy:
-	$(ENV) && cd infra && AWS_PROFILE=$(AWS_PROFILE) cdk destroy --force -c env=$(CDK_ENV)
+	cd infra && AWS_PROFILE=$(AWS_PROFILE) uv run cdk destroy --force -c env=$(CDK_ENV)

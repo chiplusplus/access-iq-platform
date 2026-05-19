@@ -3,6 +3,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import structlog
+
+from access_iq.ingestion.manifests import normalize_manifest_prefix
+
+log = structlog.get_logger(__name__)
+
 
 def _latest_manifest_key(*, s3: Any, bucket: str, prefix: str) -> str | None:
     paginator = s3.get_paginator("list_objects_v2")
@@ -17,9 +23,7 @@ def _latest_manifest_key(*, s3: Any, bucket: str, prefix: str) -> str | None:
 
 
 def should_skip_if_already_successful(*, s3: Any, bucket: str, manifest_prefix: str) -> bool:
-    """
-    Returns True if the most recent manifest under manifest_prefix has status=success.
-    """
+    manifest_prefix = normalize_manifest_prefix(manifest_prefix)
     key = _latest_manifest_key(s3=s3, bucket=bucket, prefix=manifest_prefix)
     if not key:
         return False
@@ -28,11 +32,11 @@ def should_skip_if_already_successful(*, s3: Any, bucket: str, manifest_prefix: 
     try:
         manifest = json.loads(body)
     except (TypeError, json.JSONDecodeError):
-        print(f"Warning: could not decode manifest JSON from s3://{bucket}/{key}. Not skipping.")
+        log.warning("manifest_decode_failed", bucket=bucket, key=key)
         return False
 
     if not isinstance(manifest, dict):
-        print(f"Warning: manifest JSON from s3://{bucket}/{key} is not a dict. Not skipping.")
+        log.warning("manifest_not_dict", bucket=bucket, key=key)
         return False
 
     return bool(manifest.get("status") == "success")

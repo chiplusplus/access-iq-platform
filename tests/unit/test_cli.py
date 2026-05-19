@@ -1,56 +1,49 @@
+"""CLI tests against the Settings-based (12-factor) cli.py."""
+
 from __future__ import annotations
 
-import json
 import sys
 import types
 from datetime import date
 
 import pytest
 
+from access_iq.config import (
+    PostgresSourceCfg,
+    Settings,
+    SftpSourceCfg,
+    TrustS3BaseCfg,
+    TrustS3Cfg,
+    TrustS3EntityCfg,
+)
 from access_iq.ingestion import cli
 
 
-def test_load_config_reads_env_config(tmp_path, monkeypatch):
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
-    (config_dir / "dev.json").write_text(
-        json.dumps(
-            {
-                "aws_region": "us-east-1",
-                "platform_bucket": "platform-bucket",
-                "sources": {
-                    "postgres": {"ehr": {"dsn_env": "EHR_DSN", "tables": ["patients"]}},
-                    "sftp": {"appointments": {"host_env": "SFTP_HOST"}},
-                    "trust_s3": {"base": {}, "diagnostics": {}, "provider_ref": {}},
-                },
-            }
-        )
+def _settings(**overrides: object) -> Settings:
+    """Build a Settings instance without going through env vars.
+
+    Uses ``model_construct`` to skip env-var + .env lookup; suitable for tests
+    that inject a fully-typed Settings into ``cli`` via monkeypatch.
+    """
+    defaults: dict[str, object] = {
+        "env": "dev",
+        "aws_region": "us-east-1",
+        "platform_bucket": "bucket",
+        "aws_profile": None,
+        "pseudonym_key_secret_arn": None,
+        "postgres_sources": {},
+        "sftp_sources": {},
+        "trust_s3": None,
+    }
+    defaults.update(overrides)
+    return Settings.model_construct(**defaults)  # type: ignore[arg-type]
+
+
+def test_main_ingest_postgres_success(monkeypatch):
+    s = _settings(
+        postgres_sources={"ehr": PostgresSourceCfg(dsn_env="EHR_DSN", tables=["patients"])},
     )
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ENV", raising=False)
-    monkeypatch.setenv("AWS_PROFILE", "dev-profile")
-
-    cfg = cli.load_config()
-
-    assert cfg.env == "dev"
-    assert cfg.aws_region == "us-east-1"
-    assert cfg.platform_bucket == "platform-bucket"
-    assert cfg.postgres_sources["ehr"].dsn_env == "EHR_DSN"
-    assert cfg.aws_profile == "dev-profile"
-
-
-def test_main_ingest_postgres_success(monkeypatch, capsys):
-    cfg = cli.Config(
-        env="dev",
-        aws_region="us-east-1",
-        platform_bucket="bucket",
-        postgres_sources={"ehr": cli.PostgresSource(dsn_env="EHR_DSN", tables=["patients"])},
-        sftp_sources={},
-        trust_s3={},
-        aws_profile=None,
-    )
-    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "Settings", lambda: s)
     monkeypatch.setenv("EHR_DSN", "postgres://dsn")
     monkeypatch.setattr(
         sys,
@@ -71,46 +64,44 @@ def test_main_ingest_postgres_success(monkeypatch, capsys):
     assert called["db"] == "ehr"
     assert called["dsn"] == "postgres://dsn"
     assert called["ingest_date"] == date(2026, 2, 1)
-    out = capsys.readouterr().out
-    assert "success" in out
 
 
 def test_main_ingest_postgres_unknown_db_raises(monkeypatch):
-    cfg = cli.Config(
-        env="dev",
-        aws_region="us-east-1",
-        platform_bucket="bucket",
-        postgres_sources={"ehr": cli.PostgresSource(dsn_env="EHR_DSN", tables=["patients"])},
-        sftp_sources={},
-        trust_s3={},
-        aws_profile=None,
+    s = _settings(
+        postgres_sources={"ehr": PostgresSourceCfg(dsn_env="EHR_DSN", tables=["patients"])},
     )
-    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "Settings", lambda: s)
     monkeypatch.setattr(sys, "argv", ["prog", "ingest-postgres", "--db", "missing"])
 
     with pytest.raises(SystemExit, match="Unknown db"):
         cli.main()
 
 
-def test_main_ingest_sftp_missing_host_raises(monkeypatch):
-    cfg = cli.Config(
-        env="dev",
-        aws_region="us-east-1",
-        platform_bucket="bucket",
-        postgres_sources={},
-        sftp_sources={
-            "appointments": {
-                "host_env": "SFTP_HOST",
-                "port_env": "SFTP_PORT",
-                "user_env": "SFTP_USER",
-                "password_env": "SFTP_PASSWORD",
-                "remote_dir": "/in",
-            }
-        },
-        trust_s3={},
-        aws_profile=None,
+def test_main_ingest_postgres_missing_dsn_env_raises(monkeypatch):
+    s = _settings(
+        postgres_sources={"ehr": PostgresSourceCfg(dsn_env="EHR_DSN", tables=["patients"])},
     )
-    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "Settings", lambda: s)
+    monkeypatch.delenv("EHR_DSN", raising=False)
+    monkeypatch.setattr(sys, "argv", ["prog", "ingest-postgres", "--db", "ehr"])
+
+    with pytest.raises(SystemExit, match="Missing required env var for ehr: EHR_DSN"):
+        cli.main()
+
+
+def test_main_ingest_sftp_missing_host_raises(monkeypatch):
+    s = _settings(
+        sftp_sources={
+            "appointments": SftpSourceCfg(
+                host_env="SFTP_HOST",
+                port_env="SFTP_PORT",
+                user_env="SFTP_USER",
+                password_env="SFTP_PASSWORD",
+                remote_dir="/in",
+            )
+        },
+    )
+    monkeypatch.setattr(cli, "Settings", lambda: s)
     monkeypatch.setattr(sys, "argv", ["prog", "ingest-sftp", "--name", "appointments"])
     monkeypatch.delenv("SFTP_HOST", raising=False)
 
@@ -119,25 +110,20 @@ def test_main_ingest_sftp_missing_host_raises(monkeypatch):
 
 
 def test_main_ingest_sftp_success(monkeypatch):
-    cfg = cli.Config(
-        env="dev",
-        aws_region="us-east-1",
-        platform_bucket="bucket",
-        postgres_sources={},
+    s = _settings(
         sftp_sources={
-            "appointments": {
-                "host_env": "SFTP_HOST",
-                "port_env": "SFTP_PORT",
-                "user_env": "SFTP_USER",
-                "password_env": "SFTP_PASSWORD",
-                "remote_dir": "/in",
-                "source_name": "appointments_src",
-            }
+            "appointments": SftpSourceCfg(
+                host_env="SFTP_HOST",
+                port_env="SFTP_PORT",
+                user_env="SFTP_USER",
+                password_env="SFTP_PASSWORD",
+                remote_dir="/in",
+                source_name="appointments_src",
+            )
         },
-        trust_s3={},
         aws_profile="profile1",
     )
-    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "Settings", lambda: s)
     monkeypatch.setattr(sys, "argv", ["prog", "ingest-sftp", "--name", "appointments"])
     monkeypatch.setenv("SFTP_HOST", "host")
     monkeypatch.setenv("SFTP_PORT", "2222")
@@ -161,21 +147,27 @@ def test_main_ingest_sftp_success(monkeypatch):
     assert called["source_name"] == "appointments_src"
 
 
+def test_main_ingest_trust_s3_missing_config_raises(monkeypatch):
+    s = _settings(trust_s3=None)
+    monkeypatch.setattr(cli, "Settings", lambda: s)
+    monkeypatch.setattr(sys, "argv", ["prog", "ingest-trust-s3"])
+
+    with pytest.raises(SystemExit, match="ACCESS_IQ_TRUST_S3"):
+        cli.main()
+
+
 def test_main_ingest_trust_s3_success(monkeypatch):
-    cfg = cli.Config(
-        env="dev",
-        aws_region="us-east-1",
+    s = _settings(
         platform_bucket="platform-bucket",
-        postgres_sources={},
-        sftp_sources={},
-        trust_s3={
-            "base": {"profile": "chi-dev", "bucket": "trust-bucket"},
-            "diagnostics": {"prefix_root": "diag/"},
-            "provider_ref": {"key": "provider_references.json"},
-        },
-        aws_profile=None,
+        trust_s3=TrustS3Cfg(
+            base=TrustS3BaseCfg(profile="chi-dev", bucket="trust-bucket"),
+            diagnostics=TrustS3EntityCfg(prefix_root="diag/", source_name="trust_s3_diagnostics"),
+            provider_ref=TrustS3EntityCfg(
+                key="provider_references.json", source_name="trust_s3_provider_ref"
+            ),
+        ),
     )
-    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "Settings", lambda: s)
     monkeypatch.setattr(sys, "argv", ["prog", "ingest-trust-s3", "--ingest-date", "2026-02-02"])
 
     class FakeSession:
@@ -187,9 +179,7 @@ def test_main_ingest_trust_s3_success(monkeypatch):
             assert name == "s3"
             return object()
 
-    # Patch symbols used by cli directly (not sys.modules["boto3"])
     monkeypatch.setattr(cli, "boto3", types.SimpleNamespace(Session=FakeSession), raising=False)
-    monkeypatch.setattr(cli, "Session", FakeSession, raising=False)
 
     prov_called = {}
     diag_called = {}

@@ -212,3 +212,7 @@ cdk.out/
 # Config files
 infra/config/dev.json
 infra/config/prod.json
+
+# Claude
+.planning/
+*.planning

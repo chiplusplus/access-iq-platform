@@ -1,20 +1,15 @@
 [project]
-name = "access-iq"
+name = "access-iq-workspace"
 version = "0.1.0"
-description = "NHS Trust access and inequality analytics platform."
+description = "Access-IQ workspace root (uv workspace)"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "aws-cdk-lib==2.236.0",
-    "constructs==10.4.5",
-    "python-dotenv==1.2.1",
-    "paramiko==4.0.0",
-    "pydantic==2.12.5",
-    "psycopg2-binary==2.9.11",
-    "boto3==1.42.53",
-]
+# NO runtime deps here — members own their own.
 
-[project.optional-dependencies]
+[tool.uv.workspace]
+members = ["src/access_iq", "infra", "dbt", "flows", "dashboard"]
+
+[dependency-groups]
 dev = [
     "pre-commit==4.5.1",
     "pytest==9.0.2",
@@ -26,27 +21,28 @@ dev = [
     "types-boto3-s3",
     "boto3-stubs",
     "types-paramiko",
+    "moto[s3]>=5.0,<6",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src"]
+src = ["src", "infra"]
 fix = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
-ignore = ["E501"]                   # handled by formatter/line-length
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "infra"]
 addopts = "--maxfail=1"
 
 [tool.mypy]
 python_version = "3.12"
-mypy_path = "src"
-packages = ["access_iq"]
+mypy_path = ["src", "infra"]
+packages = ["access_iq", "access_iq_infra"]
 warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true

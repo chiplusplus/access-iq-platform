@@ -2,21 +2,26 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import stat
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Any
 
 import boto3
 import paramiko
+import structlog
 
 from access_iq.ingestion.idempotency import should_skip_if_already_successful
+from access_iq.ingestion.manifests import (
+    Manifest,
+    ManifestStatus,
+    build_manifest_prefix,
+    utc_now_iso,
+    write_manifest,
+)
 
-
-def utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+log = structlog.get_logger(__name__)
 
 
 def sha256_bytes(b: bytes) -> str:
@@ -49,24 +54,19 @@ def ingest_sftp_directory_to_bronze(
     aws_profile_platform: str | None = None,
     fail_fast: bool = True,
 ) -> dict[str, Any]:
-    """
-    Ingest all files under remote_dir into Bronze.
-    Writes raw files (unchanged) and a single manifest for the run.
-
-    Bronze key structure:
-      bronze/source=<source_name>/entity=appointments/ingest_date=.../run_id=.../files/<filename>
-    """
     run_id = str(uuid.uuid4())
-    started_at = utc_now()
+    started_at = utc_now_iso()
+
+    bound_log = log.bind(run_id=run_id, source=source_name, env=env)
 
     session = boto3.Session(profile_name=aws_profile_platform, region_name=aws_region)
     s3 = session.client("s3")
-    manifest_prefix = f"_manifests/source={source_name}/ingest_date={ingest_date.isoformat()}"
+    manifest_prefix = build_manifest_prefix(source=source_name, ingest_date=ingest_date.isoformat())
 
     if should_skip_if_already_successful(
         s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
     ):
-        print("Ingest already successful for this date and source. Skipping.")
+        bound_log.info("ingest_skipped", reason="latest_manifest_success")
         return {
             "source": source_name,
             "run_id": run_id,
@@ -77,8 +77,8 @@ def ingest_sftp_directory_to_bronze(
         }
 
     results: list[FileResult] = []
-    status = "success"
-    error: str | None = None
+    status: ManifestStatus = "success"
+    run_errors: list[str] = []
 
     transport = paramiko.Transport((host, port))
     try:
@@ -88,17 +88,12 @@ def ingest_sftp_directory_to_bronze(
         if sftp is None:
             raise RuntimeError("Failed to create SFTP client")
 
-        # List files (skip directories)
-        names = sftp.listdir(remote_dir)
-        names = sorted(names)
+        names = sorted(sftp.listdir(remote_dir))
 
         for fname in names:
             remote_path = f"{remote_dir.rstrip('/')}/{fname}"
             try:
-                # ensure it's a file
                 attr = sftp.stat(remote_path)
-                # crude dir check: S_ISDIR bit
-
                 if attr.st_mode is not None and stat.S_ISDIR(attr.st_mode):
                     continue
 
@@ -123,9 +118,11 @@ def ingest_sftp_directory_to_bronze(
                         status="success",
                     )
                 )
+                bound_log.info("file_uploaded", filename=fname, s3_key=s3_key)
             except Exception as e:
                 status = "failed"
                 err = f"{type(e).__name__}: {e}"
+                run_errors.append(err)
                 results.append(
                     FileResult(
                         filename=fname,
@@ -137,8 +134,8 @@ def ingest_sftp_directory_to_bronze(
                         error=err,
                     )
                 )
+                bound_log.error("file_upload_failed", filename=fname, error=err)
                 if fail_fast:
-                    error = err
                     break
 
         sftp.close()
@@ -146,36 +143,25 @@ def ingest_sftp_directory_to_bronze(
     finally:
         transport.close()
 
-    finished_at = utc_now()
+    finished_at = utc_now_iso()
 
-    manifest = {
-        "source": source_name,
-        "env": env,
-        "run_id": run_id,
-        "ingest_date": ingest_date.isoformat(),
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "status": status,
-        "error": error,
-        "inputs": {
-            "host": host,
-            "port": port,
-            "remote_dir": remote_dir,
-        },
-        "outputs": {
+    manifest = Manifest(
+        source=source_name,
+        env=env,
+        run_id=run_id,
+        ingest_date=ingest_date.isoformat(),
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=run_errors,
+        inputs={"host": host, "port": port, "remote_dir": remote_dir},
+        outputs={
             "files": [asdict(r) for r in results],
             "files_succeeded": sum(1 for r in results if r.status == "success"),
             "files_failed": sum(1 for r in results if r.status == "failed"),
         },
-    }
-
-    manifest_key = f"_manifests/source={source_name}/ingest_date={ingest_date.isoformat()}/run_id={run_id}.json"
-
-    s3.put_object(
-        Bucket=platform_bucket,
-        Key=manifest_key,
-        Body=json.dumps(manifest, indent=2).encode("utf-8"),
-        ContentType="application/json",
     )
 
-    return manifest
+    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest)
+    bound_log.info("ingest_done", status=status)
+    return manifest.model_dump()

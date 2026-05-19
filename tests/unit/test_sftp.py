@@ -135,7 +135,7 @@ def test_ingest_sftp_success_uploads_files_and_manifest(monkeypatch):
 
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: False)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "run-1")
-    monkeypatch.setattr(mod, "utc_now", lambda: "2026-02-20T00:00:00+00:00")
+    monkeypatch.setattr(mod, "utc_now_iso", lambda: "2026-02-20T00:00:00+00:00")
     _wire_clients(monkeypatch, s3, transport, sftp_client)
 
     out = mod.ingest_sftp_directory_to_bronze(
@@ -175,7 +175,7 @@ def test_ingest_sftp_fail_fast_true_stops_on_first_error(monkeypatch):
 
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: False)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "run-ff")
-    monkeypatch.setattr(mod, "utc_now", lambda: "now")
+    monkeypatch.setattr(mod, "utc_now_iso", lambda: "now")
     _wire_clients(monkeypatch, s3, transport, sftp_client)
 
     out = mod.ingest_sftp_directory_to_bronze(
@@ -193,7 +193,8 @@ def test_ingest_sftp_fail_fast_true_stops_on_first_error(monkeypatch):
     )
 
     assert out["status"] == "failed"
-    assert out["error"] is not None
+    assert isinstance(out["error"], list)
+    assert len(out["error"]) == 1
     assert out["outputs"]["files_failed"] == 1
     assert out["outputs"]["files_succeeded"] == 0
     assert len(s3.uploads) == 0
@@ -210,7 +211,7 @@ def test_ingest_sftp_fail_fast_false_continues(monkeypatch):
 
     monkeypatch.setattr(mod, "should_skip_if_already_successful", lambda **kwargs: False)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "run-nff")
-    monkeypatch.setattr(mod, "utc_now", lambda: "now")
+    monkeypatch.setattr(mod, "utc_now_iso", lambda: "now")
     _wire_clients(monkeypatch, s3, transport, sftp_client)
 
     out = mod.ingest_sftp_directory_to_bronze(
@@ -228,7 +229,8 @@ def test_ingest_sftp_fail_fast_false_continues(monkeypatch):
     )
 
     assert out["status"] == "failed"
-    assert out["error"] is None
+    assert isinstance(out["error"], list)
+    assert len(out["error"]) == 1
     assert out["outputs"]["files_failed"] == 1
     assert out["outputs"]["files_succeeded"] == 1
     assert len(s3.uploads) == 1

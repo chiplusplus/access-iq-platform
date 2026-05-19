@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import io
-import json
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Any
 
 import boto3
 import psycopg2
+import structlog
 from psycopg2 import sql
 
 from access_iq.ingestion.idempotency import should_skip_if_already_successful
+from access_iq.ingestion.manifests import (
+    Manifest,
+    ManifestStatus,
+    build_manifest_prefix,
+    utc_now_iso,
+    write_manifest,
+)
 
-
-def utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+log = structlog.get_logger(__name__)
 
 
 def ingest_table_to_bronze(
@@ -27,7 +32,7 @@ def ingest_table_to_bronze(
     s3_client: Any,
     run_id: str,
 ) -> dict[str, Any]:
-    started_at = utc_now()
+    started_at = utc_now_iso()
 
     bronze_key = (
         f"bronze/source={db}/entity={table}/"
@@ -53,7 +58,7 @@ def ingest_table_to_bronze(
         cursor.close()
         conn.close()
 
-    finished_at = utc_now()
+    finished_at = utc_now_iso()
 
     return {
         "db": db,
@@ -76,24 +81,19 @@ def ingest_postgres_source_to_bronze(
     aws_profile: str | None = None,
     fail_fast: bool = True,
 ) -> dict[str, Any]:
-    """
-    Ingest ALL tables for a given Postgres source (e.g. ehr_postgres) in one run.
-    Writes:
-      - one run_id shared across tables
-      - one aggregate manifest (recommended)
-      - optionally per-table results in the manifest
-    """
     run_id = str(uuid.uuid4())
-    started_at = utc_now()
+    started_at = utc_now_iso()
+
+    bound_log = log.bind(run_id=run_id, source=db, env=env)
 
     session = boto3.Session(profile_name=aws_profile, region_name=aws_region)
     s3 = session.client("s3")
-    manifest_prefix = f"_manifests/source={db}/ingest_date={ingest_date.isoformat()}"
+    manifest_prefix = build_manifest_prefix(source=db, ingest_date=ingest_date.isoformat())
 
     if should_skip_if_already_successful(
         s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
     ):
-        print("Ingest already successful for this date and source. Skipping.")
+        bound_log.info("ingest_skipped", reason="latest_manifest_success")
         return {
             "source": db,
             "run_id": run_id,
@@ -104,11 +104,12 @@ def ingest_postgres_source_to_bronze(
         }
 
     results: list[dict[str, Any]] = []
-    status = "success"
-    error: list[str] | None = None
+    status: ManifestStatus = "success"
+    run_errors: list[str] = []
 
     for table in tables:
         try:
+            bound_log.info("table_ingest_start", table=table)
             results.append(
                 ingest_table_to_bronze(
                     dsn=dsn,
@@ -120,67 +121,50 @@ def ingest_postgres_source_to_bronze(
                     run_id=run_id,
                 )
             )
+            bound_log.info("table_ingest_done", table=table, status="success")
         except Exception as e:
             status = "failed"
-            if error is None:
-                error = [f"{type(e).__name__}: {e}"]
-            else:
-                error.append(f"{type(e).__name__}: {e}")
+            per_table_error = f"{type(e).__name__}: {e}"
+            run_errors.append(per_table_error)
             results.append(
                 {
                     "db": db,
                     "table": table,
                     "status": "failed",
-                    "error": error,
+                    "error": per_table_error,
                     "run_id": run_id,
-                    "started_at": utc_now(),
-                    "finished_at": utc_now(),
+                    "started_at": utc_now_iso(),
+                    "finished_at": utc_now_iso(),
                 }
             )
+            bound_log.error("table_ingest_failed", table=table, error=per_table_error)
             if fail_fast:
                 break
 
-    finished_at = utc_now()
+    finished_at = utc_now_iso()
 
-    manifest = {
-        "source": db,
-        "env": env,
-        "run_id": run_id,
-        "ingest_date": ingest_date.isoformat(),
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "status": status,
-        "error": error,
-        "inputs": {
-            "tables": tables,
-            "dsn_redacted": True,
-        },
-        "outputs": {
+    manifest = Manifest(
+        source=db,
+        env=env,
+        run_id=run_id,
+        ingest_date=ingest_date.isoformat(),
+        started_at=started_at,
+        finished_at=finished_at,
+        status=status,
+        error=run_errors,
+        inputs={"tables": tables, "dsn_redacted": True},
+        outputs={
             "tables": results,
             "tables_succeeded": sum(1 for r in results if r.get("status") == "success"),
             "tables_failed": sum(1 for r in results if r.get("status") == "failed"),
         },
-    }
-
-    manifest_key = (
-        f"_manifests/source={db}/ingest_date={ingest_date.isoformat()}/run_id={run_id}.json"
     )
 
-    s3.put_object(
-        Bucket=platform_bucket,
-        Key=manifest_key,
-        Body=json.dumps(manifest, indent=2).encode("utf-8"),
-        ContentType="application/json",
-    )
-
-    return manifest
+    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest)
+    return manifest.model_dump()
 
 
-def _copy_stream(cursor, copy_sql: str) -> io.BytesIO:
-    """
-    NOTE: This buffers the COPY output in memory.
-    If we hit huge tables, we can switch to a true streaming implementation.
-    """
+def _copy_stream(cursor: Any, copy_sql: str) -> io.BytesIO:
     buffer = io.BytesIO()
     cursor.copy_expert(copy_sql, buffer)
     buffer.seek(0)

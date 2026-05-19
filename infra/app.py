@@ -1,8 +1,12 @@
-from access_iq_infra.settings import load_env_config
-from access_iq_infra.stacks.iam import IngestionRoleStack
-from access_iq_infra.stacks.s3 import PlatformBucketStack
-from access_iq_infra.tagging import apply_tags
 from aws_cdk import App, Environment
+
+from access_iq_infra.settings import load_env_config
+from access_iq_infra.stacks.catalog import CatalogStack
+from access_iq_infra.stacks.ecr import EcrStack
+from access_iq_infra.stacks.iam import IngestionRoleStack
+from access_iq_infra.stacks.lake import LakeStack
+from access_iq_infra.stacks.secrets import SecretsStack
+from access_iq_infra.tagging import apply_tags
 
 app = App()
 
@@ -12,23 +16,51 @@ if env_name not in {"dev", "prod"}:
 
 cfg = load_env_config(env_name)
 
-# Apply tags globally to everything in this CDK app
 apply_tags(app, cfg.tags)
 
 cdk_env = Environment(account=cfg.account_id, region=cfg.region)
 
-bucket = PlatformBucketStack(
+# --- Stateful stacks (RETAIN) ---
+
+lake = LakeStack(
     app,
-    f"platform-bucket-{cfg.app_name}",
+    f"lake-{cfg.app_name}-{cfg.env_name}",
     cfg=cfg,
     env=cdk_env,
 )
 
-IngestionRoleStack(
+secrets = SecretsStack(
     app,
-    f"ingestion-role-{cfg.app_name}",
+    f"secrets-{cfg.app_name}-{cfg.env_name}",
     cfg=cfg,
-    platform_bucket=bucket.data_bucket,
+    encryption_key=lake.lake_key,
     env=cdk_env,
 )
+
+CatalogStack(
+    app,
+    f"catalog-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    env=cdk_env,
+)
+
+EcrStack(
+    app,
+    f"ecr-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    env=cdk_env,
+)
+
+# --- Stateless stacks ---
+
+IngestionRoleStack(
+    app,
+    f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    platform_bucket=lake.lake_bucket,
+    lake_key=lake.lake_key,
+    pseudonymisation_key_secret=secrets.pseudonymisation_key_secret,
+    env=cdk_env,
+)
+
 app.synth()
