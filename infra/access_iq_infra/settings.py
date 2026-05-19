@@ -13,6 +13,7 @@ class EnvConfig:
     region: str
     s3: dict[str, Any]
     iam: dict[str, Any]
+    vpc: dict[str, Any]
     tags: dict[str, str]
 
 
@@ -42,6 +43,7 @@ def load_env_config(env_name: str) -> EnvConfig:
             region=str(raw["region"]),
             s3=dict(raw.get("s3", {})),
             iam=dict(raw.get("iam", {})),
+            vpc=dict(raw.get("vpc", {})),
             tags=dict(raw.get("tags", {})),
         )
     except KeyError as e:

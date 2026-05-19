@@ -14,6 +14,13 @@
     "removal_policy": "RETAIN"
   },
   "iam": {
-    "external_bucket": "northshire-trust-external-exports"
+    "external_bucket": "northshire-trust-external-exports",
+    "trust_account_id": "339712815752"
+  },
+  "vpc": {
+    "platform_cidr": "10.10.0.0/16",
+    "trust_cidr": "10.0.0.0/16",
+    "max_azs": 2,
+    "nat_gateways": 1
   }
 }
