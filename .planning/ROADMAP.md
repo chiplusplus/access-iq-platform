@@ -50,7 +50,9 @@ Brownfield. Bronze ingestion (postgres / sftp / trust_s3) already shipped agains
   3. From a Platform private subnet, a debug task can `psql` to the Trust RDS endpoint by hostname (proves DNS + routing + SG rules); from the Trust side, no inbound to Platform is permitted.
   4. S3 gateway VPC endpoint is attached so Bronze writes do not traverse NAT; Secrets Manager and KMS interface endpoints exist for ECS `valueFrom` lookups.
   5. NAT gateway is part of the ephemeral stack (D6) — `cdk destroy` of stateless stacks removes it, leaving zero NAT idle cost.
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 02-01-PLAN.md — Extend EnvConfig with vpc field + update config files (D1 CIDRs, trust_account_id) + fix all test _cfg() helpers
+- [ ] 02-02-PLAN.md — NetworkStack (VPC, peering, routes, DNS, security groups, VPC endpoints) + tests + app.py wiring
 
 ### Phase 3: ECS Fargate Ingestion + Observability
 **Goal**: A reviewer can trigger any of the three Bronze ingestion flows on ECS Fargate against the Trust simulator, watch the run in a CloudWatch dashboard, and receive an SNS alert if a manifest writes `status: failed`.
@@ -196,7 +198,7 @@ Every Active REQ in `PROJECT.md` maps to exactly one phase. No orphans, no dupli
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Stateful Foundations & Brownfield Hardening | 0/0 | Not started | - |
-| 2. Networking | 0/0 | Not started | - |
+| 2. Networking | 0/2 | Planned | - |
 | 3. ECS Fargate Ingestion + Observability | 0/0 | Not started | - |
 | 4. Redshift Serverless + dbt Scaffold | 0/0 | Not started | - |
 | 5. Silver Staging | 0/0 | Not started | - |
@@ -206,4 +208,4 @@ Every Active REQ in `PROJECT.md` maps to exactly one phase. No orphans, no dupli
 | 9. Ops Polish, ADRs, Case Study | 0/0 | Not started | - |
 
 ---
-*Last updated: 2026-05-08 at roadmap initialization*
+*Last updated: 2026-05-19 — Phase 2 plans created*
