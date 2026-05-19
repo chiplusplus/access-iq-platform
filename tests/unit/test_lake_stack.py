@@ -19,6 +19,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         region="eu-west-2",
         s3={},
         iam={"external_bucket": "northshire-trust-external-exports"},
+        vpc={},
         tags={"Environment": env_name, "Project": "access-iq"},
     )
 

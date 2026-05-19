@@ -36,6 +36,7 @@ def _cfg(env_name: str) -> EnvConfig:
         region="eu-west-2",
         s3={"removal_policy": "RETAIN" if env_name == "prod" else "DESTROY"},
         iam={"external_bucket": "northshire-trust-external-exports"},
+        vpc={},
         tags={"Environment": env_name},
     )
 

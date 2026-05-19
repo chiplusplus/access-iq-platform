@@ -20,6 +20,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         region="eu-west-2",
         s3={},
         iam={},
+        vpc={},
         tags={},
     )
 
