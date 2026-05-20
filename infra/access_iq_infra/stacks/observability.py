@@ -16,9 +16,24 @@ from access_iq_infra.settings import EnvConfig
 
 INGESTION_SOURCES = ["ingest-postgres", "ingest-sftp", "ingest-trust-s3"]
 
-RETENTION_MAP = {
+RETENTION_MAP: dict[int, logs.RetentionDays] = {
+    1: logs.RetentionDays.ONE_DAY,
+    3: logs.RetentionDays.THREE_DAYS,
+    5: logs.RetentionDays.FIVE_DAYS,
     7: logs.RetentionDays.ONE_WEEK,
+    14: logs.RetentionDays.TWO_WEEKS,
+    30: logs.RetentionDays.ONE_MONTH,
+    60: logs.RetentionDays.TWO_MONTHS,
     90: logs.RetentionDays.THREE_MONTHS,
+    120: logs.RetentionDays.FOUR_MONTHS,
+    150: logs.RetentionDays.FIVE_MONTHS,
+    180: logs.RetentionDays.SIX_MONTHS,
+    365: logs.RetentionDays.ONE_YEAR,
+    400: logs.RetentionDays.THIRTEEN_MONTHS,
+    545: logs.RetentionDays.EIGHTEEN_MONTHS,
+    731: logs.RetentionDays.TWO_YEARS,
+    1827: logs.RetentionDays.FIVE_YEARS,
+    3653: logs.RetentionDays.TEN_YEARS,
 }
 
 
@@ -36,10 +51,13 @@ class ObservabilityStack(Stack):
         is_prod = cfg.env_name == "prod"
 
         # -- Section 1: Log Groups (D-08, D-09, REQ-OBS-01) ----------
-        retention = RETENTION_MAP.get(
-            cfg.obs.get("log_retention_days", 7),
-            logs.RetentionDays.ONE_WEEK,
-        )
+        log_retention_days = cfg.obs.get("log_retention_days", 7)
+        if log_retention_days not in RETENTION_MAP:
+            raise ValueError(
+                f"Unsupported log_retention_days={log_retention_days}. "
+                f"Valid values: {sorted(RETENTION_MAP.keys())}"
+            )
+        retention = RETENTION_MAP[log_retention_days]
 
         log_groups: dict[str, logs.LogGroup] = {}
         for source in INGESTION_SOURCES:
@@ -66,14 +84,15 @@ class ObservabilityStack(Stack):
             sns_topic.add_subscription(subs.EmailSubscription(alert_email))
 
         slack_channel_id = cfg.obs.get("slack_channel_id")
-        if slack_channel_id:
+        slack_workspace_id = cfg.obs.get("slack_workspace_id")
+        if slack_channel_id and slack_workspace_id:
             from aws_cdk import aws_chatbot as chatbot
 
             chatbot.SlackChannelConfiguration(
                 self,
                 "SlackChannel",
                 slack_channel_configuration_name=f"{cfg.app_name}-{cfg.env_name}-alerts",
-                slack_workspace_id=cfg.obs.get("slack_workspace_id", ""),
+                slack_workspace_id=slack_workspace_id,
                 slack_channel_id=slack_channel_id,
                 notification_topics=[sns_topic],
             )
