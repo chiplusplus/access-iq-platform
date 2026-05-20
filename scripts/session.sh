@@ -54,6 +54,14 @@ trust_output() {
     --output text --profile "$TRUST_PROFILE" --region "$REGION"
 }
 
+platform_output() {
+  local stack="$1" key="$2"
+  aws cloudformation describe-stacks \
+    --stack-name "${stack}-access-iq-${CDK_ENV}" \
+    --query "Stacks[0].Outputs[?OutputKey==\`$key\`].OutputValue" \
+    --output text --profile "$AWS_PROFILE" --region "$REGION"
+}
+
 # ── Commands ──────────────────────────────────────────────────────────
 
 cmd_up() {
@@ -141,7 +149,7 @@ cmd_status() {
 
   echo ""
   echo "═══ Platform Stacks ═══"
-  for stack in lake secrets catalog ecr ingestion-role network; do
+  for stack in lake secrets catalog ecr ingestion-role network observability compute; do
     printf "  %-24s" "$stack:"
     aws cloudformation describe-stacks --stack-name "${stack}-access-iq-${CDK_ENV}" \
       --query 'Stacks[0].StackStatus' --output text \
@@ -162,18 +170,149 @@ cmd_status() {
   echo ""
 }
 
+cmd_ingest() {
+  echo ""
+  echo "  Launching 3 ingestion tasks in parallel (D-07)"
+  echo "  Cluster: access-iq-${CDK_ENV}-ingestion"
+  echo ""
+
+  # ── Step 1: Resolve runtime values from CloudFormation outputs ──
+  step_start "1/3" "Resolve cluster and network config" "<5s"
+
+  local CLUSTER_NAME
+  CLUSTER_NAME=$(platform_output "compute" "ClusterName")
+
+  # Resolve private subnet IDs from VPC
+  local VPC_ID
+  VPC_ID=$(aws ec2 describe-vpcs \
+    --filters "Name=tag:Name,Values=access-iq-${CDK_ENV}-platform" \
+    --query 'Vpcs[0].VpcId' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION")
+
+  local SUBNET_IDS
+  SUBNET_IDS=$(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:aws-cdk:subnet-type,Values=Private" \
+    --query 'Subnets[*].SubnetId' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" | tr '\t' ',')
+
+  local SG_ID
+  SG_ID=$(aws ec2 describe-security-groups \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=*ecs-task*" \
+    --query 'SecurityGroups[0].GroupId' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION")
+
+  echo "  Cluster:  $CLUSTER_NAME"
+  echo "  Subnets:  $SUBNET_IDS"
+  echo "  SG:       $SG_ID"
+  step_done
+
+  # ── Step 2: Launch all 3 tasks in parallel ──
+  step_start "2/3" "Launch ECS tasks" "<10s"
+
+  local SOURCES=("ingest-postgres" "ingest-sftp" "ingest-trust-s3")
+  local TASK_ARNS=()
+  local PIDS=()
+
+  for source in "${SOURCES[@]}"; do
+    local task_def="access-iq-${CDK_ENV}-${source}"
+    (
+      aws ecs run-task \
+        --cluster "$CLUSTER_NAME" \
+        --task-definition "$task_def" \
+        --launch-type FARGATE \
+        --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_IDS],securityGroups=[$SG_ID],assignPublicIp=DISABLED}" \
+        --query 'tasks[0].taskArn' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION"
+    ) > "/tmp/ecs_task_${source}.arn" &
+    PIDS+=($!)
+  done
+
+  # Wait for all launches to complete
+  for pid in "${PIDS[@]}"; do
+    wait "$pid"
+  done
+
+  # Collect task ARNs
+  for source in "${SOURCES[@]}"; do
+    TASK_ARNS+=("$(cat "/tmp/ecs_task_${source}.arn")")
+    echo "  Launched: $source -> $(cat "/tmp/ecs_task_${source}.arn")"
+  done
+  step_done
+
+  # ── Step 3: Poll until all tasks stopped, then report ──
+  step_start "3/3" "Wait for completion" "2-10 min"
+
+  local ALL_STOPPED=false
+  while [ "$ALL_STOPPED" = false ]; do
+    sleep 15
+    ALL_STOPPED=true
+    for arn in "${TASK_ARNS[@]}"; do
+      local status
+      status=$(aws ecs describe-tasks \
+        --cluster "$CLUSTER_NAME" \
+        --tasks "$arn" \
+        --query 'tasks[0].lastStatus' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION")
+      if [ "$status" != "STOPPED" ]; then
+        ALL_STOPPED=false
+        printf "    %s: %s\n" "$(basename "$arn")" "$status"
+      fi
+    done
+  done
+
+  # Report per-task results
+  echo ""
+  local FAILED=0
+  for i in "${!SOURCES[@]}"; do
+    local source="${SOURCES[$i]}"
+    local arn="${TASK_ARNS[$i]}"
+    local exit_code
+    exit_code=$(aws ecs describe-tasks \
+      --cluster "$CLUSTER_NAME" \
+      --tasks "$arn" \
+      --query 'tasks[0].containers[0].exitCode' --output text \
+      --profile "$AWS_PROFILE" --region "$REGION")
+
+    if [ "$exit_code" = "0" ]; then
+      printf "  \033[1;32m✓ %s — exit 0\033[0m\n" "$source"
+    else
+      printf "  \033[1;31m✗ %s — exit %s\033[0m\n" "$source" "$exit_code"
+      FAILED=$((FAILED + 1))
+    fi
+  done
+  step_done
+
+  # Clean up temp files
+  rm -f /tmp/ecs_task_*.arn
+
+  session_summary
+
+  if [ "$FAILED" -gt 0 ]; then
+    echo ""
+    echo "  ✗ $FAILED task(s) failed. Check CloudWatch logs."
+    echo ""
+    exit 1
+  fi
+
+  echo ""
+  echo "  ✓ All 3 ingestion tasks completed successfully."
+  echo ""
+}
+
 # ── Main ──────────────────────────────────────────────────────────────
 
 case "${1:-}" in
   up)     cmd_up ;;
   down)   cmd_down ;;
   status) cmd_status ;;
+  ingest) cmd_ingest ;;
   *)
-    echo "Usage: $0 {up|down|status}"
+    echo "Usage: $0 {up|down|status|ingest}"
     echo ""
     echo "  up      Deploy Trust + Platform stacks with peering (~10 min)"
     echo "  down    Destroy Platform + Trust stacks (~8 min)"
     echo "  status  Show current stack states"
+    echo "  ingest  Run all 3 Bronze ingestion tasks on ECS (~5 min)"
     exit 1
     ;;
 esac
