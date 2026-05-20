@@ -48,6 +48,8 @@ def _cfg(env_name: str) -> EnvConfig:
             "nat_gateways": 1,
         },
         tags={"Environment": env_name},
+        ecs={},
+        obs={},
     )
 
 

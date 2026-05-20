@@ -21,6 +21,8 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         iam={"external_bucket": "northshire-trust-external-exports"},
         vpc={},
         tags={"Environment": env_name, "Project": "access-iq"},
+        ecs={},
+        obs={},
     )
 
 

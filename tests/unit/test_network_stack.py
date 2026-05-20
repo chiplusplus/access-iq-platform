@@ -26,6 +26,8 @@ def _cfg() -> EnvConfig:
             "nat_gateways": 1,
         },
         tags={},
+        ecs={},
+        obs={},
     )
 
 

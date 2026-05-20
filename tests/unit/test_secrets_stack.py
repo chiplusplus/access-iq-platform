@@ -22,6 +22,8 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         iam={},
         vpc={},
         tags={},
+        ecs={},
+        obs={},
     )
 
 
