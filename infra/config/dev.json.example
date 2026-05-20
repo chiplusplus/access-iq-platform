@@ -15,5 +15,20 @@
   },
   "iam": {
     "external_bucket": "YOUR_EXTERNAL_BUCKET_NAME"
+  },
+  "vpc": {
+    "platform_cidr": "10.10.0.0/16",
+    "trust_cidr": "10.0.0.0/16",
+    "max_azs": 2,
+    "nat_gateways": 1
+  },
+  "ecs": {
+    "cpu": 512,
+    "memory_limit_mib": 1024
+  },
+  "obs": {
+    "log_retention_days": 7,
+    "alert_email": "ops@example.com",
+    "slack_channel_id": ""
   }
 }
