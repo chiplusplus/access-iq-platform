@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 # Install uv for deterministic dependency management
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.7.0
 
 WORKDIR /app
 
