@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, cast
 
 from aws_cdk import Stack
-from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
 from aws_cdk import aws_secretsmanager as secretsmanager
@@ -27,7 +26,6 @@ class IngestionRoleStack(Stack):
         platform_bucket: IBucket,
         lake_key: kms.IKey,
         pseudonymisation_key_secret: secretsmanager.ISecret | None = None,
-        ecr_repository: ecr.IRepository | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
