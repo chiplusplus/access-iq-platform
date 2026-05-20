@@ -1,8 +1,4 @@
-"""EcrStack — container registry for the ingestion image (Phase 3).
-
-Stateful: RETAIN so images survive `cdk destroy` of stateless stacks.
-Immutable tags prevent tag-squatting; scan-on-push surfaces CVEs.
-"""
+"""EcrStack — container registry for the ingestion image (Phase 3)."""
 
 from __future__ import annotations
 
@@ -34,7 +30,10 @@ class EcrStack(Stack):
             repository_name=repo_name,
             image_scan_on_push=True,
             image_tag_mutability=ecr.TagMutability.IMMUTABLE,
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.RETAIN
+            if cfg.env_name == "prod"
+            else RemovalPolicy.DESTROY,
+            empty_on_delete=cfg.env_name != "prod",
             lifecycle_rules=[
                 ecr.LifecycleRule(
                     description="Retain last 20 untagged images",

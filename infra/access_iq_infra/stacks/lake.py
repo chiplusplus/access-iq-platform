@@ -45,7 +45,8 @@ class LakeStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # 1) KMS CMK — RETAIN in all envs.
+        is_prod = cfg.env_name == "prod"
+
         lake_key = kms.Key(
             self,
             "LakeKey",
@@ -54,12 +55,10 @@ class LakeStack(Stack):
                 f"CMK for access-iq lake ({cfg.env_name}). Encrypts S3 + future Secrets/Logs."
             ),
             enable_key_rotation=True,
-            removal_policy=RemovalPolicy.RETAIN,
-            pending_window=Duration.days(30),
+            removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
+            pending_window=Duration.days(30 if is_prod else 7),
         )
 
-        # 2) S3 lake bucket with KMS default-encryption.
-        is_prod = cfg.env_name == "prod"
         lake_bucket = s3.Bucket(
             self,
             "LakeBucket",

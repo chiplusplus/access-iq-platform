@@ -1,16 +1,19 @@
-"""SecretsStack — pseudonymisation HMAC key bootstrap (D9).
-
-Stateful: RETAIN in both dev and prod. Secrets Manager 7-30 day
-pending-deletion window breaks redeploy cycles — same posture as KMS.
-"""
+"""SecretsStack — pseudonymisation HMAC key bootstrap (D9)."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from aws_cdk import CfnOutput, RemovalPolicy, Stack
+from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
 from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk.custom_resources import (
+    AwsCustomResource,
+    AwsCustomResourcePolicy,
+    AwsSdkCall,
+    PhysicalResourceId,
+)
 from constructs import Construct
 
 from access_iq_infra.settings import EnvConfig
@@ -43,8 +46,35 @@ class SecretsStack(Stack):
                 include_space=False,
                 require_each_included_type=False,
             ),
-            removal_policy=RemovalPolicy.RETAIN,
+            removal_policy=RemovalPolicy.RETAIN
+            if cfg.env_name == "prod"
+            else RemovalPolicy.DESTROY,
         )
+
+        if cfg.env_name != "prod":
+            # Force immediate deletion in dev to avoid the 7-30 day recovery
+            # window that blocks redeploys with the same secret name.
+            AwsCustomResource(
+                self,
+                "ForceDeleteSecret",
+                on_delete=AwsSdkCall(
+                    service="SecretsManager",
+                    action="deleteSecret",
+                    parameters={
+                        "SecretId": pseudonymisation_key_secret.secret_arn,
+                        "ForceDeleteWithoutRecovery": True,
+                    },
+                    physical_resource_id=PhysicalResourceId.of("force-delete-secret"),
+                ),
+                policy=AwsCustomResourcePolicy.from_statements(
+                    [
+                        iam.PolicyStatement(
+                            actions=["secretsmanager:DeleteSecret"],
+                            resources=[pseudonymisation_key_secret.secret_arn],
+                        )
+                    ]
+                ),
+            )
 
         CfnOutput(
             self,

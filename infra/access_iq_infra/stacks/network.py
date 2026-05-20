@@ -108,7 +108,6 @@ class NetworkStack(Stack):
             vpc_id=vpc.vpc_id,
             peer_vpc_id=trust_vpc_id,
             peer_owner_id=trust_account_id,
-            peer_region=cfg.region,
             peer_role_arn=peering_accepter_role_arn,
         )
 
