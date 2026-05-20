@@ -18,7 +18,7 @@ step_start() {
   STEP_START=$(date +%s)
   local step="$1" total="$2" estimate="$3"
   local elapsed=$(( $(date +%s) - SESSION_START ))
-  printf "\n\033[1;36m═══ Step %s: %s (est. %s) ═══\033[0m\n" "$step" "$2" "$estimate"
+  printf "\n\033[1;36m═══ Step %s: %s (est. %s) ═══\033[0m\n" "$step" "$total" "$estimate"
   printf "\033[0;37m    Session elapsed: %s\033[0m\n\n" "$(fmt_duration $elapsed)"
 }
 
@@ -129,7 +129,14 @@ cmd_down() {
   step_done
 
   step_start "2/2" "Destroy Trust stack" "3-5 min"
-  (cd "$TRUST_REPO" && kill $(cat .tunnel.pid 2>/dev/null) 2>/dev/null; rm -f "$TRUST_REPO/.tunnel.pid")
+  if [ -f "$TRUST_REPO/.tunnel.pid" ]; then
+    local tunnel_pid
+    tunnel_pid="$(cat "$TRUST_REPO/.tunnel.pid" 2>/dev/null || true)"
+    if [[ "$tunnel_pid" =~ ^[0-9]+$ ]] && kill -0 "$tunnel_pid" 2>/dev/null; then
+      kill "$tunnel_pid" 2>/dev/null || true
+    fi
+    rm -f "$TRUST_REPO/.tunnel.pid"
+  fi
   (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk destroy --force)
   step_done
 
