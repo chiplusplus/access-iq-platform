@@ -232,11 +232,26 @@ cmd_ingest() {
     wait "$pid"
   done
 
-  # Collect task ARNs
+  # Collect and validate task ARNs
+  local LAUNCH_FAILED=0
   for source in "${SOURCES[@]}"; do
-    TASK_ARNS+=("$(cat "/tmp/ecs_task_${source}.arn")")
-    echo "  Launched: $source -> $(cat "/tmp/ecs_task_${source}.arn")"
+    local arn
+    arn="$(cat "/tmp/ecs_task_${source}.arn" 2>/dev/null || true)"
+    if [ -z "$arn" ] || [ "$arn" = "None" ] || [ "$arn" = "null" ]; then
+      echo "  ERROR: Failed to launch $source (got ARN: '${arn:-<empty>}')"
+      LAUNCH_FAILED=$((LAUNCH_FAILED + 1))
+    else
+      TASK_ARNS+=("$arn")
+      echo "  Launched: $source -> $arn"
+    fi
   done
+
+  if [ "$LAUNCH_FAILED" -gt 0 ]; then
+    echo ""
+    echo "  ERROR: $LAUNCH_FAILED task(s) failed to launch. Aborting."
+    rm -f /tmp/ecs_task_*.arn
+    exit 1
+  fi
   step_done
 
   # ── Step 3: Poll until all tasks stopped, then report ──
