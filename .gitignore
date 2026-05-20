@@ -217,5 +217,3 @@ infra/config/prod.json
 .planning/
 *.planning
 infra/cdk.context.json
-
-Makefile
