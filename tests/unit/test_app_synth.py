@@ -16,6 +16,7 @@ from access_iq_infra.stacks.catalog import CatalogStack  # noqa: E402
 from access_iq_infra.stacks.ecr import EcrStack  # noqa: E402
 from access_iq_infra.stacks.iam import IngestionRoleStack  # noqa: E402
 from access_iq_infra.stacks.lake import LakeStack  # noqa: E402
+from access_iq_infra.stacks.network import NetworkStack  # noqa: E402
 from access_iq_infra.stacks.secrets import SecretsStack  # noqa: E402
 
 EXPECTED_STACKS = {
@@ -24,6 +25,7 @@ EXPECTED_STACKS = {
     "catalog-access-iq-{env}",
     "ecr-access-iq-{env}",
     "ingestion-role-access-iq-{env}",
+    "network-access-iq-{env}",
 }
 
 
@@ -35,13 +37,27 @@ def _cfg(env_name: str) -> EnvConfig:
         account_id="111111111111",
         region="eu-west-2",
         s3={"removal_policy": "RETAIN" if env_name == "prod" else "DESTROY"},
-        iam={"external_bucket": "northshire-trust-external-exports"},
+        iam={
+            "external_bucket": "northshire-trust-external-exports",
+            "trust_account_id": "999999999999",
+        },
+        vpc={
+            "platform_cidr": "10.10.0.0/16",
+            "trust_cidr": "10.0.0.0/16",
+            "max_azs": 2,
+            "nat_gateways": 1,
+        },
         tags={"Environment": env_name},
     )
 
 
 def _synth_app(env_name: str) -> App:
-    app = App()
+    app = App(
+        context={
+            "trust_vpc_id": "vpc-test",
+            "trust_route_table_ids": "rtb-test1,rtb-test2",
+        }
+    )
     cfg = _cfg(env_name)
     cdk_env = Environment(account=cfg.account_id, region=cfg.region)
 
@@ -64,13 +80,19 @@ def _synth_app(env_name: str) -> App:
         pseudonymisation_key_secret=secrets.pseudonymisation_key_secret,
         env=cdk_env,
     )
+    NetworkStack(
+        app,
+        f"network-{cfg.app_name}-{cfg.env_name}",
+        cfg=cfg,
+        env=cdk_env,
+    )
 
     app.synth()
     return app
 
 
 @pytest.mark.parametrize("env_name", ["dev", "prod"])
-def test_synth_produces_five_stacks(env_name: str) -> None:
+def test_synth_produces_six_stacks(env_name: str) -> None:
     from aws_cdk import Stack
 
     app = _synth_app(env_name)

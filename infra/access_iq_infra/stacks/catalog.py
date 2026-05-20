@@ -1,8 +1,4 @@
-"""CatalogStack — Glue Data Catalog database placeholder for Phase 4.
-
-Stateful: RETAIN so `cdk destroy` of stateless stacks leaves the catalog
-(and any Phase-4-registered partitions) intact.
-"""
+"""CatalogStack — Glue Data Catalog database placeholder for Phase 4."""
 
 from __future__ import annotations
 
@@ -40,7 +36,9 @@ class CatalogStack(Stack):
                 ),
             ),
         )
-        database.apply_removal_policy(RemovalPolicy.RETAIN)
+        database.apply_removal_policy(
+            RemovalPolicy.RETAIN if cfg.env_name == "prod" else RemovalPolicy.DESTROY
+        )
 
         CfnOutput(
             self,

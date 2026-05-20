@@ -19,18 +19,22 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         region="eu-west-2",
         s3={},
         iam={},
+        vpc={},
         tags={},
     )
 
 
-@pytest.mark.parametrize("env_name", ["dev", "prod"])
-def test_ecr_creates_one_repo_with_retain(env_name: str) -> None:
+@pytest.mark.parametrize(
+    ("env_name", "expected_policy"),
+    [("dev", "Delete"), ("prod", "Retain")],
+)
+def test_ecr_creates_one_repo(env_name: str, expected_policy: str) -> None:
     app = App()
     stack = EcrStack(app, f"EcrStack-{env_name}", cfg=_cfg(env_name))
     tpl = Template.from_stack(stack)
 
     tpl.resource_count_is("AWS::ECR::Repository", 1)
-    tpl.has_resource("AWS::ECR::Repository", {"DeletionPolicy": "Retain"})
+    tpl.has_resource("AWS::ECR::Repository", {"DeletionPolicy": expected_policy})
     tpl.has_resource_properties(
         "AWS::ECR::Repository",
         {

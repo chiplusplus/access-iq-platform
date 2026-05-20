@@ -5,6 +5,7 @@ from access_iq_infra.stacks.catalog import CatalogStack
 from access_iq_infra.stacks.ecr import EcrStack
 from access_iq_infra.stacks.iam import IngestionRoleStack
 from access_iq_infra.stacks.lake import LakeStack
+from access_iq_infra.stacks.network import NetworkStack
 from access_iq_infra.stacks.secrets import SecretsStack
 from access_iq_infra.tagging import apply_tags
 
@@ -62,5 +63,13 @@ IngestionRoleStack(
     pseudonymisation_key_secret=secrets.pseudonymisation_key_secret,
     env=cdk_env,
 )
+
+network = NetworkStack(
+    app,
+    f"network-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    env=cdk_env,
+)
+# Phase 3 consumers: network.vpc, network.ecs_task_sg
 
 app.synth()

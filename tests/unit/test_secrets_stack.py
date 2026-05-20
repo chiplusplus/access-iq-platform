@@ -20,6 +20,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         region="eu-west-2",
         s3={},
         iam={},
+        vpc={},
         tags={},
     )
 
@@ -32,11 +33,14 @@ def _template(env_name: str = "dev") -> Template:
     return Template.from_stack(stack)
 
 
-@pytest.mark.parametrize("env_name", ["dev", "prod"])
-def test_secrets_stack_retain_policy(env_name: str) -> None:
+@pytest.mark.parametrize(
+    ("env_name", "expected_policy"),
+    [("dev", "Delete"), ("prod", "Retain")],
+)
+def test_secrets_stack_removal_policy(env_name: str, expected_policy: str) -> None:
     tpl = _template(env_name)
     tpl.resource_count_is("AWS::SecretsManager::Secret", 1)
-    tpl.has_resource("AWS::SecretsManager::Secret", {"DeletionPolicy": "Retain"})
+    tpl.has_resource("AWS::SecretsManager::Secret", {"DeletionPolicy": expected_policy})
 
 
 def test_secrets_stack_secret_name_convention() -> None:

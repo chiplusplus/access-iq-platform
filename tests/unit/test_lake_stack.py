@@ -19,6 +19,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         region="eu-west-2",
         s3={},
         iam={"external_bucket": "northshire-trust-external-exports"},
+        vpc={},
         tags={"Environment": env_name, "Project": "access-iq"},
     )
 
@@ -29,12 +30,15 @@ def _template(env_name: str = "dev") -> Template:
     return Template.from_stack(stack)
 
 
-@pytest.mark.parametrize("env_name", ["dev", "prod"])
-def test_kms_key_retain_and_rotation(env_name: str) -> None:
+@pytest.mark.parametrize(
+    ("env_name", "expected_policy"),
+    [("dev", "Delete"), ("prod", "Retain")],
+)
+def test_kms_key_rotation_and_removal_policy(env_name: str, expected_policy: str) -> None:
     tpl = _template(env_name)
     tpl.resource_count_is("AWS::KMS::Key", 1)
     tpl.has_resource_properties("AWS::KMS::Key", {"EnableKeyRotation": True})
-    tpl.has_resource("AWS::KMS::Key", {"DeletionPolicy": "Retain"})
+    tpl.has_resource("AWS::KMS::Key", {"DeletionPolicy": expected_policy})
 
 
 @pytest.mark.parametrize("env_name", ["dev", "prod"])

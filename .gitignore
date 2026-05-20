@@ -216,3 +216,6 @@ infra/config/prod.json
 # Claude
 .planning/
 *.planning
+infra/cdk.context.json
+
+Makefile

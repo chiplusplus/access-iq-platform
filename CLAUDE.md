@@ -74,3 +74,6 @@ The following components are planned but not yet implemented:
 - **Orchestration**: Prefect flows for ingestion → dbt → GE validation pipeline
 - **Dashboard**: Streamlit app with 3 pages (Wait Times, Inequality, Urgent Care) reading from Gold layer
 - **Session workflow**: `make up` (deploy + seed), `make down` (destroy), `make ingest` (trigger ECS tasks)
+
+## Things to remember
+1. Files under .planning/ are gitignored should not be commited
