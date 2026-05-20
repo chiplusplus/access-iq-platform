@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from aws_cdk import CfnOutput, Stack
@@ -35,7 +36,7 @@ class ComputeStack(Stack):
         pseudonymisation_key_secret: secretsmanager.ISecret,
         ecs_task_role: iam.IRole,
         ecs_execution_role: iam.IRole,
-        log_groups: dict[str, logs.ILogGroup],
+        log_groups: Mapping[str, logs.ILogGroup],
         **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)

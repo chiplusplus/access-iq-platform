@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 aws_cdk = pytest.importorskip("aws_cdk")
-from aws_cdk import App, Environment  # noqa: E402
+from aws_cdk import App, Environment, Stack  # noqa: E402
 from aws_cdk import aws_ec2 as ec2  # noqa: E402
 from aws_cdk import aws_ecr as ecr  # noqa: E402
 from aws_cdk import aws_iam as iam  # noqa: E402
@@ -47,10 +49,10 @@ def _cfg() -> EnvConfig:
     )
 
 
-class _DepsStack(aws_cdk.Stack):
+class _DepsStack(Stack):
     """Helper stack providing mock dependencies for ComputeStack."""
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs: object) -> None:
+    def __init__(self, scope: Construct, construct_id: str, **kwargs: Any) -> None:
         super().__init__(scope, construct_id, **kwargs)
         self.vpc = ec2.Vpc(self, "Vpc")
         self.sg = ec2.SecurityGroup(self, "Sg", vpc=self.vpc)
