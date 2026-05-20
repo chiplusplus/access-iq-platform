@@ -13,10 +13,12 @@ from aws_cdk import App, Environment  # noqa: E402
 
 from access_iq_infra.settings import EnvConfig  # noqa: E402
 from access_iq_infra.stacks.catalog import CatalogStack  # noqa: E402
+from access_iq_infra.stacks.compute import ComputeStack  # noqa: E402
 from access_iq_infra.stacks.ecr import EcrStack  # noqa: E402
 from access_iq_infra.stacks.iam import IngestionRoleStack  # noqa: E402
 from access_iq_infra.stacks.lake import LakeStack  # noqa: E402
 from access_iq_infra.stacks.network import NetworkStack  # noqa: E402
+from access_iq_infra.stacks.observability import ObservabilityStack  # noqa: E402
 from access_iq_infra.stacks.secrets import SecretsStack  # noqa: E402
 
 EXPECTED_STACKS = {
@@ -26,6 +28,8 @@ EXPECTED_STACKS = {
     "ecr-access-iq-{env}",
     "ingestion-role-access-iq-{env}",
     "network-access-iq-{env}",
+    "observability-access-iq-{env}",
+    "compute-access-iq-{env}",
 }
 
 
@@ -48,8 +52,8 @@ def _cfg(env_name: str) -> EnvConfig:
             "nat_gateways": 1,
         },
         tags={"Environment": env_name},
-        ecs={},
-        obs={},
+        ecs={"cpu": 512, "memory_limit_mib": 1024},
+        obs={"log_retention_days": 7, "alert_email": "test@example.com"},
     )
 
 
@@ -72,8 +76,8 @@ def _synth_app(env_name: str) -> App:
         env=cdk_env,
     )
     CatalogStack(app, f"catalog-{cfg.app_name}-{cfg.env_name}", cfg=cfg, env=cdk_env)
-    EcrStack(app, f"ecr-{cfg.app_name}-{cfg.env_name}", cfg=cfg, env=cdk_env)
-    IngestionRoleStack(
+    ecr = EcrStack(app, f"ecr-{cfg.app_name}-{cfg.env_name}", cfg=cfg, env=cdk_env)
+    iam_stack = IngestionRoleStack(
         app,
         f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
         cfg=cfg,
@@ -82,10 +86,31 @@ def _synth_app(env_name: str) -> App:
         pseudonymisation_key_secret=secrets.pseudonymisation_key_secret,
         env=cdk_env,
     )
-    NetworkStack(
+    network = NetworkStack(
         app,
         f"network-{cfg.app_name}-{cfg.env_name}",
         cfg=cfg,
+        env=cdk_env,
+    )
+    obs = ObservabilityStack(
+        app,
+        f"observability-{cfg.app_name}-{cfg.env_name}",
+        cfg=cfg,
+        env=cdk_env,
+    )
+    ComputeStack(
+        app,
+        f"compute-{cfg.app_name}-{cfg.env_name}",
+        cfg=cfg,
+        vpc=network.vpc,
+        ecs_task_sg=network.ecs_task_sg,
+        repository=ecr.repository,
+        platform_bucket=lake.lake_bucket,
+        lake_key=lake.lake_key,
+        pseudonymisation_key_secret=secrets.pseudonymisation_key_secret,
+        ecs_task_role=iam_stack.ecs_task_role,
+        ecs_execution_role=iam_stack.ecs_execution_role,
+        log_groups=obs.log_groups,
         env=cdk_env,
     )
 
@@ -94,7 +119,7 @@ def _synth_app(env_name: str) -> App:
 
 
 @pytest.mark.parametrize("env_name", ["dev", "prod"])
-def test_synth_produces_six_stacks(env_name: str) -> None:
+def test_synth_produces_eight_stacks(env_name: str) -> None:
     from aws_cdk import Stack
 
     app = _synth_app(env_name)

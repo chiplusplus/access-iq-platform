@@ -2,10 +2,12 @@ from aws_cdk import App, Environment
 
 from access_iq_infra.settings import load_env_config
 from access_iq_infra.stacks.catalog import CatalogStack
+from access_iq_infra.stacks.compute import ComputeStack
 from access_iq_infra.stacks.ecr import EcrStack
 from access_iq_infra.stacks.iam import IngestionRoleStack
 from access_iq_infra.stacks.lake import LakeStack
 from access_iq_infra.stacks.network import NetworkStack
+from access_iq_infra.stacks.observability import ObservabilityStack
 from access_iq_infra.stacks.secrets import SecretsStack
 from access_iq_infra.tagging import apply_tags
 
@@ -45,7 +47,7 @@ CatalogStack(
     env=cdk_env,
 )
 
-EcrStack(
+ecr = EcrStack(
     app,
     f"ecr-{cfg.app_name}-{cfg.env_name}",
     cfg=cfg,
@@ -54,7 +56,7 @@ EcrStack(
 
 # --- Stateless stacks ---
 
-IngestionRoleStack(
+iam_stack = IngestionRoleStack(
     app,
     f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
     cfg=cfg,
@@ -70,6 +72,30 @@ network = NetworkStack(
     cfg=cfg,
     env=cdk_env,
 )
-# Phase 3 consumers: network.vpc, network.ecs_task_sg
+
+# --- Phase 3: Compute + Observability ---
+
+obs = ObservabilityStack(
+    app,
+    f"observability-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    env=cdk_env,
+)
+
+ComputeStack(
+    app,
+    f"compute-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    vpc=network.vpc,
+    ecs_task_sg=network.ecs_task_sg,
+    repository=ecr.repository,
+    platform_bucket=lake.lake_bucket,
+    lake_key=lake.lake_key,
+    pseudonymisation_key_secret=secrets.pseudonymisation_key_secret,
+    ecs_task_role=iam_stack.ecs_task_role,
+    ecs_execution_role=iam_stack.ecs_execution_role,
+    log_groups=obs.log_groups,
+    env=cdk_env,
+)
 
 app.synth()
