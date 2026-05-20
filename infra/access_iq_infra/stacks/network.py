@@ -1,11 +1,13 @@
 """NetworkStack — stateless Platform VPC, peering, routes, endpoints, security groups.
 
 All resources use DESTROY removal policy. Deploy and destroy each working session.
-Trust VPC details are ephemeral and must be passed as CDK context params at synth time.
+Trust VPC ID is ephemeral and must be passed as a CDK context param at synth time.
+
+Trust-side routes and DNS accepter options are managed by the Trust stack (not here)
+to avoid cross-account AwsCustomResource calls that break on cdk destroy.
 
 Required CDK context params:
     -c trust_vpc_id=vpc-xxx
-    -c trust_route_table_ids=rtb-aaa,rtb-bbb
 
 See docs/architecture/networking.md and .planning/phases/02-networking/ for design decisions.
 """
@@ -14,9 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from aws_cdk import Stack
+from aws_cdk import CfnOutput, Stack
 from aws_cdk import aws_ec2 as ec2
-from aws_cdk import aws_iam as iam
 from aws_cdk.custom_resources import (
     AwsCustomResource,
     AwsCustomResourcePolicy,
@@ -30,8 +31,11 @@ from access_iq_infra.settings import EnvConfig
 
 class NetworkStack(Stack):
     """
-    Stateless: Platform VPC, cross-account VPC peering, route tables, DNS resolution,
+    Stateless: Platform VPC, cross-account VPC peering, platform-side routes, DNS requester,
     security groups, and VPC endpoints (S3 gateway + 5 interface endpoints).
+
+    Trust-side routes and DNS accepter are managed by the Trust stack to avoid
+    cross-account AwsCustomResource failures during cdk destroy.
 
     Exposes for Phase 3 ECS stack:
         self.vpc          — ec2.Vpc
@@ -39,7 +43,6 @@ class NetworkStack(Stack):
 
     Required CDK context params:
         -c trust_vpc_id=vpc-xxx
-        -c trust_route_table_ids=rtb-aaa,rtb-bbb
     """
 
     vpc: ec2.Vpc
@@ -56,22 +59,11 @@ class NetworkStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         # ── Section 1: Context validation (fail fast at synth time) ──────────
-        # Trust stack is ephemeral — VPC IDs change every session; context only per D-06.
         trust_vpc_id: str | None = self.node.try_get_context("trust_vpc_id")
-        trust_rtb_ids_raw: str | None = self.node.try_get_context("trust_route_table_ids")
-        if trust_vpc_id is None or trust_rtb_ids_raw is None:
-            missing = []
-            if trust_vpc_id is None:
-                missing.append("trust_vpc_id")
-            if trust_rtb_ids_raw is None:
-                missing.append("trust_route_table_ids")
+        if trust_vpc_id is None:
             raise ValueError(
-                f"Trust VPC context required (missing: {', '.join(missing)}). Pass: "
-                "-c trust_vpc_id=vpc-xxx "
-                "-c trust_route_table_ids=rtb-aaa,rtb-bbb"
+                "Trust VPC context required (missing: trust_vpc_id). Pass: -c trust_vpc_id=vpc-xxx"
             )
-        # Strip whitespace to avoid Pitfall 7 (comma-separated with spaces)
-        trust_route_table_ids = [x.strip() for x in trust_rtb_ids_raw.split(",")]
         trust_account_id: str = cfg.iam["trust_account_id"]
         peering_accepter_role_arn = (
             f"arn:aws:iam::{trust_account_id}:role/access-iq-peering-accepter"
@@ -124,55 +116,9 @@ class NetworkStack(Stack):
             )
             route.add_dependency(peering)
 
-        # ── Section 5: Trust-side route update via AwsCustomResource (REQ-NET-02, D-01) ──
-        # One AwsCustomResource per Trust route table.
-        # on_delete cleans up on cdk destroy — avoids Pitfall 3 (orphaned routes).
-        # install_latest_aws_sdk=False avoids Pitfall 2 (Lambda internet access at cold start).
-        # from_statements with sts:AssumeRole avoids cross-account policy over-grant (T-02-04).
-        trust_route_policy = AwsCustomResourcePolicy.from_statements(
-            [
-                iam.PolicyStatement(
-                    effect=iam.Effect.ALLOW,
-                    actions=["sts:AssumeRole"],
-                    resources=[peering_accepter_role_arn],
-                )
-            ]
-        )
-        for i, rtb_id in enumerate(trust_route_table_ids):
-            trust_cr = AwsCustomResource(
-                self,
-                f"TrustRouteUpdate{i}",
-                on_create=AwsSdkCall(
-                    assumed_role_arn=peering_accepter_role_arn,
-                    service="EC2",
-                    action="createRoute",
-                    parameters={
-                        "RouteTableId": rtb_id,
-                        "DestinationCidrBlock": cfg.vpc["platform_cidr"],
-                        "VpcPeeringConnectionId": peering.ref,
-                    },
-                    physical_resource_id=PhysicalResourceId.of(f"trust-route-{rtb_id}"),
-                ),
-                on_delete=AwsSdkCall(
-                    assumed_role_arn=peering_accepter_role_arn,
-                    service="EC2",
-                    action="deleteRoute",
-                    parameters={
-                        "RouteTableId": rtb_id,
-                        "DestinationCidrBlock": cfg.vpc["platform_cidr"],
-                    },
-                    physical_resource_id=PhysicalResourceId.of(f"trust-route-{rtb_id}"),
-                ),
-                policy=trust_route_policy,
-                install_latest_aws_sdk=False,
-            )
-            trust_cr.node.add_dependency(peering)
-
-        # ── Section 6: DNS resolution via AwsCustomResource (REQ-NET-02, D-03) ──
-        # Two calls: requester side (Platform account) and accepter side (Trust account).
-        # Both must depend on peering reaching ACTIVE state.
-
+        # ── Section 5: DNS resolution — requester side (REQ-NET-02, D-03) ──
         # Requester side — same account, from_sdk_calls is fine (no cross-account STS).
+        # Accepter side is managed by the Trust stack to avoid cross-account destroy failures.
         dns_requester_cr = AwsCustomResource(
             self,
             "PeeringDnsRequester",
@@ -192,34 +138,13 @@ class NetworkStack(Stack):
         )
         dns_requester_cr.node.add_dependency(peering)
 
-        # Accepter side — cross-account; must use from_statements with sts:AssumeRole (T-02-04).
-        dns_accepter_cr = AwsCustomResource(
+        # ── Section 6: Outputs for Trust stack redeployment ──────────────────
+        CfnOutput(
             self,
-            "PeeringDnsAccepter",
-            on_create=AwsSdkCall(
-                assumed_role_arn=peering_accepter_role_arn,
-                service="EC2",
-                action="modifyVpcPeeringConnectionOptions",
-                parameters={
-                    "VpcPeeringConnectionId": peering.ref,
-                    "AccepterPeeringConnectionOptions": {
-                        "AllowDnsResolutionFromRemoteVpc": True,
-                    },
-                },
-                physical_resource_id=PhysicalResourceId.of("peering-dns-accepter"),
-            ),
-            policy=AwsCustomResourcePolicy.from_statements(
-                [
-                    iam.PolicyStatement(
-                        effect=iam.Effect.ALLOW,
-                        actions=["sts:AssumeRole"],
-                        resources=[peering_accepter_role_arn],
-                    )
-                ]
-            ),
-            install_latest_aws_sdk=False,
+            "PeeringConnectionId",
+            value=peering.ref,
+            description="VPC peering connection ID for Trust-side route configuration",
         )
-        dns_accepter_cr.node.add_dependency(peering)
 
         # ── Section 7: Security Groups (REQ-NET-02, T-02-05) ─────────────────
         # ECS task SG — deny-by-default egress; explicit rules only for required ports.

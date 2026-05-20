@@ -33,7 +33,6 @@ def _template() -> Template:
     app = App(
         context={
             "trust_vpc_id": "vpc-test123",
-            "trust_route_table_ids": "rtb-test1,rtb-test2",
         }
     )
     stack = NetworkStack(app, "NetworkStack", cfg=_cfg())
@@ -75,21 +74,19 @@ def test_platform_peering_routes() -> None:
     assert len(routes) >= 1, "Expected at least one platform peering route to Trust CIDR"
 
 
-def test_trust_route_custom_resource() -> None:
+def test_dns_requester_custom_resource() -> None:
     tpl = _template()
-    # CDK AwsCustomResource synthesises as Custom::AWS resources
     custom_resources = tpl.find_resources("Custom::AWS")
-    assert len(custom_resources) >= 1, "Expected at least one AwsCustomResource for Trust routes"
-
-
-def test_dns_resolution_custom_resources() -> None:
-    tpl = _template()
-    # Both requester and accepter DNS custom resources expected
-    # CDK AwsCustomResource synthesises as Custom::AWS resources
-    custom_resources = tpl.find_resources("Custom::AWS")
-    assert len(custom_resources) >= 2, (
-        "Expected at least 2 AwsCustomResource entries (Trust routes + DNS resolution)"
+    assert len(custom_resources) == 1, (
+        "Expected exactly 1 AwsCustomResource (DNS requester only — "
+        "Trust routes and DNS accepter are managed by Trust stack)"
     )
+
+
+def test_peering_connection_id_output() -> None:
+    tpl = _template()
+    outputs = tpl.to_json().get("Outputs", {})
+    assert "PeeringConnectionId" in outputs, "Expected PeeringConnectionId CfnOutput"
 
 
 def test_ecs_sg_deny_all_outbound() -> None:
@@ -187,21 +184,5 @@ def test_endpoint_sg_ingress_443() -> None:
 
 def test_context_validation_missing_vpc_id() -> None:
     with pytest.raises(ValueError, match="trust_vpc_id"):
-        app = App(
-            context={
-                "trust_route_table_ids": "rtb-test1,rtb-test2",
-                # trust_vpc_id intentionally omitted
-            }
-        )
-        NetworkStack(app, "Test", cfg=_cfg())
-
-
-def test_context_validation_missing_rtb_ids() -> None:
-    with pytest.raises(ValueError, match="trust_route_table_ids"):
-        app = App(
-            context={
-                "trust_vpc_id": "vpc-test123",
-                # trust_route_table_ids intentionally omitted
-            }
-        )
+        app = App(context={})
         NetworkStack(app, "Test", cfg=_cfg())
