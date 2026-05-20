@@ -1,4 +1,7 @@
-.PHONY: setup fmt fmt-check lint type test ci infra-bootstrap infra-diff infra-deploy infra-destroy
+.PHONY: setup fmt fmt-check lint type test ci infra-bootstrap infra-diff infra-deploy infra-destroy aws-login
+
+AWS_PROFILE ?= CHI-Engineer-222308823356
+CDK_ENV ?= dev
 
 setup:
 	uv sync --all-packages
@@ -32,3 +35,9 @@ infra-deploy:
 
 infra-destroy:
 	cd infra && AWS_PROFILE=$(AWS_PROFILE) uv run cdk destroy --force -c env=$(CDK_ENV)
+
+aws-login:
+	aws sso login --profile $(AWS_PROFILE)
+	@echo "\n✓ Logged in. Run this in your shell:\n"
+	@echo "  export AWS_PROFILE=$(AWS_PROFILE)\n"
+	@AWS_PROFILE=$(AWS_PROFILE) aws sts get-caller-identity
