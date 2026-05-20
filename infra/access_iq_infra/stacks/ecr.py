@@ -29,7 +29,7 @@ class EcrStack(Stack):
             "IngestionRepo",
             repository_name=repo_name,
             image_scan_on_push=True,
-            image_tag_mutability=ecr.TagMutability.IMMUTABLE,
+            image_tag_mutability=ecr.TagMutability.MUTABLE,
             removal_policy=RemovalPolicy.RETAIN
             if cfg.env_name == "prod"
             else RemovalPolicy.DESTROY,
