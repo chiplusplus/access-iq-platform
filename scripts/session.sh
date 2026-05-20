@@ -7,7 +7,7 @@ AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
 TRUST_PROFILE="${TRUST_PROFILE:-northshire-trust}"
 CDK_ENV="${CDK_ENV:-dev}"
 REGION="${REGION:-eu-west-2}"
-TRUST_REPO="${TRUST_REPO:-/Users/chiamakaanamekwe/Documents/tech-projects/data-engineering/northshire-hospital-sim}"
+TRUST_REPO="${TRUST_REPO:-$(cd "$(dirname "$0")/../.." && pwd)/northshire-hospital-sim}"
 PLATFORM_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Timing helpers ────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ cmd_up() {
   (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
     -c "platformVpcId=$PLATFORM_VPC" \
     -c "platformCidr=10.10.0.0/16" \
-    -c "platformAccountId=222308823356" \
+    -c "platformAccountId=$(aws sts get-caller-identity --query Account --output text --profile "$AWS_PROFILE")" \
     -c "peeringConnectionId=$PEERING_ID" \
     --require-approval never)
   step_done
