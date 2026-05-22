@@ -74,13 +74,13 @@ cmd_up() {
   done
 
   echo ""
-  echo "  Deploy sequence: Trust bootstrap → Platform → Trust (routes + SGs) → Secrets → Docker"
+  echo "  Deploy sequence: Trust bootstrap → Platform → Trust (routes + SGs) → Secrets → Docker → Ingest"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
-  echo "  Estimated total: 18-30 minutes"
+  echo "  Estimated total: 20-35 minutes"
   echo ""
 
-  step_start "1/6" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
+  step_start "1/7" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
   if [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
@@ -91,12 +91,12 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/6" "Read Trust outputs" "<5s"
+  step_start "2/7" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/6" "Deploy Platform stacks" "5-8 min"
+  step_start "3/7" "Deploy Platform stacks" "5-8 min"
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
     -c "env=$CDK_ENV" \
     -c "trust_vpc_id=$TRUST_VPC" \
@@ -113,7 +113,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "4/6" "Redeploy Trust with routes and peering SG rules" "~2 min"
+  step_start "4/7" "Redeploy Trust with routes and peering SG rules" "~2 min"
   echo "  Platform VPC:  $PLATFORM_VPC"
   echo "  Peering ID:    $PEERING_ID"
   (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
@@ -125,7 +125,7 @@ cmd_up() {
   step_done
 
   # ── Step 5: Seed Platform secrets from Trust outputs ──
-  step_start "5/6" "Seed Platform secrets from Trust" "<30s"
+  step_start "5/7" "Seed Platform secrets from Trust" "<30s"
 
   local SECRET_PREFIX="access-iq/${CDK_ENV}"
 
@@ -267,7 +267,7 @@ cmd_up() {
   step_done
 
   # ── Step 6: Build and push Docker image to ECR ──
-  step_start "6/6" "Build and push ingestion image to ECR" "1-3 min"
+  step_start "6/7" "Build and push ingestion image to ECR" "1-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -285,10 +285,12 @@ cmd_up() {
 
   step_done
 
+  # ── Step 7: Run Bronze ingestion (all 3 sources) ──
+  cmd_ingest
+
   session_summary
   echo ""
-  echo "  ✓ All stacks deployed, secrets seeded, image pushed."
-  echo "  Run './scripts/session.sh status' to verify, then 'make ingest' to run."
+  echo "  ✓ All stacks deployed, secrets seeded, image pushed, ingestion complete."
   echo ""
 }
 
@@ -567,7 +569,7 @@ case "${1:-}" in
   *)
     echo "Usage: $0 {up|down|status|ingest}"
     echo ""
-    echo "  up [flags]            Deploy Trust + Platform stacks with peering (~10 min)"
+    echo "  up [flags]            Deploy Trust + Platform, publish data, run ingestion (~25 min)"
     echo "                        --skip-generate: reuse existing data/staging/ instead of regenerating"
     echo "                        --skip-seed:     deploy infrastructure only, no data seeding"
     echo "  down                  Destroy Platform + Trust stacks (~8 min)"
