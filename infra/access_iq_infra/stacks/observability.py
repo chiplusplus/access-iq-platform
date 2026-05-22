@@ -105,7 +105,7 @@ class ObservabilityStack(Stack):
         for source, lg in log_groups.items():
             safe_id = "".join(w.capitalize() for w in source.split("-"))
 
-            mf = logs.MetricFilter(
+            mf_failed = logs.MetricFilter(
                 self,
                 f"MetricFilter-{safe_id}",
                 log_group=lg,
@@ -116,17 +116,51 @@ class ObservabilityStack(Stack):
                 default_value=0,
             )
 
-            alarm = cw.Alarm(
+            mf_crash = logs.MetricFilter(
+                self,
+                f"MetricFilterCrash-{safe_id}",
+                log_group=lg,
+                filter_pattern=logs.FilterPattern.any_term("Traceback", "Exception", "Error"),
+                metric_namespace=metric_namespace,
+                metric_name=f"IngestionCrash-{source}",
+                metric_value="1",
+                default_value=0,
+            )
+
+            logs.MetricFilter(
+                self,
+                f"MetricFilterSuccess-{safe_id}",
+                log_group=lg,
+                filter_pattern=logs.FilterPattern.string_value("$.status", "=", "success"),
+                metric_namespace=metric_namespace,
+                metric_name=f"IngestionSuccess-{source}",
+                metric_value="1",
+                default_value=0,
+            )
+
+            alarm_failed = cw.Alarm(
                 self,
                 f"Alarm-{safe_id}",
-                metric=mf.metric(statistic="Sum", period=Duration.minutes(5)),
+                metric=mf_failed.metric(statistic="Sum", period=Duration.minutes(5)),
                 threshold=1,
                 evaluation_periods=1,
                 comparison_operator=cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
                 treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
                 alarm_description=f"Ingestion manifest status:failed for {source}",
             )
-            alarm.add_alarm_action(cw_actions.SnsAction(sns_topic))
+            alarm_failed.add_alarm_action(cw_actions.SnsAction(sns_topic))
+
+            alarm_crash = cw.Alarm(
+                self,
+                f"AlarmCrash-{safe_id}",
+                metric=mf_crash.metric(statistic="Sum", period=Duration.minutes(5)),
+                threshold=1,
+                evaluation_periods=1,
+                comparison_operator=cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+                treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
+                alarm_description=f"Ingestion task crashed (unhandled exception) for {source}",
+            )
+            alarm_crash.add_alarm_action(cw_actions.SnsAction(sns_topic))
 
         # -- Section 4: Dashboard (D-11, REQ-OBS-02) ----------
         dashboard = cw.Dashboard(
@@ -137,18 +171,45 @@ class ObservabilityStack(Stack):
 
         dashboard.add_widgets(
             cw.GraphWidget(
-                title="Ingestion Runs - Last 24h",
+                title="Ingestion Failures & Crashes - Last 24h",
                 view=cw.GraphWidgetView.BAR,
                 left=[
                     cw.Metric(
                         namespace=metric_namespace,
                         metric_name=f"IngestionFailed-{src}",
                         statistic="Sum",
-                        period=Duration.hours(24),
+                        period=Duration.hours(1),
+                        label=f"{src} failed",
+                    )
+                    for src in INGESTION_SOURCES
+                ]
+                + [
+                    cw.Metric(
+                        namespace=metric_namespace,
+                        metric_name=f"IngestionCrash-{src}",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label=f"{src} crash",
                     )
                     for src in INGESTION_SOURCES
                 ],
-                width=24,
+                width=12,
+                height=6,
+            ),
+            cw.GraphWidget(
+                title="Successful Ingestions - Last 24h",
+                view=cw.GraphWidgetView.BAR,
+                left=[
+                    cw.Metric(
+                        namespace=metric_namespace,
+                        metric_name=f"IngestionSuccess-{src}",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label=f"{src}",
+                    )
+                    for src in INGESTION_SOURCES
+                ],
+                width=12,
                 height=6,
             ),
             cw.LogQueryWidget(

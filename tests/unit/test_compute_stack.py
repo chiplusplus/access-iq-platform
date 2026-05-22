@@ -174,7 +174,7 @@ def test_secrets_wired_via_value_from() -> None:
 
     # ingest-sftp must have all SFTP secrets
     sftp_secrets = set(command_secrets.get("ingest-sftp", []))
-    for name in ("SFTP_HOST", "SFTP_PORT", "SFTP_USER", "SFTP_PASSWORD"):
+    for name in ("SFTP_HOST", "SFTP_PORT", "SFTP_USER", "SFTP_PRIVATE_KEY"):
         assert name in sftp_secrets, f"ingest-sftp missing {name} secret"
 
     # ingest-trust-s3 should have no source-specific secrets

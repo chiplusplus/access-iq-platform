@@ -168,12 +168,75 @@ cmd_up() {
     --query SecretString --output text \
     --profile "$TRUST_PROFILE" --region "$REGION")
 
-  local SFTP_ENDPOINT
-  SFTP_ENDPOINT=$(trust_output SftpEndpoint)
-
-  local SFTP_USER_VAL SFTP_PASS_VAL
+  local SFTP_USER_VAL SFTP_PRIVATE_KEY_VAL
   SFTP_USER_VAL=$(echo "$SFTP_SECRET_JSON" | jq -r '.username // .user')
-  SFTP_PASS_VAL=$(echo "$SFTP_SECRET_JSON" | jq -r '.password // .pass')
+  SFTP_PRIVATE_KEY_VAL=$(echo "$SFTP_SECRET_JSON" | jq -r '.privateKey // .private_key // empty')
+
+  if [ -z "$SFTP_PRIVATE_KEY_VAL" ]; then
+    # Generate SSH key pair and register with Transfer Family
+    echo "  Generating SSH key pair for Transfer Family publickey auth..."
+    local SFTP_KEY_DIR="/tmp/access-iq-sftp-key-$$"
+    mkdir -p "$SFTP_KEY_DIR"
+    ssh-keygen -t rsa -b 4096 -f "$SFTP_KEY_DIR/id_rsa" -N "" -q
+
+    SFTP_PRIVATE_KEY_VAL=$(cat "$SFTP_KEY_DIR/id_rsa")
+    local SFTP_PUBLIC_KEY
+    SFTP_PUBLIC_KEY=$(cat "$SFTP_KEY_DIR/id_rsa.pub")
+
+    # Import public key to Transfer Family user
+    local SFTP_SERVER_ID_FOR_KEY
+    SFTP_SERVER_ID_FOR_KEY=$(trust_output SftpServerId)
+    aws transfer import-ssh-public-key \
+      --server-id "$SFTP_SERVER_ID_FOR_KEY" \
+      --user-name "trust_sftp" \
+      --ssh-public-key-body "$SFTP_PUBLIC_KEY" \
+      --profile "$TRUST_PROFILE" --region "$REGION" >/dev/null 2>&1 || true
+
+    rm -rf "$SFTP_KEY_DIR"
+    echo "  ✓ SSH key registered with Transfer Family"
+  fi
+
+  # Resolve SFTP private IP for cross-VPC peering access.
+  # Transfer Family public endpoints resolve to public IPs that aren't
+  # reachable from private subnets over VPC peering. We need the VPC
+  # endpoint's ENI private IP (within Trust CIDR 10.0.0.0/16).
+  local SFTP_SERVER_ID
+  SFTP_SERVER_ID=$(aws transfer list-servers \
+    --query 'Servers[0].ServerId' --output text \
+    --profile "$TRUST_PROFILE" --region "$REGION")
+
+  local SFTP_ENDPOINT_TYPE
+  SFTP_ENDPOINT_TYPE=$(aws transfer describe-server \
+    --server-id "$SFTP_SERVER_ID" \
+    --query 'Server.EndpointType' --output text \
+    --profile "$TRUST_PROFILE" --region "$REGION")
+
+  local SFTP_ENDPOINT
+  if [ "$SFTP_ENDPOINT_TYPE" = "VPC" ]; then
+    local SFTP_VPC_EP_ID
+    SFTP_VPC_EP_ID=$(aws transfer describe-server \
+      --server-id "$SFTP_SERVER_ID" \
+      --query 'Server.EndpointDetails.VpcEndpointId' --output text \
+      --profile "$TRUST_PROFILE" --region "$REGION")
+
+    local SFTP_ENI_ID
+    SFTP_ENI_ID=$(aws ec2 describe-vpc-endpoints \
+      --vpc-endpoint-ids "$SFTP_VPC_EP_ID" \
+      --query 'VpcEndpoints[0].NetworkInterfaceIds[0]' --output text \
+      --profile "$TRUST_PROFILE" --region "$REGION")
+
+    SFTP_ENDPOINT=$(aws ec2 describe-network-interfaces \
+      --network-interface-ids "$SFTP_ENI_ID" \
+      --query 'NetworkInterfaces[0].PrivateIpAddress' --output text \
+      --profile "$TRUST_PROFILE" --region "$REGION")
+
+    echo "  SFTP: VPC endpoint → private IP $SFTP_ENDPOINT"
+  else
+    SFTP_ENDPOINT=$(trust_output SftpEndpoint)
+    echo "  WARNING: SFTP server is ${SFTP_ENDPOINT_TYPE} type (${SFTP_ENDPOINT})"
+    echo "           Public endpoints are not reachable over VPC peering from private subnets."
+    echo "           Switch Trust Transfer Family to VPC endpoint type for peering access."
+  fi
 
   # Upsert each secret in Platform account
   seed_secret() {
@@ -197,7 +260,9 @@ cmd_up() {
   seed_secret "${SECRET_PREFIX}/sftp-host"         "$SFTP_ENDPOINT"
   seed_secret "${SECRET_PREFIX}/sftp-port"         "22"
   seed_secret "${SECRET_PREFIX}/sftp-user"         "$SFTP_USER_VAL"
-  seed_secret "${SECRET_PREFIX}/sftp-password"     "$SFTP_PASS_VAL"
+  if [ -n "$SFTP_PRIVATE_KEY_VAL" ]; then
+    seed_secret "${SECRET_PREFIX}/sftp-private-key"  "$SFTP_PRIVATE_KEY_VAL"
+  fi
 
   step_done
 
@@ -279,7 +344,11 @@ cmd_status() {
   status=$(aws transfer list-servers \
     --query 'Servers[0].State' --output text \
     --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
-  printf "  %-28s %s\n" "SFTP Server" "$status"
+  local sftp_type
+  sftp_type=$(aws transfer list-servers \
+    --query 'Servers[0].EndpointType' --output text \
+    --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null || echo "?")
+  printf "  %-28s %s (%s)\n" "SFTP Server" "$status" "$sftp_type"
 
   echo ""
   echo "═══ Platform Account (${CDK_ENV}) ═══"

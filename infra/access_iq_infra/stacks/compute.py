@@ -88,11 +88,11 @@ class ComputeStack(Stack):
                     self, "SftpUserSecret", f"access-iq/{cfg.env_name}/sftp-user"
                 )
             ),
-            "SFTP_PASSWORD": ecs.Secret.from_secrets_manager(
+            "SFTP_PRIVATE_KEY": ecs.Secret.from_secrets_manager(
                 _sm.from_secret_name_v2(
                     self,
-                    "SftpPasswordSecret",
-                    f"access-iq/{cfg.env_name}/sftp-password",
+                    "SftpPrivateKeySecret",
+                    f"access-iq/{cfg.env_name}/sftp-private-key",
                 )
             ),
         }
@@ -135,8 +135,8 @@ class ComputeStack(Stack):
                             "host_env": "SFTP_HOST",
                             "port_env": "SFTP_PORT",
                             "user_env": "SFTP_USER",
-                            "password_env": "SFTP_PASSWORD",
-                            "remote_dir": "/upload/outbound/appointments/",
+                            "private_key_env": "SFTP_PRIVATE_KEY",
+                            "remote_dir": "/outbound/appointments/",
                             "source_name": "sftp_appointments",
                         },
                     }

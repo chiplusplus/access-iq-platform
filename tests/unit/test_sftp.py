@@ -34,10 +34,11 @@ class FakeTransport:
         self.connected = False
         self.closed = False
 
-    def connect(self, *, username: str, password: str):
+    def connect(self, *, username: str, password: str | None = None, pkey=None):
         self.connected = True
         self.username = username
         self.password = password
+        self.pkey = pkey
 
     def close(self):
         self.closed = True

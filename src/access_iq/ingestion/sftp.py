@@ -46,7 +46,8 @@ def ingest_sftp_directory_to_bronze(
     host: str,
     port: int,
     username: str,
-    password: str,
+    password: str | None = None,
+    private_key: str | None = None,
     remote_dir: str,
     platform_bucket: str,
     ingest_date: date,
@@ -82,9 +83,16 @@ def ingest_sftp_directory_to_bronze(
     status: ManifestStatus = "success"
     run_errors: list[str] = []
 
+    if not password and not private_key:
+        raise ValueError("Either password or private_key must be provided")
+
     transport = paramiko.Transport((host, port))
     try:
-        transport.connect(username=username, password=password)
+        if private_key:
+            pkey = paramiko.RSAKey.from_private_key(io.StringIO(private_key))
+            transport.connect(username=username, pkey=pkey)
+        else:
+            transport.connect(username=username, password=password)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
         if sftp is None:

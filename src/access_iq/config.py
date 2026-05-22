@@ -24,7 +24,8 @@ class SftpSourceCfg(BaseModel):
     host_env: str
     port_env: str
     user_env: str
-    password_env: str
+    password_env: str | None = None
+    private_key_env: str | None = None
     remote_dir: str
     source_name: str | None = None
 
