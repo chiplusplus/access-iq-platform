@@ -7,6 +7,7 @@ from typing import Any
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_cloudwatch as cw
 from aws_cdk import aws_cloudwatch_actions as cw_actions
+from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_sns as sns
 from aws_cdk import aws_sns_subscriptions as subs
@@ -96,6 +97,35 @@ class ObservabilityStack(Stack):
                 slack_channel_id=slack_channel_id,
                 notification_topics=[sns_topic],
             )
+
+        slack_webhook_url = cfg.obs.get("slack_webhook_url")
+        if slack_webhook_url:
+            slack_fn = _lambda.Function(
+                self,
+                "SlackNotifier",
+                function_name=f"{cfg.app_name}-{cfg.env_name}-slack-notifier",
+                runtime=_lambda.Runtime.PYTHON_3_12,
+                handler="index.handler",
+                code=_lambda.Code.from_inline(
+                    "import json, os, urllib.request\n"
+                    "def handler(event, context):\n"
+                    '    url = os.environ["SLACK_WEBHOOK_URL"]\n'
+                    '    for rec in event.get("Records", []):\n'
+                    '        sns_msg = rec.get("Sns", {})\n'
+                    '        subject = sns_msg.get("Subject", "AWS Alert")\n'
+                    '        message = sns_msg.get("Message", "")\n'
+                    '        payload = {"text": f":rotating_light: *{subject}*\\n```{message}```"}\n'
+                    "        req = urllib.request.Request(\n"
+                    "            url, data=json.dumps(payload).encode(),\n"
+                    '            headers={"Content-Type": "application/json"},\n'
+                    "        )\n"
+                    "        urllib.request.urlopen(req)\n"
+                ),
+                environment={"SLACK_WEBHOOK_URL": slack_webhook_url},
+                timeout=Duration.seconds(10),
+                memory_size=128,
+            )
+            sns_topic.add_subscription(subs.LambdaSubscription(slack_fn))
 
         self.sns_topic = sns_topic
 
