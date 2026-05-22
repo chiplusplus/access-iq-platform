@@ -13,7 +13,7 @@ class FakeS3:
         self.uploads = []
         self.puts = []
 
-    def upload_fileobj(self, *, Fileobj, Bucket, Key):
+    def upload_fileobj(self, *, Fileobj, Bucket, Key, ExtraArgs=None):
         self.uploads.append({"Bucket": Bucket, "Key": Key, "Body": Fileobj.read()})
 
     def put_object(self, **kwargs):

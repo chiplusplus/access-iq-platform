@@ -30,7 +30,15 @@ SECRET_ENV_NAMES = {
     "SFTP_USER",
     "SFTP_PASSWORD",
 }
-SAFE_ENV_NAMES = {"ACCESS_IQ_ENV", "ACCESS_IQ_AWS_REGION", "ACCESS_IQ_PLATFORM_BUCKET"}
+SAFE_ENV_NAMES = {
+    "ACCESS_IQ_ENV",
+    "ACCESS_IQ_AWS_REGION",
+    "ACCESS_IQ_PLATFORM_BUCKET",
+    "ACCESS_IQ_LAKE_KMS_KEY_ARN",
+    "ACCESS_IQ_POSTGRES_SOURCES",
+    "ACCESS_IQ_SFTP_SOURCES",
+    "ACCESS_IQ_TRUST_S3",
+}
 
 
 def _cfg() -> EnvConfig:
@@ -172,6 +180,36 @@ def test_secrets_wired_via_value_from() -> None:
     # ingest-trust-s3 should have no source-specific secrets
     s3_secrets = command_secrets.get("ingest-trust-s3", [])
     assert len(s3_secrets) == 0, f"ingest-trust-s3 should have no secrets, got {s3_secrets}"
+
+
+def test_source_config_env_vars_match_task() -> None:
+    """Each task definition gets only its own ACCESS_IQ_*_SOURCES / TRUST_S3 config blob."""
+    tpl = _template()
+    task_defs = tpl.find_resources("AWS::ECS::TaskDefinition")
+
+    config_env_names = {
+        "ACCESS_IQ_POSTGRES_SOURCES",
+        "ACCESS_IQ_SFTP_SOURCES",
+        "ACCESS_IQ_TRUST_S3",
+    }
+    expected: dict[str, str] = {
+        "ingest-postgres": "ACCESS_IQ_POSTGRES_SOURCES",
+        "ingest-sftp": "ACCESS_IQ_SFTP_SOURCES",
+        "ingest-trust-s3": "ACCESS_IQ_TRUST_S3",
+    }
+
+    for _lid, res in task_defs.items():
+        containers = res.get("Properties", {}).get("ContainerDefinitions", [])
+        for container in containers:
+            cmd = container.get("Command", [])
+            if not cmd:
+                continue
+            source = cmd[0]
+            env_names = {e.get("Name") for e in container.get("Environment", [])}
+            config_vars = env_names & config_env_names
+            assert expected[source] in config_vars, f"{source} missing {expected[source]}"
+            unexpected = config_vars - {expected[source]}
+            assert not unexpected, f"{source} has config for wrong source: {unexpected}"
 
 
 def test_cluster_name_follows_convention() -> None:

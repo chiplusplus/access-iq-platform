@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     # is the single source of runtime truth). Optional in Phase 1.
     pseudonym_key_secret_arn: str | None = None
 
+    lake_kms_key_arn: str | None = None
+
     postgres_sources: dict[str, PostgresSourceCfg] = Field(default_factory=dict)
     sftp_sources: dict[str, SftpSourceCfg] = Field(default_factory=dict)
     trust_s3: TrustS3Cfg | None = None

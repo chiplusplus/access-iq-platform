@@ -60,6 +60,7 @@ def main() -> None:
                 aws_region=settings.aws_region,
                 aws_profile=settings.aws_profile,
                 fail_fast=args.fail_fast,
+                kms_key_arn=settings.lake_kms_key_arn,
             )
             log.info(
                 "ingest_done",
@@ -103,6 +104,7 @@ def main() -> None:
             aws_region=settings.aws_region,
             aws_profile_platform=settings.aws_profile,
             fail_fast=args.fail_fast,
+            kms_key_arn=settings.lake_kms_key_arn,
         )
         log.info(
             "ingest_done",
@@ -140,6 +142,7 @@ def main() -> None:
             ingest_date=ingest_date,
             env=settings.env,
             source_name=provider_cfg.source_name or "trust_s3_provider_ref",
+            kms_key_arn=settings.lake_kms_key_arn,
         )
         log.info(
             "ingest_done",
@@ -158,6 +161,7 @@ def main() -> None:
             env=settings.env,
             source_name=diagnostics_cfg.source_name or "trust_s3_diagnostics",
             fail_fast=args.fail_fast,
+            kms_key_arn=settings.lake_kms_key_arn,
         )
         log.info(
             "ingest_done",

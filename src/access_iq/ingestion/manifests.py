@@ -48,14 +48,28 @@ def build_manifest_key(*, source: str, ingest_date: str, run_id: str) -> str:
     return f"_manifests/source={source}/ingest_date={ingest_date}/run_id={run_id}.json"
 
 
-def write_manifest(*, s3: Any, bucket: str, manifest: Manifest) -> str:
+def s3_kms_args(kms_key_arn: str | None) -> dict[str, str]:
+    if not kms_key_arn:
+        return {}
+    return {"ServerSideEncryption": "aws:kms", "SSEKMSKeyId": kms_key_arn}
+
+
+def write_manifest(
+    *, s3: Any, bucket: str, manifest: Manifest, kms_key_arn: str | None = None
+) -> str:
     key = build_manifest_key(
         source=manifest.source,
         ingest_date=manifest.ingest_date,
         run_id=manifest.run_id,
     )
     body = json.dumps(manifest.model_dump(), indent=2, default=str).encode("utf-8")
-    s3.put_object(Bucket=bucket, Key=key, Body=body, ContentType="application/json")
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=body,
+        ContentType="application/json",
+        **s3_kms_args(kms_key_arn),
+    )
     log.info(
         "manifest_written",
         key=key,

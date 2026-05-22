@@ -5,18 +5,13 @@ RUN pip install --no-cache-dir uv==0.7.0
 
 WORKDIR /app
 
-# Copy workspace root files needed for uv sync
-COPY pyproject.toml uv.lock ./
-
-# Copy the ingestion package (workspace member)
+# Copy the ingestion package
 COPY src/access_iq/ ./src/access_iq/
 
-# Copy runtime config (CLI loads from cwd)
-COPY config/ ./config/
-
-# Install dependencies deterministically from lockfile (no dev deps)
-RUN uv sync --frozen --no-dev
+# Create venv and install the package directly (avoids workspace sync
+# needing all members present)
+RUN uv venv .venv && uv pip install --python .venv/bin/python ./src/access_iq/
 
 # Default entrypoint — ECS task definition overrides CMD per source
-ENTRYPOINT ["uv", "run", "python", "-m", "access_iq.ingestion.cli"]
+ENTRYPOINT ["/app/.venv/bin/python", "-m", "access_iq.ingestion.cli"]
 CMD ["ingest-postgres"]

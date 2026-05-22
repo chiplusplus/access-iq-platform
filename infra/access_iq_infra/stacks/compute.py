@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -109,7 +110,56 @@ class ComputeStack(Stack):
             "ingest-trust-s3": trust_s3_secrets,
         }
 
-        # -- Section 3: Task Definitions (D-01, D-05, D-06, REQ-ECS-01) ----------
+        # -- Section 3: Runtime config blobs (ACCESS_IQ_* JSON env vars) ----------
+        # These JSON blobs tell the app which sources to ingest and where to
+        # find the secret values injected by ECS (env var indirection pattern).
+        source_env_map: dict[str, dict[str, str]] = {
+            "ingest-postgres": {
+                "ACCESS_IQ_POSTGRES_SOURCES": json.dumps(
+                    {
+                        "ehr_postgres": {
+                            "dsn_env": "EHR_DSN",
+                            "tables": ["patient_demographics", "encounters"],
+                        },
+                        "urgent_care_postgres": {
+                            "dsn_env": "URGENT_CARE_DSN",
+                            "tables": ["urgent_care_logs"],
+                        },
+                    }
+                ),
+            },
+            "ingest-sftp": {
+                "ACCESS_IQ_SFTP_SOURCES": json.dumps(
+                    {
+                        "appointments": {
+                            "host_env": "SFTP_HOST",
+                            "port_env": "SFTP_PORT",
+                            "user_env": "SFTP_USER",
+                            "password_env": "SFTP_PASSWORD",
+                            "remote_dir": "/upload/outbound/appointments/",
+                            "source_name": "sftp_appointments",
+                        },
+                    }
+                ),
+            },
+            "ingest-trust-s3": {
+                "ACCESS_IQ_TRUST_S3": json.dumps(
+                    {
+                        "base": {"bucket": cfg.iam["external_bucket"]},
+                        "diagnostics": {
+                            "prefix_root": "diagnostics",
+                            "source_name": "trust_s3_diagnostics",
+                        },
+                        "provider_ref": {
+                            "key": "providers/sites_and_services_master.xlsx",
+                            "source_name": "trust_s3_provider_ref",
+                        },
+                    }
+                ),
+            },
+        }
+
+        # -- Section 4: Task Definitions (D-01, D-05, D-06, REQ-ECS-01) ----------
         task_defs: dict[str, ecs.FargateTaskDefinition] = {}
 
         for source in INGESTION_SOURCES:
@@ -137,13 +187,15 @@ class ComputeStack(Stack):
                     "ACCESS_IQ_ENV": cfg.env_name,
                     "ACCESS_IQ_AWS_REGION": cfg.region,
                     "ACCESS_IQ_PLATFORM_BUCKET": platform_bucket.bucket_name,
+                    "ACCESS_IQ_LAKE_KMS_KEY_ARN": lake_key.key_arn,
+                    **source_env_map[source],
                 },
                 secrets=source_secrets_map[source],
             )
 
             task_defs[source] = task_def
 
-        # -- Section 4: CfnOutputs ----------
+        # -- Section 5: CfnOutputs ----------
         CfnOutput(
             self,
             "ClusterArn",
@@ -169,6 +221,6 @@ class ComputeStack(Stack):
                 description=f"Task definition ARN for {source}.",
             )
 
-        # -- Section 5: Exposed props ----------
+        # -- Section 6: Exposed props ----------
         self.cluster = cluster
         self.task_defs = task_defs

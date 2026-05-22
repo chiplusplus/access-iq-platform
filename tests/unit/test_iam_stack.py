@@ -54,10 +54,10 @@ def _template() -> Template:
     return Template.from_stack(stack)
 
 
-def test_three_iam_roles_exist() -> None:
-    """IngestionRoleStack should create exactly 3 IAM roles."""
+def test_four_iam_roles_exist() -> None:
+    """IngestionRoleStack should create exactly 4 IAM roles."""
     tpl = _template()
-    tpl.resource_count_is("AWS::IAM::Role", 3)
+    tpl.resource_count_is("AWS::IAM::Role", 4)
 
 
 def test_ecs_task_role_trust_policy() -> None:
@@ -171,6 +171,90 @@ def test_ecs_task_role_has_s3_permissions() -> None:
                                         "Action": Match.array_with(["s3:PutObject"]),
                                     }
                                 ),
+                            ]
+                        )
+                    }
+                ),
+            }
+        ),
+    )
+
+
+def test_ecs_operator_role_trust_policy() -> None:
+    """ECS operator role is trusted by the SSO user (same as ingestion role)."""
+    tpl = _template()
+    tpl.has_resource_properties(
+        "AWS::IAM::Role",
+        Match.object_like(
+            {
+                "RoleName": Match.string_like_regexp(".*ecs-operator-role$"),
+                "AssumeRolePolicyDocument": Match.object_like(
+                    {
+                        "Statement": Match.array_with(
+                            [
+                                Match.object_like(
+                                    {
+                                        "Principal": Match.object_like(
+                                            {"AWS": Match.string_like_regexp(".*assumed-role.*")}
+                                        ),
+                                    }
+                                )
+                            ]
+                        )
+                    }
+                ),
+            }
+        ),
+    )
+
+
+def test_operator_role_has_run_task_permission() -> None:
+    """Operator role grants ecs:RunTask scoped to project task definitions."""
+    tpl = _template()
+    tpl.has_resource_properties(
+        "AWS::IAM::Policy",
+        Match.object_like(
+            {
+                "PolicyDocument": Match.object_like(
+                    {
+                        "Statement": Match.array_with(
+                            [
+                                Match.object_like(
+                                    {
+                                        "Action": "ecs:RunTask",
+                                        "Effect": "Allow",
+                                    }
+                                )
+                            ]
+                        )
+                    }
+                ),
+            }
+        ),
+    )
+
+
+def test_operator_role_has_pass_role_permission() -> None:
+    """Operator role grants iam:PassRole scoped to ECS task/execution roles."""
+    tpl = _template()
+    tpl.has_resource_properties(
+        "AWS::IAM::Policy",
+        Match.object_like(
+            {
+                "PolicyDocument": Match.object_like(
+                    {
+                        "Statement": Match.array_with(
+                            [
+                                Match.object_like(
+                                    {
+                                        "Action": "iam:PassRole",
+                                        "Condition": {
+                                            "StringEquals": {
+                                                "iam:PassedToService": "ecs-tasks.amazonaws.com"
+                                            }
+                                        },
+                                    }
+                                )
                             ]
                         )
                     }

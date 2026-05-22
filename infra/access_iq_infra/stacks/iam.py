@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from aws_cdk import Stack
+from aws_cdk import CfnOutput, Stack
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
 from aws_cdk import aws_secretsmanager as secretsmanager
@@ -180,3 +180,84 @@ class IngestionRoleStack(Stack):
         )
 
         self.ecs_execution_role = ecs_execution_role
+
+        # ── ECS Operator Role (control-plane) ──────────────────────────────
+        # Separated from ingestion_role (data-plane) so a leaked data
+        # credential cannot launch compute.  Grants RunTask + PassRole only.
+        cluster_arn_pattern = (
+            f"arn:aws:ecs:{cfg.region}:{cfg.account_id}:cluster/{cfg.app_name}-{cfg.env_name}-*"
+        )
+        task_def_arn_pattern = (
+            f"arn:aws:ecs:{cfg.region}:{cfg.account_id}"
+            f":task-definition/{cfg.app_name}-{cfg.env_name}-*"
+        )
+
+        ecs_operator_role = iam.Role(
+            self,
+            "EcsOperatorRole",
+            role_name=f"{cfg.app_name}-{cfg.env_name}-ecs-operator-role",
+            assumed_by=cast(
+                iam.IPrincipal,
+                iam.ArnPrincipal(f"arn:aws:iam::{cfg.account_id}:assumed-role/{cfg.user_name}"),
+            ),
+        )
+
+        ecs_operator_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=["ecs:RunTask"],
+                resources=[task_def_arn_pattern],
+                conditions={"ArnLike": {"ecs:cluster": cluster_arn_pattern}},
+            )
+        )
+
+        ecs_operator_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=["iam:PassRole"],
+                resources=[ecs_task_role.role_arn, ecs_execution_role.role_arn],
+                conditions={"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}},
+            )
+        )
+
+        ecs_operator_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecs:DescribeTasks",
+                    "ecs:ListTasks",
+                    "ecs:DescribeClusters",
+                ],
+                resources=["*"],
+                conditions={"ArnLike": {"ecs:cluster": cluster_arn_pattern}},
+            )
+        )
+
+        ecs_operator_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ec2:DescribeVpcs",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeSecurityGroups",
+                ],
+                resources=["*"],
+            )
+        )
+
+        stack_arn_pattern = (
+            f"arn:aws:cloudformation:{cfg.region}:{cfg.account_id}"
+            f":stack/*-{cfg.app_name}-{cfg.env_name}/*"
+        )
+        ecs_operator_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=["cloudformation:DescribeStacks"],
+                resources=[stack_arn_pattern],
+            )
+        )
+
+        self.ecs_operator_role = ecs_operator_role
+
+        CfnOutput(
+            self,
+            "EcsOperatorRoleArn",
+            value=ecs_operator_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-ecs-operator-role-arn",
+            description="ARN of the ECS operator role for RunTask operations.",
+        )

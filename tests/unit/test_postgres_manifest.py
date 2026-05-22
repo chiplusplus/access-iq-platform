@@ -23,7 +23,9 @@ def test_per_table_error_is_scoped_string_not_shared_list() -> None:
 
     call_count = 0
 
-    def fake_ingest_table(*, dsn, db, table, platform_bucket, ingest_date, s3_client, run_id):
+    def fake_ingest_table(
+        *, dsn, db, table, platform_bucket, ingest_date, s3_client, run_id, kms_key_arn=None
+    ):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -82,7 +84,9 @@ def test_successful_ingest_manifest_validates() -> None:
         CreateBucketConfiguration={"LocationConstraint": "eu-west-2"},
     )
 
-    def fake_ingest_table(*, dsn, db, table, platform_bucket, ingest_date, s3_client, run_id):
+    def fake_ingest_table(
+        *, dsn, db, table, platform_bucket, ingest_date, s3_client, run_id, kms_key_arn=None
+    ):
         s3_client.put_object(
             Bucket=platform_bucket,
             Key=f"bronze/source={db}/entity={table}/{table}.csv",

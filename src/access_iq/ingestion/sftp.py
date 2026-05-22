@@ -17,6 +17,7 @@ from access_iq.ingestion.manifests import (
     Manifest,
     ManifestStatus,
     build_manifest_prefix,
+    s3_kms_args,
     utc_now_iso,
     write_manifest,
 )
@@ -53,6 +54,7 @@ def ingest_sftp_directory_to_bronze(
     aws_region: str,
     aws_profile_platform: str | None = None,
     fail_fast: bool = True,
+    kms_key_arn: str | None = None,
 ) -> dict[str, Any]:
     run_id = str(uuid.uuid4())
     started_at = utc_now_iso()
@@ -106,7 +108,13 @@ def ingest_sftp_directory_to_bronze(
                     f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/files/{fname}"
                 )
 
-                s3.upload_fileobj(Fileobj=io.BytesIO(data), Bucket=platform_bucket, Key=s3_key)
+                extra = s3_kms_args(kms_key_arn)
+                s3.upload_fileobj(
+                    Fileobj=io.BytesIO(data),
+                    Bucket=platform_bucket,
+                    Key=s3_key,
+                    ExtraArgs=extra if extra else None,
+                )
 
                 results.append(
                     FileResult(
@@ -162,6 +170,6 @@ def ingest_sftp_directory_to_bronze(
         },
     )
 
-    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest)
+    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
     bound_log.info("ingest_done", status=status)
     return manifest.model_dump()

@@ -21,21 +21,28 @@ test:  ## Run tests with coverage
 ci: fmt lint type test  ## Run full CI pipeline
 
 # ── Infrastructure (CDK) ────────────────────────────────────────────
+# TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.
+# Example: make infra-deploy TRUST_VPC_ID=vpc-0abc123
+AWS_PROFILE ?= CHI-Engineer-222308823356
+CDK_CONTEXT := -c "env=$${CDK_ENV:-dev}" $(if $(TRUST_VPC_ID),-c "trust_vpc_id=$(TRUST_VPC_ID)") --profile $(AWS_PROFILE)
+
 infra-bootstrap:  ## Bootstrap CDK (requires AWS_PROFILE, CDK_ENV)
-	cd infra && uv run cdk bootstrap -c "env=$${CDK_ENV:-dev}"
+	cd infra && uv run cdk bootstrap $(CDK_CONTEXT)
 
 infra-diff:  ## Show CDK diff
-	cd infra && uv run cdk diff -c "env=$${CDK_ENV:-dev}"
+	cd infra && uv run cdk diff $(CDK_CONTEXT)
 
-infra-deploy:  ## Deploy CDK stacks (optional CDK_STACK=<name>)
-	cd infra && uv run cdk deploy $${CDK_STACK:---all} -c "env=$${CDK_ENV:-dev}" --require-approval never
+CDK_DEPLOY_TARGET := $(if $(CDK_STACK),$(CDK_STACK),--all)
+
+infra-deploy:  ## Deploy CDK stacks (optional CDK_STACK=<name>, TRUST_VPC_ID=vpc-xxx)
+	cd infra && uv run cdk deploy $(CDK_DEPLOY_TARGET) $(CDK_CONTEXT) --require-approval never
 
 infra-destroy:  ## Destroy CDK stacks
-	cd infra && uv run cdk destroy --all --force -c "env=$${CDK_ENV:-dev}"
+	cd infra && uv run cdk destroy --all --force $(CDK_CONTEXT)
 
 # ── Session orchestration ───────────────────────────────────────────
-up:  ## Deploy Trust + Platform stacks
-	./scripts/session.sh up
+up:  ## Deploy Trust + Platform stacks (SKIP_GENERATE=1 reuse data, SKIP_SEED=1 infra only)
+	./scripts/session.sh up $(if $(SKIP_GENERATE),--skip-generate) $(if $(SKIP_SEED),--skip-seed)
 
 down:  ## Destroy all stacks
 	./scripts/session.sh down

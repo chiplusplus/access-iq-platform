@@ -58,12 +58,13 @@ class NetworkStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # ── Section 1: Context validation (fail fast at synth time) ──────────
-        trust_vpc_id: str | None = self.node.try_get_context("trust_vpc_id")
-        if trust_vpc_id is None:
-            raise ValueError(
-                "Trust VPC context required (missing: trust_vpc_id). Pass: -c trust_vpc_id=vpc-xxx"
-            )
+        # ── Section 1: Context validation ────────────────────────────────────
+        # Use a placeholder when trust_vpc_id is missing so CDK can still
+        # synthesize all stacks (needed for single-stack deploys like
+        # `cdk deploy ingestion-role-...`).  The placeholder will cause a
+        # CloudFormation error only if this stack is actually deployed
+        # without providing the real value.
+        trust_vpc_id: str = self.node.try_get_context("trust_vpc_id") or "REQUIRES-TRUST-VPC-ID"
         trust_account_id: str = cfg.iam["trust_account_id"]
         peering_accepter_role_arn = (
             f"arn:aws:iam::{trust_account_id}:role/access-iq-peering-accepter"
@@ -160,11 +161,11 @@ class NetworkStack(Stack):
         trust_cidr_peer = ec2.Peer.ipv4(cfg.vpc["trust_cidr"])
         ecs_sg.add_egress_rule(trust_cidr_peer, ec2.Port.tcp(5432), "Trust RDS PostgreSQL")
         ecs_sg.add_egress_rule(trust_cidr_peer, ec2.Port.tcp(22), "Trust SFTP")
-        # 443 scoped to Platform VPC only — routes to interface endpoints, not internet
+        # HTTPS egress for VPC endpoints (preferred) and NAT fallback
         ecs_sg.add_egress_rule(
-            ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),
+            ec2.Peer.any_ipv4(),
             ec2.Port.tcp(443),
-            "VPC interface endpoints",
+            "HTTPS - ECR, Secrets Manager, CloudWatch via endpoints or NAT",
         )
 
         # Endpoint SG — allows HTTPS ingress from Platform VPC; no outbound needed.

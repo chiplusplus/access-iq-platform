@@ -29,6 +29,7 @@
   "obs": {
     "log_retention_days": 90,
     "alert_email": "ops@example.com",
-    "slack_channel_id": ""
+    "slack_channel_id": "",
+    "slack_workspace_id": ""
   }
 }
