@@ -15,6 +15,8 @@ class EnvConfig:
     iam: dict[str, Any]
     vpc: dict[str, Any]
     tags: dict[str, str]
+    ecs: dict[str, Any]
+    obs: dict[str, Any]
 
 
 def load_env_config(env_name: str) -> EnvConfig:
@@ -45,6 +47,8 @@ def load_env_config(env_name: str) -> EnvConfig:
             iam=dict(raw.get("iam", {})),
             vpc=dict(raw.get("vpc", {})),
             tags=dict(raw.get("tags", {})),
+            ecs=dict(raw.get("ecs", {})),
+            obs=dict(raw.get("obs", {})),
         )
     except KeyError as e:
         raise KeyError(f"Missing required config key {e} in {path}") from e

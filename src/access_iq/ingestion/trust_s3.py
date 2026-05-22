@@ -11,6 +11,7 @@ from access_iq.ingestion.manifests import (
     Manifest,
     ManifestStatus,
     build_manifest_prefix,
+    s3_kms_args,
     utc_now_iso,
     write_manifest,
 )
@@ -27,6 +28,7 @@ def ingest_trust_provider_ref_to_bronze(
     ingest_date: date,
     env: str,
     source_name: str = "trust_s3_provider_ref",
+    kms_key_arn: str | None = None,
 ) -> dict[str, Any]:
     run_id = str(uuid.uuid4())
     started_at = utc_now_iso()
@@ -60,6 +62,7 @@ def ingest_trust_provider_ref_to_bronze(
         MetadataDirective="COPY",
         TaggingDirective="COPY",
         ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        **s3_kms_args(kms_key_arn),
     )
 
     finished_at = utc_now_iso()
@@ -79,7 +82,7 @@ def ingest_trust_provider_ref_to_bronze(
         },
     )
 
-    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest)
+    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
     bound_log.info("ingest_done", status="success")
     return manifest.model_dump()
 
@@ -94,6 +97,7 @@ def ingest_trust_diagnostics_export_date_to_bronze(
     env: str,
     source_name: str = "trust_s3_diagnostics",
     fail_fast: bool = True,
+    kms_key_arn: str | None = None,
 ) -> dict[str, Any]:
     run_id = str(uuid.uuid4())
     started_at = utc_now_iso()
@@ -143,6 +147,7 @@ def ingest_trust_diagnostics_export_date_to_bronze(
                     MetadataDirective="COPY",
                     TaggingDirective="COPY",
                     ContentType="text/csv",
+                    **s3_kms_args(kms_key_arn),
                 )
 
                 results.append(
@@ -185,7 +190,7 @@ def ingest_trust_diagnostics_export_date_to_bronze(
             inputs={"trust_bucket": trust_bucket, "trust_prefix": trust_prefix},
             outputs={"objects_written": 0, "objects_failed": 0, "objects": []},
         )
-        write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest)
+        write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
         return manifest.model_dump()
 
     finished_at = utc_now_iso()
@@ -207,6 +212,6 @@ def ingest_trust_diagnostics_export_date_to_bronze(
         },
     )
 
-    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest)
+    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
     bound_log.info("ingest_done", status=status)
     return manifest.model_dump()

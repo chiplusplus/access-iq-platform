@@ -13,7 +13,7 @@ class FakeS3:
         self.uploads = []
         self.puts = []
 
-    def upload_fileobj(self, *, Fileobj, Bucket, Key):
+    def upload_fileobj(self, *, Fileobj, Bucket, Key, ExtraArgs=None):
         self.uploads.append({"Bucket": Bucket, "Key": Key, "Body": Fileobj.read()})
 
     def put_object(self, **kwargs):
@@ -34,10 +34,11 @@ class FakeTransport:
         self.connected = False
         self.closed = False
 
-    def connect(self, *, username: str, password: str):
+    def connect(self, *, username: str, password: str | None = None, pkey=None):
         self.connected = True
         self.username = username
         self.password = password
+        self.pkey = pkey
 
     def close(self):
         self.closed = True

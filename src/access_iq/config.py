@@ -24,7 +24,8 @@ class SftpSourceCfg(BaseModel):
     host_env: str
     port_env: str
     user_env: str
-    password_env: str
+    password_env: str | None = None
+    private_key_env: str | None = None
     remote_dir: str
     source_name: str | None = None
 
@@ -72,6 +73,8 @@ class Settings(BaseSettings):
     # Pseudonymisation key ARN (consumed by Plan 05; declared here so Settings
     # is the single source of runtime truth). Optional in Phase 1.
     pseudonym_key_secret_arn: str | None = None
+
+    lake_kms_key_arn: str | None = None
 
     postgres_sources: dict[str, PostgresSourceCfg] = Field(default_factory=dict)
     sftp_sources: dict[str, SftpSourceCfg] = Field(default_factory=dict)

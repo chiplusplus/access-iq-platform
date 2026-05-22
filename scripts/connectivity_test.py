@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot Lambda to test TCP connectivity from Platform VPC to Trust RDS.
+"""One-shot Lambda to test TCP connectivity from Platform VPC to Trust services.
 
 Deploy:
   cd infra && cdk deploy ConnectivityTestStack \
@@ -22,6 +22,7 @@ Tear down:
 from __future__ import annotations
 
 import json
+import os
 import socket
 import time
 
@@ -34,9 +35,22 @@ TARGETS: list[tuple[str, str, int]] = [
 ]
 
 
+def _sftp_target_from_env() -> tuple[str, str, int] | None:
+    """Build SFTP target from env vars (set by ECS task definition or manually)."""
+    host = os.environ.get("SFTP_HOST")
+    if not host:
+        return None
+    port = int(os.environ.get("SFTP_PORT", "22"))
+    return ("Trust SFTP (Transfer Family)", host, port)
+
+
 def handler(event: dict, context: object) -> dict:
     results = []
-    for name, host, port in TARGETS:
+    targets = list(TARGETS)
+    sftp = _sftp_target_from_env()
+    if sftp:
+        targets.append(sftp)
+    for name, host, port in targets:
         start = time.time()
         try:
             sock = socket.create_connection((host, port), timeout=5)

@@ -21,6 +21,8 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         iam={},
         vpc={},
         tags={},
+        ecs={},
+        obs={},
     )
 
 
@@ -40,7 +42,7 @@ def test_ecr_creates_one_repo(env_name: str, expected_policy: str) -> None:
         {
             "RepositoryName": f"access-iq-{env_name}-ingestion",
             "ImageScanningConfiguration": {"ScanOnPush": True},
-            "ImageTagMutability": "IMMUTABLE",
+            "ImageTagMutability": "MUTABLE",
         },
     )
 

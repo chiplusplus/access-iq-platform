@@ -60,6 +60,7 @@ def main() -> None:
                 aws_region=settings.aws_region,
                 aws_profile=settings.aws_profile,
                 fail_fast=args.fail_fast,
+                kms_key_arn=settings.lake_kms_key_arn,
             )
             log.info(
                 "ingest_done",
@@ -83,9 +84,20 @@ def main() -> None:
         user = os.getenv(sftp_cfg.user_env)
         if not user:
             raise SystemExit(f"Missing required env var: {sftp_cfg.user_env}")
-        password = os.getenv(sftp_cfg.password_env)
-        if not password:
-            raise SystemExit(f"Missing required env var: {sftp_cfg.password_env}")
+
+        private_key: str | None = None
+        password: str | None = None
+        if sftp_cfg.private_key_env:
+            private_key = os.getenv(sftp_cfg.private_key_env)
+            if not private_key:
+                raise SystemExit(f"Missing required env var: {sftp_cfg.private_key_env}")
+        elif sftp_cfg.password_env:
+            password = os.getenv(sftp_cfg.password_env)
+            if not password:
+                raise SystemExit(f"Missing required env var: {sftp_cfg.password_env}")
+        else:
+            raise SystemExit("SFTP source must define either private_key_env or password_env")
+
         remote_dir = sftp_cfg.remote_dir
         source_name = sftp_cfg.source_name or f"sftp_{args.name}"
 
@@ -96,6 +108,7 @@ def main() -> None:
             port=port,
             username=user,
             password=password,
+            private_key=private_key,
             remote_dir=remote_dir,
             platform_bucket=settings.platform_bucket,
             ingest_date=ingest_date,
@@ -103,6 +116,7 @@ def main() -> None:
             aws_region=settings.aws_region,
             aws_profile_platform=settings.aws_profile,
             fail_fast=args.fail_fast,
+            kms_key_arn=settings.lake_kms_key_arn,
         )
         log.info(
             "ingest_done",
@@ -140,6 +154,7 @@ def main() -> None:
             ingest_date=ingest_date,
             env=settings.env,
             source_name=provider_cfg.source_name or "trust_s3_provider_ref",
+            kms_key_arn=settings.lake_kms_key_arn,
         )
         log.info(
             "ingest_done",
@@ -158,6 +173,7 @@ def main() -> None:
             env=settings.env,
             source_name=diagnostics_cfg.source_name or "trust_s3_diagnostics",
             fail_fast=args.fail_fast,
+            kms_key_arn=settings.lake_kms_key_arn,
         )
         log.info(
             "ingest_done",

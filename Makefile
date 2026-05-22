@@ -1,0 +1,54 @@
+.PHONY: setup fmt lint type test ci up down status ingest
+
+# ── Dev workflow ─────────────────────────────────────────────────────
+setup:  ## Create venv, install deps, install pre-commit hooks
+	uv venv .venv
+	uv pip install -e ".[dev]"
+	uv run pre-commit install
+
+fmt:  ## Format code with ruff
+	ruff format .
+
+lint:  ## Lint code with ruff
+	ruff check .
+
+type:  ## Type-check with mypy
+	mypy .
+
+test:  ## Run tests with coverage
+	pytest --cov=access_iq
+
+ci: fmt lint type test  ## Run full CI pipeline
+
+# ── Infrastructure (CDK) ────────────────────────────────────────────
+# TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.
+# Example: make infra-deploy TRUST_VPC_ID=vpc-0abc123
+AWS_PROFILE ?= CHI-Engineer-222308823356
+CDK_CONTEXT := -c "env=$${CDK_ENV:-dev}" $(if $(TRUST_VPC_ID),-c "trust_vpc_id=$(TRUST_VPC_ID)") --profile $(AWS_PROFILE)
+
+infra-bootstrap:  ## Bootstrap CDK (requires AWS_PROFILE, CDK_ENV)
+	cd infra && uv run cdk bootstrap $(CDK_CONTEXT)
+
+infra-diff:  ## Show CDK diff
+	cd infra && uv run cdk diff $(CDK_CONTEXT)
+
+CDK_DEPLOY_TARGET := $(if $(CDK_STACK),$(CDK_STACK),--all)
+
+infra-deploy:  ## Deploy CDK stacks (optional CDK_STACK=<name>, TRUST_VPC_ID=vpc-xxx)
+	cd infra && uv run cdk deploy $(CDK_DEPLOY_TARGET) $(CDK_CONTEXT) --require-approval never
+
+infra-destroy:  ## Destroy CDK stacks
+	cd infra && uv run cdk destroy --all --force $(CDK_CONTEXT)
+
+# ── Session orchestration ───────────────────────────────────────────
+up:  ## Deploy Trust + Platform stacks (SKIP_GENERATE=1 reuse data, SKIP_SEED=1 infra only)
+	./scripts/session.sh up $(if $(SKIP_GENERATE),--skip-generate) $(if $(SKIP_SEED),--skip-seed)
+
+down:  ## Destroy all stacks
+	./scripts/session.sh down
+
+status:  ## Show current stack states
+	./scripts/session.sh status
+
+ingest:  ## Run Bronze ingestion on ECS Fargate (3 parallel tasks)
+	./scripts/session.sh ingest

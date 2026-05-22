@@ -15,6 +15,7 @@ from access_iq.ingestion.manifests import (
     Manifest,
     ManifestStatus,
     build_manifest_prefix,
+    s3_kms_args,
     utc_now_iso,
     write_manifest,
 )
@@ -31,6 +32,7 @@ def ingest_table_to_bronze(
     ingest_date: date,
     s3_client: Any,
     run_id: str,
+    kms_key_arn: str | None = None,
 ) -> dict[str, Any]:
     started_at = utc_now_iso()
 
@@ -49,10 +51,12 @@ def ingest_table_to_bronze(
     )
 
     try:
+        extra = s3_kms_args(kms_key_arn)
         s3_client.upload_fileobj(
             Fileobj=_copy_stream(cursor, copy_sql),
             Bucket=platform_bucket,
             Key=bronze_key,
+            ExtraArgs=extra if extra else None,
         )
     finally:
         cursor.close()
@@ -80,6 +84,7 @@ def ingest_postgres_source_to_bronze(
     aws_region: str,
     aws_profile: str | None = None,
     fail_fast: bool = True,
+    kms_key_arn: str | None = None,
 ) -> dict[str, Any]:
     run_id = str(uuid.uuid4())
     started_at = utc_now_iso()
@@ -119,6 +124,7 @@ def ingest_postgres_source_to_bronze(
                     ingest_date=ingest_date,
                     s3_client=s3,
                     run_id=run_id,
+                    kms_key_arn=kms_key_arn,
                 )
             )
             bound_log.info("table_ingest_done", table=table, status="success")
@@ -160,7 +166,7 @@ def ingest_postgres_source_to_bronze(
         },
     )
 
-    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest)
+    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
     return manifest.model_dump()
 
 

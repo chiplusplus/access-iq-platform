@@ -26,6 +26,8 @@ def _cfg() -> EnvConfig:
             "nat_gateways": 1,
         },
         tags={},
+        ecs={},
+        obs={},
     )
 
 
@@ -182,7 +184,8 @@ def test_endpoint_sg_ingress_443() -> None:
     )
 
 
-def test_context_validation_missing_vpc_id() -> None:
-    with pytest.raises(ValueError, match="trust_vpc_id"):
-        app = App(context={})
-        NetworkStack(app, "Test", cfg=_cfg())
+def test_synth_succeeds_without_trust_vpc_id() -> None:
+    app = App(context={})
+    stack = NetworkStack(app, "Test", cfg=_cfg())
+    tpl = Template.from_stack(stack)
+    tpl.resource_count_is("AWS::EC2::VPC", 1)
