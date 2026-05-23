@@ -74,13 +74,13 @@ cmd_up() {
   done
 
   echo ""
-  echo "  Deploy sequence: Trust bootstrap → Platform → Trust (routes + SGs) → Secrets → Docker → Ingest"
+  echo "  Deploy sequence: Trust bootstrap → Snapshot check → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
-  step_start "1/7" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
+  step_start "1/8" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
   if [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
@@ -91,16 +91,83 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/7" "Read Trust outputs" "<5s"
+  step_start "2/8" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/7" "Deploy Platform stacks" "5-8 min"
+  step_start "3/8" "Check for Redshift snapshot to restore" "5s"
+
+  local RS_NAMESPACE="access-iq-${CDK_ENV}"
+  local RESTORE_SNAPSHOT_NAME=""
+  local LATEST_SNAPSHOT
+  LATEST_SNAPSHOT=$(aws redshift-serverless list-snapshots \
+    --namespace-name "$RS_NAMESPACE" \
+    --query 'snapshots | sort_by(@, &snapshotCreateTime) | [-1].snapshotName' \
+    --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "None")
+
+  if [ "$LATEST_SNAPSHOT" != "None" ] && [ -n "$LATEST_SNAPSHOT" ]; then
+    echo "  Found snapshot for restore: $LATEST_SNAPSHOT"
+    RESTORE_SNAPSHOT_NAME="$LATEST_SNAPSHOT"
+  else
+    echo "  No existing snapshot found -- fresh namespace will be created"
+  fi
+
+  step_done
+
+  step_start "4/8" "Deploy Platform stacks" "5-10min"
+
+  local CDK_CONTEXT_ARGS="-c env=$CDK_ENV -c trust_vpc_id=$TRUST_VPC"
+  if [ -n "$RESTORE_SNAPSHOT_NAME" ]; then
+    CDK_CONTEXT_ARGS="$CDK_CONTEXT_ARGS -c restore_snapshot_name=$RESTORE_SNAPSHOT_NAME"
+    echo "  Passing restore_snapshot_name=$RESTORE_SNAPSHOT_NAME to CDK"
+  fi
+
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
-    -c "env=$CDK_ENV" \
-    -c "trust_vpc_id=$TRUST_VPC" \
-    --require-approval never)
+    $CDK_CONTEXT_ARGS --require-approval never)
+
+  # Export BRONZE_S3_PREFIX for dbt
+  local PLATFORM_BUCKET
+  PLATFORM_BUCKET=$(aws cloudformation describe-stacks \
+    --stack-name "lake-access-iq-${CDK_ENV}" \
+    --query "Stacks[0].Outputs[?OutputKey==\`BucketName\`].OutputValue" \
+    --output text --profile "$AWS_PROFILE" --region "$REGION")
+  export BRONZE_S3_PREFIX="s3://${PLATFORM_BUCKET}/bronze"
+  echo "  BRONZE_S3_PREFIX=${BRONZE_S3_PREFIX}"
+
+  step_done
+
+  step_start "5/8" "Pre-warm Redshift Serverless (SELECT 1)" "30-60s"
+
+  local RS_WORKGROUP="access-iq-${CDK_ENV}"
+  local RS_DB="dev"
+
+  # Wait for workgroup to be AVAILABLE (may take 30-60s after CDK deploy)
+  local rs_status="CREATING"
+  local wait_count=0
+  while [ "$rs_status" != "AVAILABLE" ] && [ "$wait_count" -lt 30 ]; do
+    rs_status=$(aws redshift-serverless get-workgroup \
+      --workgroup-name "$RS_WORKGROUP" \
+      --query 'workgroup.status' --output text \
+      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_FOUND")
+    if [ "$rs_status" != "AVAILABLE" ]; then
+      sleep 10
+      wait_count=$((wait_count + 1))
+      echo "    Waiting for workgroup... ($rs_status)"
+    fi
+  done
+
+  if [ "$rs_status" = "AVAILABLE" ]; then
+    aws redshift-data execute-statement \
+      --workgroup-name "$RS_WORKGROUP" \
+      --database "$RS_DB" \
+      --sql "SELECT 1" \
+      --profile "$AWS_PROFILE" --region "$REGION" >/dev/null 2>&1
+    echo "  Pre-warm query sent to $RS_WORKGROUP"
+  else
+    echo "  WARNING: Redshift workgroup not available after 5 min -- skipping pre-warm"
+  fi
+
   step_done
 
   PLATFORM_VPC=$(aws ec2 describe-vpcs \
@@ -113,7 +180,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "4/7" "Redeploy Trust with routes and peering SG rules" "~2 min"
+  step_start "6/8" "Redeploy Trust with routes and peering SG rules" "~2 min"
   echo "  Platform VPC:  $PLATFORM_VPC"
   echo "  Peering ID:    $PEERING_ID"
   (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
@@ -124,8 +191,8 @@ cmd_up() {
     --require-approval never)
   step_done
 
-  # ── Step 5: Seed Platform secrets from Trust outputs ──
-  step_start "5/7" "Seed Platform secrets from Trust" "<30s"
+  # ── Step 7: Seed Platform secrets from Trust outputs ──
+  step_start "7/8" "Seed Platform secrets from Trust" "<30s"
 
   local SECRET_PREFIX="access-iq/${CDK_ENV}"
 
@@ -266,8 +333,8 @@ cmd_up() {
 
   step_done
 
-  # ── Step 6: Build and push Docker image to ECR ──
-  step_start "6/7" "Build and push ingestion image to ECR" "1-3 min"
+  # ── Step 8: Build and push Docker image to ECR ──
+  step_start "8/8" "Build and push ingestion image to ECR" "1-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -356,12 +423,19 @@ cmd_status() {
   echo "═══ Platform Account (${CDK_ENV}) ═══"
   echo ""
 
-  for stack in lake secrets catalog ecr ingestion-role network observability compute; do
+  for stack in lake secrets catalog ecr ingestion-role network observability compute warehouse; do
     status=$(aws cloudformation describe-stacks --stack-name "${stack}-access-iq-${CDK_ENV}" \
       --query 'Stacks[0].StackStatus' --output text \
       --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT DEPLOYED")
     printf "  %-28s %s\n" "$stack" "$status"
   done
+
+  local rs_status
+  rs_status=$(aws redshift-serverless get-workgroup \
+    --workgroup-name "access-iq-${CDK_ENV}" \
+    --query 'workgroup.status' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
+  printf "  %-28s %s\n" "Redshift Workgroup" "$rs_status"
 
   echo ""
   echo "═══ Connectivity ═══"
@@ -559,15 +633,60 @@ cmd_ingest() {
   echo ""
 }
 
+cmd_cleanup_snapshots() {
+  local RS_NAMESPACE="access-iq-${CDK_ENV}"
+  local KEEP_COUNT="${1:-2}"  # Keep the N most recent snapshots, default 2
+
+  echo "Cleaning up old Redshift snapshots for namespace: $RS_NAMESPACE"
+  echo "  Keeping $KEEP_COUNT most recent snapshots"
+
+  local ALL_SNAPSHOTS
+  ALL_SNAPSHOTS=$(aws redshift-serverless list-snapshots \
+    --namespace-name "$RS_NAMESPACE" \
+    --query 'snapshots | sort_by(@, &snapshotCreateTime) | [*].snapshotName' \
+    --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null)
+
+  if [ -z "$ALL_SNAPSHOTS" ] || [ "$ALL_SNAPSHOTS" = "None" ]; then
+    echo "  No snapshots found."
+    return 0
+  fi
+
+  local SNAPSHOT_COUNT
+  SNAPSHOT_COUNT=$(echo "$ALL_SNAPSHOTS" | wc -w | tr -d ' ')
+
+  if [ "$SNAPSHOT_COUNT" -le "$KEEP_COUNT" ]; then
+    echo "  Only $SNAPSHOT_COUNT snapshot(s) found, nothing to clean up."
+    return 0
+  fi
+
+  local DELETE_COUNT=$((SNAPSHOT_COUNT - KEEP_COUNT))
+  echo "  Found $SNAPSHOT_COUNT snapshots, deleting $DELETE_COUNT oldest..."
+
+  local i=0
+  for snap in $ALL_SNAPSHOTS; do
+    if [ "$i" -ge "$DELETE_COUNT" ]; then
+      break
+    fi
+    echo "    Deleting: $snap"
+    aws redshift-serverless delete-snapshot \
+      --snapshot-name "$snap" \
+      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || true
+    i=$((i + 1))
+  done
+
+  echo "  Cleanup complete. Kept $KEEP_COUNT most recent snapshots."
+}
+
 # ── Main ──────────────────────────────────────────────────────────────
 
 case "${1:-}" in
-  up)     shift; cmd_up "$@" ;;
-  down)   cmd_down ;;
-  status) cmd_status ;;
-  ingest) cmd_ingest ;;
+  up)                shift; cmd_up "$@" ;;
+  down)              cmd_down ;;
+  status)            cmd_status ;;
+  ingest)            cmd_ingest ;;
+  cleanup-snapshots) shift; cmd_cleanup_snapshots "$@" ;;
   *)
-    echo "Usage: $0 {up|down|status|ingest}"
+    echo "Usage: $0 {up|down|status|ingest|cleanup-snapshots}"
     echo ""
     echo "  up [flags]            Deploy Trust + Platform, publish data, run ingestion (~25 min)"
     echo "                        --skip-generate: reuse existing data/staging/ instead of regenerating"
@@ -575,6 +694,7 @@ case "${1:-}" in
     echo "  down                  Destroy Platform + Trust stacks (~8 min)"
     echo "  status                Show current stack states"
     echo "  ingest                Run all 3 Bronze ingestion tasks on ECS (~5 min)"
+    echo "  cleanup-snapshots [N] Delete old Redshift snapshots, keep N most recent (default 2)"
     exit 1
     ;;
 esac

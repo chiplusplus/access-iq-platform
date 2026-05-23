@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test ci up down status ingest
+.PHONY: setup fmt lint type test ci up down status ingest dbt
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -52,3 +52,6 @@ status:  ## Show current stack states
 
 ingest:  ## Run Bronze ingestion on ECS Fargate (3 parallel tasks)
 	./scripts/session.sh ingest
+
+dbt:  ## Run dbt command (e.g., make dbt CMD="run --select silver")
+	cd dbt && uv run dbt $(CMD) --profiles-dir .
