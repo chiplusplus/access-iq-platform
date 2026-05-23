@@ -137,7 +137,7 @@ cmd_up() {
 
   step_done
 
-  step_start "5/8" "Pre-warm Redshift Serverless (SELECT 1)" "30-60s"
+  step_start "5/8" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
   local RS_WORKGROUP="access-iq-${CDK_ENV}"
   local RS_DB="dev"
@@ -158,12 +158,21 @@ cmd_up() {
   done
 
   if [ "$rs_status" = "AVAILABLE" ]; then
-    aws redshift-data execute-statement \
+    local SPECTRUM_ROLE_ARN
+    SPECTRUM_ROLE_ARN=$(aws cloudformation describe-stacks \
+      --stack-name "warehouse-access-iq-${CDK_ENV}" \
+      --query "Stacks[0].Outputs[?OutputKey=='SpectrumRoleArn'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION")
+    local GLUE_DB="access-iq-${CDK_ENV}-bronze"
+
+    local STMT_ID
+    STMT_ID=$(aws redshift-data execute-statement \
       --workgroup-name "$RS_WORKGROUP" \
       --database "$RS_DB" \
-      --sql "SELECT 1" \
-      --profile "$AWS_PROFILE" --region "$REGION" >/dev/null 2>&1
-    echo "  Pre-warm query sent to $RS_WORKGROUP"
+      --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}';" \
+      --query 'Id' --output text \
+      --profile "$AWS_PROFILE" --region "$REGION")
+    echo "  Spectrum external schema created (also serves as pre-warm)"
   else
     echo "  WARNING: Redshift workgroup not available after 5 min -- skipping pre-warm"
   fi
