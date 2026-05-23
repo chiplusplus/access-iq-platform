@@ -185,19 +185,8 @@ def test_namespace_final_snapshot_has_retention() -> None:
     )
 
 
-def test_restore_cr_configured_when_context_set() -> None:
-    tpl = _template(context={"restore_snapshot_name": "access-iq-dev-final-1234567890"})
-    # Restore CR creates an additional Custom::AWS resource alongside the usage limit CR
-    resources = tpl.find_resources("Custom::AWS")
-    assert len(resources) >= 2, (
-        f"Expected at least 2 Custom::AWS resources (usage limit + restore CR), "
-        f"found {len(resources)}"
-    )
-
-
-def test_no_restore_cr_when_context_absent() -> None:
+def test_only_usage_limit_cr_exists() -> None:
     tpl = _template()
-    # Without context, only the usage limit CR should exist — no restore CR
     resources = tpl.find_resources("Custom::AWS")
     assert len(resources) == 1, (
         f"Expected exactly 1 Custom::AWS resource (usage limit only), found {len(resources)}"

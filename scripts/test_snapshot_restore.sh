@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Integration test: verify Redshift snapshot/restore round-trip preserves data.
+# This is a standalone test — snapshot restore is NOT part of the make up flow.
 # Usage: ./scripts/test_snapshot_restore.sh
 # Requires: Redshift Serverless workgroup deployed (make up first).
 set -euo pipefail
@@ -83,19 +84,37 @@ LATEST_SNAPSHOT=$(aws redshift-serverless list-snapshots \
   --output text --profile "$AWS_PROFILE" --region "$REGION")
 echo "   Latest snapshot: $LATEST_SNAPSHOT"
 
-# ── Step 5: Redeploy warehouse stack (restore from snapshot) ──────────
+# ── Step 5: Restore namespace from snapshot via CLI ──────────────────
 
-echo "5. Redeploying warehouse stack (restore from snapshot)..."
+echo "5. Restoring namespace from snapshot..."
+aws redshift-serverless restore-from-snapshot \
+  --namespace-name "access-iq-${CDK_ENV}" \
+  --workgroup-name "$RS_WORKGROUP" \
+  --snapshot-name "$LATEST_SNAPSHOT" \
+  --profile "$AWS_PROFILE" --region "$REGION"
+
+echo "   Waiting for namespace restore..."
+ns_status="RESTORING"
+while [ "$ns_status" != "AVAILABLE" ]; do
+  sleep 15
+  ns_status=$(aws redshift-serverless get-namespace \
+    --namespace-name "access-iq-${CDK_ENV}" \
+    --query 'namespace.status' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "RESTORING")
+  echo "   Namespace status: $ns_status"
+done
+echo "   Namespace restored."
+
+# ── Step 6: Redeploy warehouse stack to recreate workgroup ───────────
+
+echo "6. Redeploying warehouse stack (recreate workgroup)..."
 (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy \
   "warehouse-access-iq-${CDK_ENV}" \
   -c "env=$CDK_ENV" -c "trust_vpc_id=$TRUST_VPC" \
-  -c "restore_snapshot_name=$LATEST_SNAPSHOT" \
   --require-approval never)
 echo "   Warehouse stack redeployed."
 
-# ── Step 6: Wait for workgroup to be available ────────────────────────
-
-echo "6. Waiting for workgroup..."
+echo "7. Waiting for workgroup..."
 wg_status="CREATING"
 while [ "$wg_status" != "AVAILABLE" ]; do
   wg_status=$(aws redshift-serverless get-workgroup \
@@ -106,9 +125,9 @@ while [ "$wg_status" != "AVAILABLE" ]; do
 done
 echo "   Workgroup AVAILABLE."
 
-# ── Step 7: Verify marker row survived ───────────────────────────────
+# ── Step 8: Verify marker row survived ───────────────────────────────
 
-echo "7. Verifying marker row survived restore..."
+echo "8. Verifying marker row survived restore..."
 STMT_ID=$(aws redshift-data execute-statement \
   --workgroup-name "$RS_WORKGROUP" \
   --database "$RS_DB" \

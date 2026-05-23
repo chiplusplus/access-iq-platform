@@ -74,13 +74,13 @@ cmd_up() {
   done
 
   echo ""
-  echo "  Deploy sequence: Trust bootstrap → Snapshot check → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest"
+  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
-  step_start "1/8" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
+  step_start "1/7" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
   if [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
@@ -91,37 +91,14 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/8" "Read Trust outputs" "<5s"
+  step_start "2/7" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/8" "Check for Redshift snapshot to restore" "5s"
-
-  local RS_NAMESPACE="access-iq-${CDK_ENV}"
-  local RESTORE_SNAPSHOT_NAME=""
-  local LATEST_SNAPSHOT
-  LATEST_SNAPSHOT=$(aws redshift-serverless list-snapshots \
-    --namespace-name "$RS_NAMESPACE" \
-    --query 'snapshots | sort_by(@, &snapshotCreateTime) | [-1].snapshotName' \
-    --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "None")
-
-  if [ "$LATEST_SNAPSHOT" != "None" ] && [ -n "$LATEST_SNAPSHOT" ]; then
-    echo "  Found snapshot for restore: $LATEST_SNAPSHOT"
-    RESTORE_SNAPSHOT_NAME="$LATEST_SNAPSHOT"
-  else
-    echo "  No existing snapshot found -- fresh namespace will be created"
-  fi
-
-  step_done
-
-  step_start "4/8" "Deploy Platform stacks" "5-10min"
+  step_start "3/7" "Deploy Platform stacks" "5-10min"
 
   local CDK_CONTEXT_ARGS="-c env=$CDK_ENV -c trust_vpc_id=$TRUST_VPC"
-  if [ -n "$RESTORE_SNAPSHOT_NAME" ]; then
-    CDK_CONTEXT_ARGS="$CDK_CONTEXT_ARGS -c restore_snapshot_name=$RESTORE_SNAPSHOT_NAME"
-    echo "  Passing restore_snapshot_name=$RESTORE_SNAPSHOT_NAME to CDK"
-  fi
 
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
     $CDK_CONTEXT_ARGS --require-approval never)
@@ -137,7 +114,7 @@ cmd_up() {
 
   step_done
 
-  step_start "5/8" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
+  step_start "4/7" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
   local RS_WORKGROUP="access-iq-${CDK_ENV}"
   local RS_DB="dev"
@@ -165,14 +142,14 @@ cmd_up() {
       --output text --profile "$AWS_PROFILE" --region "$REGION")
     local GLUE_DB="access-iq-${CDK_ENV}-bronze"
 
-    local STMT_ID
-    STMT_ID=$(aws redshift-data execute-statement \
+    SPECTRUM_STMT_ID=""
+    SPECTRUM_STMT_ID=$(aws redshift-data execute-statement \
       --workgroup-name "$RS_WORKGROUP" \
       --database "$RS_DB" \
       --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}';" \
       --query 'Id' --output text \
       --profile "$AWS_PROFILE" --region "$REGION")
-    echo "  Spectrum external schema created (also serves as pre-warm)"
+    echo "  Spectrum schema statement submitted (will verify at end)"
   else
     echo "  WARNING: Redshift workgroup not available after 5 min -- skipping pre-warm"
   fi
@@ -189,7 +166,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "6/8" "Redeploy Trust with routes and peering SG rules" "~2 min"
+  step_start "5/7" "Redeploy Trust with routes and peering SG rules" "~2 min"
   echo "  Platform VPC:  $PLATFORM_VPC"
   echo "  Peering ID:    $PEERING_ID"
   (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
@@ -201,7 +178,7 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "7/8" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/7" "Seed Platform secrets from Trust" "<30s"
 
   local SECRET_PREFIX="access-iq/${CDK_ENV}"
 
@@ -343,7 +320,7 @@ cmd_up() {
   step_done
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "8/8" "Build and push ingestion image to ECR" "1-3 min"
+  step_start "7/7" "Build and push ingestion image to ECR" "1-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -363,6 +340,24 @@ cmd_up() {
 
   # ── Step 7: Run Bronze ingestion (all 3 sources) ──
   cmd_ingest
+
+  # Verify Spectrum schema creation completed (submitted in step 4/7).
+  # AWS_PROFILE may have been unset by cmd_ingest (STS assume-role), so use saved value.
+  if [ -n "${SPECTRUM_STMT_ID:-}" ]; then
+    local saved_profile="${AWS_PROFILE:-CHI-Engineer-222308823356}"
+    local stmt_status="SUBMITTED"
+    while [ "$stmt_status" != "FINISHED" ] && [ "$stmt_status" != "FAILED" ]; do
+      sleep 2
+      stmt_status=$(aws redshift-data describe-statement --id "$SPECTRUM_STMT_ID" \
+        --query 'Status' --output text \
+        --profile "$saved_profile" --region "$REGION")
+    done
+    if [ "$stmt_status" = "FINISHED" ]; then
+      echo "  ✓ Spectrum external schema ready"
+    else
+      echo "  WARNING: Spectrum schema creation failed — run CREATE EXTERNAL SCHEMA manually"
+    fi
+  fi
 
   session_summary
   echo ""

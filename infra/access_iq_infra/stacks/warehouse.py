@@ -3,12 +3,8 @@
 Snapshot lifecycle:
   - FinalSnapshotName uses a timestamp suffix to guarantee uniqueness across destroy/recreate
     cycles (avoids SnapshotAlreadyExistsFault — Pitfall 6).
-  - Restore CR is conditional: only created when the CDK context key
-    ``restore_snapshot_name`` is set (by session.sh cmd_up before cdk deploy).
-  - No pre-destroy CR needed — timestamped names mean there is never a collision to clean up.
-
-Required CDK context params (optional):
-    -c restore_snapshot_name=<snapshot-name>   # if omitted, first-deploy path (no restore)
+  - Snapshots are taken automatically on ``cdk destroy`` but not auto-restored on deploy.
+    Fresh namespace is created each session; bronze data in S3 persists for dbt rebuilds.
 """
 
 from __future__ import annotations
@@ -43,7 +39,6 @@ class WarehouseStack(Stack):
       - Spectrum IAM role  (S3 read on lake + Glue Catalog read-only)
       - Redshift security group  (inbound 5439 from ECS task SG only)
       - Usage limit CR  (caps RPU-hours/day via AwsCustomResource — CfnUsageLimit not in CDK)
-      - Restore CR  (conditional on restore_snapshot_name context key)
 
     Exposes:
         self.workgroup      — rs.CfnWorkgroup
@@ -142,7 +137,7 @@ class WarehouseStack(Stack):
             self,
             "Workgroup",
             workgroup_name=prefix,
-            namespace_name=namespace.namespace_name,  # type: ignore[arg-type]
+            namespace_name=namespace.namespace_name,
             base_capacity=cfg.redshift.get("base_capacity", 8),
             enhanced_vpc_routing=True,
             publicly_accessible=False,
@@ -172,32 +167,6 @@ class WarehouseStack(Stack):
         )
         usage_limit_cr.node.add_dependency(workgroup)
 
-        # ── Restore CR (D-01, conditional) ───────────────────────────────────
-        # Only created when a snapshot name is provided via CDK context.
-        # session.sh cmd_up resolves the latest snapshot before cdk deploy.
-        restore_snapshot: str | None = self.node.try_get_context("restore_snapshot_name")
-        if restore_snapshot is not None:
-            restore_cr = AwsCustomResource(
-                self,
-                "RestoreFromSnapshotCr",
-                on_create=AwsSdkCall(
-                    service="redshift-serverless",
-                    action="restoreFromSnapshot",
-                    parameters={
-                        "namespaceName": prefix,
-                        "workgroupName": prefix,
-                        "snapshotName": restore_snapshot,
-                    },
-                    physical_resource_id=PhysicalResourceId.of("RestoreFromSnapshot"),
-                    ignore_error_codes_matching=(
-                        "SnapshotNotFoundFault|ResourceNotFoundException|ConflictException"
-                    ),
-                ),
-                policy=AwsCustomResourcePolicy.from_sdk_calls(resources=["*"]),
-                install_latest_aws_sdk=False,
-            )
-            restore_cr.node.add_dependency(workgroup)
-
         # ── CfnOutputs ───────────────────────────────────────────────────────
         CfnOutput(
             self,
@@ -216,7 +185,7 @@ class WarehouseStack(Stack):
         CfnOutput(
             self,
             "NamespaceName",
-            value=namespace.namespace_name,  # type: ignore[arg-type]
+            value=namespace.namespace_name,
             export_name=f"{prefix}-redshift-namespace",
             description="Redshift Serverless namespace name",
         )
