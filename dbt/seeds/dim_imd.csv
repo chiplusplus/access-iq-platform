@@ -1,0 +1,11 @@
+imd_decile,imd_label,deprivation_level
+1,Most deprived 10%,Most deprived
+2,10-20%,More deprived
+3,20-30%,More deprived
+4,30-40%,Average
+5,40-50%,Average
+6,50-60%,Average
+7,60-70%,Average
+8,70-80%,Less deprived
+9,80-90%,Less deprived
+10,Least deprived 10%,Least deprived

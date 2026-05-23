@@ -25,3 +25,14 @@ access_iq:
       autocreate: true
       db_groups: []
       threads: 4
+    ci:
+      # Database method with dummy credentials for CI parse/compile (no live connection needed)
+      type: redshift
+      method: database
+      host: localhost
+      port: 5439
+      user: ci
+      password: ci
+      dbname: dev
+      schema: bronze_external
+      threads: 4
