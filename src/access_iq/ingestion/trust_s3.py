@@ -25,7 +25,7 @@ log = structlog.get_logger(__name__)
 
 def _csv_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
     """Convert CSV bytes to Parquet buffer."""
-    text = raw_bytes.decode("utf-8")
+    text = raw_bytes.decode("utf-8", errors="replace")
     reader = csv_mod.DictReader(io.StringIO(text))
     rows = list(reader)
     if not rows:
