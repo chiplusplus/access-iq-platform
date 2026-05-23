@@ -8,6 +8,8 @@ import types
 from datetime import date
 from typing import Any, cast
 
+import pyarrow.parquet as pq
+
 # Safe import if optional deps are missing in local env
 if "boto3" not in sys.modules:
     boto3_module = types.ModuleType("boto3")
@@ -24,11 +26,18 @@ manifests_mod = importlib.import_module("access_iq.ingestion.manifests")
 
 class FakeCursor:
     def __init__(self):
-        self.copy_calls = []
+        self.execute_calls = []
+        self._description = [("id",), ("name",)]
 
-    def copy_expert(self, sql, buffer):
-        self.copy_calls.append(sql)
-        buffer.write(b"id,name\n1,Ada\n")
+    def execute(self, sql: str) -> None:
+        self.execute_calls.append(sql)
+
+    def fetchall(self) -> list:
+        return [(1, "Ada")]
+
+    @property
+    def description(self):
+        return self._description
 
     def __enter__(self):
         return self
@@ -63,7 +72,7 @@ class FakeS3:
         self.puts = []
 
     def upload_fileobj(self, *, Fileobj, Bucket, Key, ExtraArgs=None):
-        self.uploads.append({"bucket": Bucket, "key": Key, "body": Fileobj.read().decode("utf-8")})
+        self.uploads.append({"bucket": Bucket, "key": Key, "body": Fileobj.read()})
 
     def put_object(self, **kwargs):
         self.puts.append(kwargs)
@@ -78,13 +87,23 @@ class FakeSession:
         return self._s3
 
 
-def test_copy_stream_writes_and_resets_pointer():
+def test_parquet_buffer_writes_parquet():
     cursor = FakeCursor()
-    stream = pg._copy_stream(cursor, "COPY (SELECT * FROM t) TO STDOUT WITH CSV HEADER")
+    buf = pg._parquet_buffer(cursor, "patients")
 
-    assert isinstance(stream, io.BytesIO)
-    assert stream.tell() == 0
-    assert stream.read().startswith(b"id,name")
+    assert isinstance(buf, io.BytesIO)
+    assert buf.tell() == 0
+    # Parquet magic bytes at start
+    assert buf.read(4) == b"PAR1"
+
+
+def test_parquet_buffer_output_is_readable():
+    cursor = FakeCursor()
+    buf = pg._parquet_buffer(cursor, "patients")
+
+    tbl = pq.read_table(buf)
+    assert tbl.column_names == ["id", "name"]
+    assert tbl.num_rows == 1
 
 
 def test_ingest_table_to_bronze_uploads_expected_key(monkeypatch):
@@ -94,15 +113,6 @@ def test_ingest_table_to_bronze_uploads_expected_key(monkeypatch):
 
     monkeypatch.setattr(pg, "utc_now_iso", lambda: "2026-02-20T00:00:00+00:00")
     monkeypatch.setattr(pg.psycopg2, "connect", lambda dsn: conn)
-
-    # psycopg2.sql.Identifier.as_string() calls extensions.quote_ident(...),
-    # which normally requires a real psycopg cursor/connection C type.
-    # Patch it so this unit test can run with FakeCursor/FakeConn.
-    monkeypatch.setattr(
-        pg.psycopg2.extensions,
-        "quote_ident",
-        lambda ident, _ctx: f'"{ident}"',
-    )
 
     out = pg.ingest_table_to_bronze(
         dsn="postgres://dsn",
@@ -118,13 +128,13 @@ def test_ingest_table_to_bronze_uploads_expected_key(monkeypatch):
     assert out["db"] == "ehr"
     assert out["table"] == "patients"
     assert (
-        "bronze/source=ehr/entity=patients/ingest_date=2026-02-20/run_id=run-1/patients.csv"
+        "bronze/source=ehr/entity=patients/ingest_date=2026-02-20/run_id=run-1/patients.parquet"
         in out["s3_key"]
     )
     assert len(s3.uploads) == 1
     assert s3.uploads[0]["bucket"] == "platform"
-    assert "id,name" in s3.uploads[0]["body"]
-    assert cursor.copy_calls[0] == 'COPY (SELECT * FROM "patients") TO STDOUT WITH CSV HEADER'
+    # Uploaded bytes start with Parquet magic
+    assert s3.uploads[0]["body"][:4] == b"PAR1"
 
 
 def test_ingest_postgres_source_skips_when_latest_manifest_success(monkeypatch):
@@ -172,7 +182,7 @@ def test_ingest_postgres_source_success_writes_manifest(monkeypatch):
             "db": kwargs["db"],
             "table": kwargs["table"],
             "status": "success",
-            "s3_key": f"k/{kwargs['table']}.csv",
+            "s3_key": f"k/{kwargs['table']}.parquet",
         },
     )
 
