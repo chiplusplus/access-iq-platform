@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import csv as csv_mod
+import io
 import uuid
 from datetime import date
 from typing import Any
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import structlog
 
 from access_iq.ingestion.idempotency import should_skip_if_already_successful
@@ -17,6 +21,22 @@ from access_iq.ingestion.manifests import (
 )
 
 log = structlog.get_logger(__name__)
+
+
+def _csv_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
+    """Convert CSV bytes to Parquet buffer."""
+    text = raw_bytes.decode("utf-8")
+    reader = csv_mod.DictReader(io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        columns = reader.fieldnames or []
+        tbl = pa.Table.from_pydict({col: [] for col in columns})
+    else:
+        tbl = pa.Table.from_pydict({col: [row[col] for row in rows] for col in rows[0].keys()})
+    buf = io.BytesIO()
+    pq.write_table(tbl, buf, compression="snappy")
+    buf.seek(0)
+    return buf
 
 
 def ingest_trust_provider_ref_to_bronze(
@@ -52,17 +72,18 @@ def ingest_trust_provider_ref_to_bronze(
 
     bronze_key = (
         f"bronze/source={source_name}/entity=provider_site_reference/"
-        f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/provider_site_reference.xlsx"
+        f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/provider_site_reference.parquet"
     )
 
-    s3.copy_object(
+    response = s3.get_object(Bucket=trust_bucket, Key=trust_key)
+    raw_bytes = response["Body"].read()
+    parquet_buf = _csv_bytes_to_parquet_buffer(raw_bytes)
+    extra = s3_kms_args(kms_key_arn)
+    s3.upload_fileobj(
+        Fileobj=parquet_buf,
         Bucket=platform_bucket,
         Key=bronze_key,
-        CopySource={"Bucket": trust_bucket, "Key": trust_key},
-        MetadataDirective="COPY",
-        TaggingDirective="COPY",
-        ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        **s3_kms_args(kms_key_arn),
+        ExtraArgs=extra if extra else None,
     )
 
     finished_at = utc_now_iso()
@@ -134,20 +155,27 @@ def ingest_trust_diagnostics_export_date_to_bronze(
             if not trust_key:
                 continue
             try:
-                filename = trust_key.split("/")[-1] or "part.csv"
+                src_filename = trust_key.split("/")[-1] or "part.csv"
+                # Derive parquet filename
+                parquet_filename = (
+                    src_filename[:-4] + ".parquet"
+                    if src_filename.lower().endswith(".csv")
+                    else src_filename + ".parquet"
+                )
                 bronze_key = (
                     f"bronze/source={source_name}/entity=diagnostics_orders/"
-                    f"ingest_date={export_date.isoformat()}/run_id={run_id}/{filename}"
+                    f"ingest_date={export_date.isoformat()}/run_id={run_id}/{parquet_filename}"
                 )
 
-                s3.copy_object(
+                response = s3.get_object(Bucket=trust_bucket, Key=trust_key)
+                raw_bytes = response["Body"].read()
+                parquet_buf = _csv_bytes_to_parquet_buffer(raw_bytes)
+                extra = s3_kms_args(kms_key_arn)
+                s3.upload_fileobj(
+                    Fileobj=parquet_buf,
                     Bucket=platform_bucket,
                     Key=bronze_key,
-                    CopySource={"Bucket": trust_bucket, "Key": trust_key},
-                    MetadataDirective="COPY",
-                    TaggingDirective="COPY",
-                    ContentType="text/csv",
-                    **s3_kms_args(kms_key_arn),
+                    ExtraArgs=extra if extra else None,
                 )
 
                 results.append(
@@ -159,13 +187,13 @@ def ingest_trust_diagnostics_export_date_to_bronze(
                         "status": "success",
                     }
                 )
-                bound_log.info("object_copied", trust_key=trust_key, bronze_key=bronze_key)
+                bound_log.info("object_uploaded", trust_key=trust_key, bronze_key=bronze_key)
             except Exception as e:
                 status = "failed"
                 err = f"{type(e).__name__}: {e}"
                 run_errors.append(err)
                 results.append({"trust_key": trust_key, "status": "failed", "error": err})
-                bound_log.error("object_copy_failed", trust_key=trust_key, error=err)
+                bound_log.error("object_upload_failed", trust_key=trust_key, error=err)
                 if fail_fast:
                     break
         if status == "failed" and fail_fast:

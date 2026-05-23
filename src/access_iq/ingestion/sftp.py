@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv as csv_mod
 import hashlib
 import io
 import stat
@@ -10,6 +11,8 @@ from typing import Any
 
 import boto3
 import paramiko
+import pyarrow as pa
+import pyarrow.parquet as pq
 import structlog
 
 from access_iq.ingestion.idempotency import should_skip_if_already_successful
@@ -38,6 +41,23 @@ class FileResult:
     s3_key: str
     status: str
     error: str | None = None
+
+
+def _csv_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
+    """Convert CSV bytes to Parquet buffer."""
+    text = raw_bytes.decode("utf-8")
+    reader = csv_mod.DictReader(io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        # Empty file — return empty Parquet with headers only
+        columns = reader.fieldnames or []
+        tbl = pa.Table.from_pydict({col: [] for col in columns})
+    else:
+        tbl = pa.Table.from_pydict({col: [row[col] for row in rows] for col in rows[0].keys()})
+    buf = io.BytesIO()
+    pq.write_table(tbl, buf, compression="snappy")
+    buf.seek(0)
+    return buf
 
 
 def ingest_sftp_directory_to_bronze(
@@ -102,6 +122,10 @@ def ingest_sftp_directory_to_bronze(
 
         for fname in names:
             remote_path = f"{remote_dir.rstrip('/')}/{fname}"
+            # Derive parquet filename (replace .csv suffix if present)
+            parquet_fname = (
+                fname[:-4] + ".parquet" if fname.lower().endswith(".csv") else fname + ".parquet"
+            )
             try:
                 attr = sftp.stat(remote_path)
                 if attr.st_mode is not None and stat.S_ISDIR(attr.st_mode):
@@ -113,12 +137,12 @@ def ingest_sftp_directory_to_bronze(
                 digest = sha256_bytes(data)
                 s3_key = (
                     f"bronze/source={source_name}/entity=appointments/"
-                    f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/files/{fname}"
+                    f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/files/{parquet_fname}"
                 )
 
                 extra = s3_kms_args(kms_key_arn)
                 s3.upload_fileobj(
-                    Fileobj=io.BytesIO(data),
+                    Fileobj=_csv_bytes_to_parquet_buffer(data),
                     Bucket=platform_bucket,
                     Key=s3_key,
                     ExtraArgs=extra if extra else None,
