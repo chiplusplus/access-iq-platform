@@ -224,3 +224,4 @@ dbt/target/
 dbt/dbt_packages/
 dbt/.dbt-venv/
 dbt/package-lock.yml
+dbt/.user.yml
