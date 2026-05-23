@@ -139,6 +139,7 @@ celerybeat.pid
 .env
 .envrc
 .venv
+.dbt-venv
 env/
 venv/
 ENV/
@@ -217,3 +218,9 @@ infra/config/prod.json
 .planning/
 *.planning
 infra/cdk.context.json
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/.dbt-venv/
+dbt/package-lock.yml

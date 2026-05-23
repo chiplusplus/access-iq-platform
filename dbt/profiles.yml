@@ -1,0 +1,27 @@
+access_iq:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: redshift
+      method: iam
+      host: "{{ env_var('REDSHIFT_HOST', 'localhost') }}"
+      port: 5439
+      user: "{{ env_var('REDSHIFT_USER', 'dbt_dev') }}"
+      dbname: dev
+      schema: bronze_external
+      region: eu-west-2
+      autocreate: true
+      db_groups: []
+      threads: 4
+    prod:
+      type: redshift
+      method: iam
+      host: "{{ env_var('REDSHIFT_HOST', 'localhost') }}"
+      port: 5439
+      user: "{{ env_var('REDSHIFT_USER', 'dbt_prod') }}"
+      dbname: dev
+      schema: bronze_external
+      region: eu-west-2
+      autocreate: true
+      db_groups: []
+      threads: 4
