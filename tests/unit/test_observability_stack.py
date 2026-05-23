@@ -26,6 +26,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         tags={},
         ecs={},
         obs={"log_retention_days": retention, "alert_email": "test@example.com"},
+        redshift={},
     )
 
 

@@ -23,6 +23,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         tags={"Environment": env_name, "Project": "access-iq"},
         ecs={},
         obs={},
+        redshift={},
     )
 
 
