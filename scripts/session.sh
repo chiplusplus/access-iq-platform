@@ -142,11 +142,18 @@ cmd_up() {
       --output text --profile "$AWS_PROFILE" --region "$REGION")
     local GLUE_DB="access-iq-${CDK_ENV}-bronze"
 
+    local RS_SECRET_ARN
+    RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+      --namespace-name "$RS_WORKGROUP" \
+      --query 'namespace.adminPasswordSecretArn' \
+      --output text --profile "$AWS_PROFILE" --region "$REGION")
+
     SPECTRUM_STMT_ID=""
     SPECTRUM_STMT_ID=$(aws redshift-data execute-statement \
       --workgroup-name "$RS_WORKGROUP" \
       --database "$RS_DB" \
-      --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}';" \
+      --secret-arn "$RS_SECRET_ARN" \
+      --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}'; GRANT USAGE ON SCHEMA bronze_external TO PUBLIC; GRANT SELECT ON ALL TABLES IN SCHEMA bronze_external TO PUBLIC;" \
       --query 'Id' --output text \
       --profile "$AWS_PROFILE" --region "$REGION")
     echo "  Spectrum schema statement submitted (will verify at end)"

@@ -13,6 +13,11 @@ RS_DB="dev"
 PLATFORM_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 TRUST_PROFILE="${TRUST_PROFILE:-northshire-trust}"
 
+RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+  --namespace-name "$RS_WORKGROUP" \
+  --query 'namespace.adminPasswordSecretArn' \
+  --output text --profile "$AWS_PROFILE" --region "$REGION")
+
 echo "=== Snapshot/Restore Round-Trip Test ==="
 echo ""
 
@@ -44,6 +49,7 @@ echo "1. Creating marker table..."
 STMT_ID=$(aws redshift-data execute-statement \
   --workgroup-name "$RS_WORKGROUP" \
   --database "$RS_DB" \
+  --secret-arn "$RS_SECRET_ARN" \
   --sql "CREATE TABLE IF NOT EXISTS public._snapshot_test_marker (created_at TIMESTAMP DEFAULT GETDATE(), marker VARCHAR(100));" \
   --query 'Id' --output text \
   --profile "$AWS_PROFILE" --region "$REGION")
@@ -57,6 +63,7 @@ MARKER="test-$(date +%s)"
 STMT_ID=$(aws redshift-data execute-statement \
   --workgroup-name "$RS_WORKGROUP" \
   --database "$RS_DB" \
+  --secret-arn "$RS_SECRET_ARN" \
   --sql "INSERT INTO public._snapshot_test_marker (marker) VALUES ('$MARKER');" \
   --query 'Id' --output text \
   --profile "$AWS_PROFILE" --region "$REGION")
@@ -131,6 +138,7 @@ echo "8. Verifying marker row survived restore..."
 STMT_ID=$(aws redshift-data execute-statement \
   --workgroup-name "$RS_WORKGROUP" \
   --database "$RS_DB" \
+  --secret-arn "$RS_SECRET_ARN" \
   --sql "SELECT marker FROM public._snapshot_test_marker WHERE marker = '$MARKER';" \
   --query 'Id' --output text \
   --profile "$AWS_PROFILE" --region "$REGION")
@@ -154,6 +162,7 @@ fi
 aws redshift-data execute-statement \
   --workgroup-name "$RS_WORKGROUP" \
   --database "$RS_DB" \
+  --secret-arn "$RS_SECRET_ARN" \
   --sql "DROP TABLE IF EXISTS public._snapshot_test_marker;" \
   --profile "$AWS_PROFILE" --region "$REGION" >/dev/null 2>&1
 echo "   Cleanup: marker table dropped."

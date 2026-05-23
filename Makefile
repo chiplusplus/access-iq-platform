@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test ci up down status ingest dbt
+.PHONY: setup fmt lint type test test-integration ci up down status ingest dbt
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -15,8 +15,11 @@ lint:  ## Lint code with ruff
 type:  ## Type-check with mypy
 	mypy .
 
-test:  ## Run tests with coverage
+test:  ## Run unit tests with coverage
 	pytest --cov=access_iq
+
+test-integration:  ## Run integration tests against live AWS (requires deployed stacks)
+	pytest -m integration --no-header -v
 
 ci: fmt lint type test  ## Run full CI pipeline
 

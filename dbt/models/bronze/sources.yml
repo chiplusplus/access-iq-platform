@@ -6,10 +6,10 @@ sources:
     loader: spectrum
     description: "Bronze layer via Redshift Spectrum on S3 Parquet files"
     tables:
-      - name: patients
+      - name: patient_demographics
         description: "EHR patient demographics"
         external:
-          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr/entity=patients/"
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr_postgres/entity=patient_demographics/"
           row_format: >
             serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
           stored_as: >
@@ -21,32 +21,42 @@ sources:
               path_macro: dbt_external_tables.key_value
         columns:
           - name: patient_id
-            data_type: varchar(36)
-          - name: nhs_number
-            data_type: varchar(10)
-          - name: given_name
-            data_type: varchar(100)
-          - name: family_name
-            data_type: varchar(100)
+            data_type: bigint
+          - name: nhs_pseudo_id
+            data_type: varchar(256)
           - name: date_of_birth
             data_type: date
-          - name: gender
+          - name: age
+            data_type: bigint
+          - name: age_band
+            data_type: varchar(20)
+          - name: sex
             data_type: varchar(10)
-          - name: ethnicity_code
-            data_type: varchar(5)
-          - name: postcode
+          - name: ethnicity_ons
             data_type: varchar(10)
           - name: imd_decile
-            data_type: integer
-          - name: registered_gp
-            data_type: varchar(100)
-          - name: created_at
+            data_type: bigint
+          - name: chronic_conditions_count
+            data_type: bigint
+          - name: lsoa_code
+            data_type: varchar(20)
+          - name: postcode_sector
+            data_type: varchar(10)
+          - name: registered_gp_practice_id
+            data_type: varchar(20)
+          - name: registration_start_date
+            data_type: date
+          - name: registration_end_date
+            data_type: date
+          - name: is_active
+            data_type: boolean
+          - name: updated_at
             data_type: timestamp
 
       - name: encounters
         description: "EHR patient encounters"
         external:
-          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr/entity=encounters/"
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr_postgres/entity=encounters/"
           row_format: >
             serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
           stored_as: >
@@ -58,30 +68,40 @@ sources:
               path_macro: dbt_external_tables.key_value
         columns:
           - name: encounter_id
-            data_type: varchar(36)
+            data_type: bigint
           - name: patient_id
-            data_type: varchar(36)
+            data_type: bigint
+          - name: provider_id
+            data_type: bigint
+          - name: encounter_datetime_start
+            data_type: timestamp
+          - name: encounter_datetime_end
+            data_type: timestamp
           - name: encounter_type
             data_type: varchar(50)
-          - name: encounter_date
-            data_type: timestamp
-          - name: discharge_date
-            data_type: timestamp
-          - name: specialty_code
-            data_type: varchar(10)
-          - name: provider_id
-            data_type: varchar(36)
-          - name: site_code
-            data_type: varchar(10)
-          - name: icd10_primary
-            data_type: varchar(10)
+          - name: source_system
+            data_type: varchar(50)
+          - name: clinician_id
+            data_type: bigint
+          - name: priority
+            data_type: varchar(20)
+          - name: was_attended
+            data_type: boolean
+          - name: first_attendance_flag
+            data_type: boolean
+          - name: primary_condition_code
+            data_type: varchar(20)
+          - name: wait_time_days
+            data_type: bigint
           - name: created_at
+            data_type: timestamp
+          - name: updated_at
             data_type: timestamp
 
       - name: appointments
-        description: "EHR scheduled appointments"
+        description: "SFTP appointment drops"
         external:
-          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr/entity=appointments/"
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=sftp_appointments/entity=appointments/"
           row_format: >
             serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
           stored_as: >
@@ -96,25 +116,39 @@ sources:
             data_type: varchar(36)
           - name: patient_id
             data_type: varchar(36)
-          - name: appointment_date
-            data_type: timestamp
-          - name: specialty_code
-            data_type: varchar(10)
-          - name: provider_id
-            data_type: varchar(36)
-          - name: site_code
-            data_type: varchar(10)
-          - name: status
+          - name: nhs_pseudo_id
+            data_type: varchar(256)
+          - name: registered_gp_practice_id
             data_type: varchar(20)
-          - name: referral_date
-            data_type: date
-          - name: created_at
-            data_type: timestamp
+          - name: service_location_id
+            data_type: varchar(36)
+          - name: clinician_id
+            data_type: varchar(36)
+          - name: appointment_start_datetime
+            data_type: varchar(30)
+          - name: appointment_end_datetime
+            data_type: varchar(30)
+          - name: appointment_type
+            data_type: varchar(50)
+          - name: mode
+            data_type: varchar(20)
+          - name: slot_type
+            data_type: varchar(50)
+          - name: booking_status
+            data_type: varchar(20)
+          - name: booking_created_datetime
+            data_type: varchar(30)
+          - name: booking_updated_datetime
+            data_type: varchar(30)
+          - name: wait_time_days
+            data_type: varchar(10)
+          - name: imd_decile
+            data_type: varchar(5)
 
-      - name: urgent_care
+      - name: urgent_care_logs
         description: "Urgent care attendances"
         external:
-          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=urgent_care/entity=attendances/"
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=urgent_care_postgres/entity=urgent_care_logs/"
           row_format: >
             serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
           stored_as: >
@@ -125,79 +159,31 @@ sources:
               data_type: date
               path_macro: dbt_external_tables.key_value
         columns:
-          - name: attendance_id
-            data_type: varchar(36)
+          - name: uc_log_id
+            data_type: bigint
           - name: patient_id
-            data_type: varchar(36)
-          - name: arrival_time
+            data_type: bigint
+          - name: provider_id
+            data_type: bigint
+          - name: encounter_id
+            data_type: bigint
+          - name: arrival_datetime
             data_type: timestamp
-          - name: triage_time
+          - name: triage_datetime
             data_type: timestamp
-          - name: treatment_time
+          - name: seen_by_clinician_datetime
             data_type: timestamp
-          - name: departure_time
+          - name: departure_datetime
             data_type: timestamp
-          - name: acuity
-            data_type: integer
-          - name: chief_complaint
+          - name: triage_category
+            data_type: varchar(20)
+          - name: presenting_complaint
             data_type: varchar(200)
-          - name: disposition
+          - name: outcome
+            data_type: varchar(50)
+          - name: source_system
             data_type: varchar(50)
           - name: created_at
             data_type: timestamp
-
-      - name: diagnostics
-        description: "Trust diagnostics exports"
-        external:
-          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=trust_s3/entity=diagnostics/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
-          partitions:
-            - name: ingest_date
-              data_type: date
-              path_macro: dbt_external_tables.key_value
-        columns:
-          - name: diagnostic_id
-            data_type: varchar(36)
-          - name: patient_id
-            data_type: varchar(36)
-          - name: test_type
-            data_type: varchar(100)
-          - name: test_date
-            data_type: date
-          - name: result
-            data_type: varchar(200)
-          - name: requesting_provider_id
-            data_type: varchar(36)
-          - name: created_at
-            data_type: timestamp
-
-      - name: providers
-        description: "Trust provider reference data"
-        external:
-          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=trust_s3/entity=provider_ref/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
-          partitions:
-            - name: ingest_date
-              data_type: date
-              path_macro: dbt_external_tables.key_value
-        columns:
-          - name: provider_id
-            data_type: varchar(36)
-          - name: provider_name
-            data_type: varchar(200)
-          - name: specialty_code
-            data_type: varchar(10)
-          - name: site_code
-            data_type: varchar(10)
-          - name: active
-            data_type: boolean
-          - name: created_at
+          - name: updated_at
             data_type: timestamp
