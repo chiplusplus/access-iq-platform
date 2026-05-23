@@ -9,6 +9,7 @@ from access_iq_infra.stacks.lake import LakeStack
 from access_iq_infra.stacks.network import NetworkStack
 from access_iq_infra.stacks.observability import ObservabilityStack
 from access_iq_infra.stacks.secrets import SecretsStack
+from access_iq_infra.stacks.warehouse import WarehouseStack
 from access_iq_infra.tagging import apply_tags
 
 app = App()
@@ -40,7 +41,7 @@ secrets = SecretsStack(
     env=cdk_env,
 )
 
-CatalogStack(
+catalog = CatalogStack(
     app,
     f"catalog-{cfg.app_name}-{cfg.env_name}",
     cfg=cfg,
@@ -95,6 +96,20 @@ ComputeStack(
     ecs_task_role=iam_stack.ecs_task_role,
     ecs_execution_role=iam_stack.ecs_execution_role,
     log_groups=obs.log_groups,
+    env=cdk_env,
+)
+
+# --- Phase 4: Warehouse ---
+
+warehouse = WarehouseStack(
+    app,
+    f"warehouse-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    vpc=network.vpc,
+    ecs_task_sg=network.ecs_task_sg,
+    lake_bucket=lake.lake_bucket,
+    lake_key=lake.lake_key,
+    catalog_database_name=catalog.database_name,
     env=cdk_env,
 )
 

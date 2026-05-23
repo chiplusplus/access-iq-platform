@@ -20,6 +20,7 @@ from access_iq_infra.stacks.lake import LakeStack  # noqa: E402
 from access_iq_infra.stacks.network import NetworkStack  # noqa: E402
 from access_iq_infra.stacks.observability import ObservabilityStack  # noqa: E402
 from access_iq_infra.stacks.secrets import SecretsStack  # noqa: E402
+from access_iq_infra.stacks.warehouse import WarehouseStack  # noqa: E402
 
 EXPECTED_STACKS = {
     "lake-access-iq-{env}",
@@ -30,6 +31,7 @@ EXPECTED_STACKS = {
     "network-access-iq-{env}",
     "observability-access-iq-{env}",
     "compute-access-iq-{env}",
+    "warehouse-access-iq-{env}",
 }
 
 
@@ -81,7 +83,7 @@ def _synth_app(env_name: str) -> App:
         encryption_key=lake.lake_key,
         env=cdk_env,
     )
-    CatalogStack(app, f"catalog-{cfg.app_name}-{cfg.env_name}", cfg=cfg, env=cdk_env)
+    catalog = CatalogStack(app, f"catalog-{cfg.app_name}-{cfg.env_name}", cfg=cfg, env=cdk_env)
     ecr = EcrStack(app, f"ecr-{cfg.app_name}-{cfg.env_name}", cfg=cfg, env=cdk_env)
     iam_stack = IngestionRoleStack(
         app,
@@ -119,13 +121,24 @@ def _synth_app(env_name: str) -> App:
         log_groups=obs.log_groups,
         env=cdk_env,
     )
+    WarehouseStack(
+        app,
+        f"warehouse-{cfg.app_name}-{cfg.env_name}",
+        cfg=cfg,
+        vpc=network.vpc,
+        ecs_task_sg=network.ecs_task_sg,
+        lake_bucket=lake.lake_bucket,
+        lake_key=lake.lake_key,
+        catalog_database_name=catalog.database_name,
+        env=cdk_env,
+    )
 
     app.synth()
     return app
 
 
 @pytest.mark.parametrize("env_name", ["dev", "prod"])
-def test_synth_produces_eight_stacks(env_name: str) -> None:
+def test_synth_produces_nine_stacks(env_name: str) -> None:
     from aws_cdk import Stack
 
     app = _synth_app(env_name)
