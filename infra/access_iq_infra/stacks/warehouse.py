@@ -76,13 +76,13 @@ class WarehouseStack(Stack):
             "RedshiftSg",
             vpc=vpc,
             security_group_name=f"{prefix}-redshift",
-            description="Redshift Serverless -- inbound from ECS task SG only",
+            description="Redshift Serverless - inbound from ECS task SG only",
             allow_all_outbound=False,
         )
         redshift_sg.add_ingress_rule(
             ecs_task_sg,
             ec2.Port.tcp(5439),
-            "dbt + ECS tasks -> Redshift",
+            "dbt and ECS tasks to Redshift",
         )
         # HTTPS egress for S3 via VPC gateway endpoint
         redshift_sg.add_egress_rule(
