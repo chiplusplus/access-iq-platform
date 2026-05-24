@@ -154,17 +154,6 @@ class ObservabilityStack(Stack):
                 default_value=0,
             )
 
-            mf_crash = logs.MetricFilter(
-                self,
-                f"MetricFilterCrash-{safe_id}",
-                log_group=lg,
-                filter_pattern=logs.FilterPattern.string_value("$.event", "=", "ingest_crash"),
-                metric_namespace=metric_namespace,
-                metric_name=f"IngestionCrash-{source}",
-                metric_value="1",
-                default_value=0,
-            )
-
             logs.MetricFilter(
                 self,
                 f"MetricFilterSuccess-{safe_id}",
@@ -184,21 +173,9 @@ class ObservabilityStack(Stack):
                 evaluation_periods=1,
                 comparison_operator=cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
                 treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
-                alarm_description=f"Ingestion manifest status:failed for {source}",
+                alarm_description=f"Ingestion failed or crashed for {source}",
             )
             alarm_failed.add_alarm_action(cw_actions.SnsAction(sns_topic))
-
-            alarm_crash = cw.Alarm(
-                self,
-                f"AlarmCrash-{safe_id}",
-                metric=mf_crash.metric(statistic="Sum", period=Duration.minutes(5)),
-                threshold=1,
-                evaluation_periods=1,
-                comparison_operator=cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-                treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
-                alarm_description=f"Ingestion task crashed (unhandled exception) for {source}",
-            )
-            alarm_crash.add_alarm_action(cw_actions.SnsAction(sns_topic))
 
         # -- Section 4: Dashboard (D-11, REQ-OBS-02) ----------
         dashboard = cw.Dashboard(
@@ -217,17 +194,7 @@ class ObservabilityStack(Stack):
                         metric_name=f"IngestionFailed-{src}",
                         statistic="Sum",
                         period=Duration.minutes(5),
-                        label=f"{src} failed",
-                    )
-                    for src in INGESTION_SOURCES
-                ]
-                + [
-                    cw.Metric(
-                        namespace=metric_namespace,
-                        metric_name=f"IngestionCrash-{src}",
-                        statistic="Sum",
-                        period=Duration.minutes(5),
-                        label=f"{src} crash",
+                        label=f"{src}",
                     )
                     for src in INGESTION_SOURCES
                 ],
