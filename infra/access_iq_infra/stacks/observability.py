@@ -150,7 +150,7 @@ class ObservabilityStack(Stack):
                 self,
                 f"MetricFilterCrash-{safe_id}",
                 log_group=lg,
-                filter_pattern=logs.FilterPattern.any_term("Traceback", "Exception", "Error"),
+                filter_pattern=logs.FilterPattern.string_value("$.event", "=", "ingest_crash"),
                 metric_namespace=metric_namespace,
                 metric_name=f"IngestionCrash-{source}",
                 metric_value="1",
