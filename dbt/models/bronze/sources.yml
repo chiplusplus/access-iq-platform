@@ -98,6 +98,96 @@ sources:
           - name: updated_at
             data_type: timestamp
 
+      - name: provider_site_reference
+        description: "Trust provider sites and services reference data"
+        external:
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=trust_s3_provider_ref/entity=provider_site_reference/"
+          row_format: >
+            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+          stored_as: >
+            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          partitions:
+            - name: ingest_date
+              data_type: date
+              path_macro: dbt_external_tables.key_value
+        columns:
+          - name: provider_code
+            data_type: varchar(20)
+          - name: site_name
+            data_type: varchar(200)
+          - name: provider_type
+            data_type: varchar(50)
+          - name: parent_trust_name
+            data_type: varchar(200)
+          - name: ics_region
+            data_type: varchar(100)
+          - name: address_line_1
+            data_type: varchar(200)
+          - name: city
+            data_type: varchar(100)
+          - name: postcode
+            data_type: varchar(10)
+          - name: postcode_sector
+            data_type: varchar(10)
+          - name: lsoa_code
+            data_type: varchar(20)
+          - name: is_main_site
+            data_type: varchar(10)
+          - name: site_status
+            data_type: varchar(20)
+          - name: has_ed
+            data_type: varchar(10)
+          - name: has_inpatient_beds
+            data_type: varchar(10)
+          - name: size_band
+            data_type: varchar(20)
+          - name: opening_hours
+            data_type: varchar(50)
+          - name: service_lines
+            data_type: varchar(500)
+          - name: site_manager_name
+            data_type: varchar(100)
+          - name: site_manager_email
+            data_type: varchar(100)
+
+      - name: diagnostics_orders
+        description: "Trust diagnostic orders (lab, imaging)"
+        external:
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=trust_s3_diagnostics/entity=diagnostics_orders/"
+          row_format: >
+            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+          stored_as: >
+            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          partitions:
+            - name: ingest_date
+              data_type: date
+              path_macro: dbt_external_tables.key_value
+        columns:
+          - name: diagnostic_id
+            data_type: varchar(20)
+          - name: patient_id
+            data_type: varchar(20)
+          - name: referral_id
+            data_type: varchar(20)
+          - name: encounter_id
+            data_type: varchar(20)
+          - name: provider_id
+            data_type: varchar(20)
+          - name: test_type
+            data_type: varchar(50)
+          - name: test_panel
+            data_type: varchar(50)
+          - name: request_date
+            data_type: varchar(10)
+          - name: performed_date
+            data_type: varchar(10)
+          - name: result_date
+            data_type: varchar(10)
+          - name: result_flag
+            data_type: varchar(20)
+
       - name: appointments
         description: "SFTP appointment drops"
         external:
