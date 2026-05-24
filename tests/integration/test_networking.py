@@ -74,6 +74,9 @@ class TestVpcEndpoints:
             f"com.amazonaws.{region}.ecr.api",
             f"com.amazonaws.{region}.ecr.dkr",
             f"com.amazonaws.{region}.logs",
+            f"com.amazonaws.{region}.ssm",
+            f"com.amazonaws.{region}.ssmmessages",
+            f"com.amazonaws.{region}.ec2messages",
         }
         response = ec2_client.describe_vpc_endpoints(
             Filters=[

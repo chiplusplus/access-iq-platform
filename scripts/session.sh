@@ -74,13 +74,13 @@ cmd_up() {
   done
 
   echo ""
-  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest"
+  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest → dbt Spectrum"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
-  step_start "1/7" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
+  step_start "1/8" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
   if [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
@@ -91,12 +91,12 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/7" "Read Trust outputs" "<5s"
+  step_start "2/8" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/7" "Deploy Platform stacks" "5-10min"
+  step_start "3/8" "Deploy Platform stacks" "5-10min"
 
   local CDK_CONTEXT_ARGS="-c env=$CDK_ENV -c trust_vpc_id=$TRUST_VPC"
 
@@ -107,14 +107,14 @@ cmd_up() {
   local PLATFORM_BUCKET
   PLATFORM_BUCKET=$(aws cloudformation describe-stacks \
     --stack-name "lake-access-iq-${CDK_ENV}" \
-    --query "Stacks[0].Outputs[?OutputKey==\`ExportsOutputRefLakeBucket9CD7BBD21345140F\`].OutputValue" \
+    --query "Stacks[0].Outputs[?OutputKey==\`BucketName\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
   export BRONZE_S3_PREFIX="s3://${PLATFORM_BUCKET}/bronze"
   echo "  BRONZE_S3_PREFIX=${BRONZE_S3_PREFIX}"
 
   step_done
 
-  step_start "4/7" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
+  step_start "4/8" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
   local RS_WORKGROUP="access-iq-${CDK_ENV}"
   local RS_DB="dev"
@@ -173,7 +173,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/7" "Redeploy Trust with routes and peering SG rules" "~2 min"
+  step_start "5/8" "Redeploy Trust with routes and peering SG rules" "~2 min"
   echo "  Platform VPC:  $PLATFORM_VPC"
   echo "  Peering ID:    $PEERING_ID"
   (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
@@ -185,7 +185,7 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "6/7" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/8" "Seed Platform secrets from Trust" "<30s"
 
   local SECRET_PREFIX="access-iq/${CDK_ENV}"
 
@@ -327,7 +327,7 @@ cmd_up() {
   step_done
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/7" "Build and push ingestion image to ECR" "1-3 min"
+  step_start "7/8" "Build and push ingestion image to ECR" "1-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -366,9 +366,63 @@ cmd_up() {
     fi
   fi
 
+  # ── Step 8: Start tunnel, create Spectrum tables + partitions ──
+  step_start "8/8" "Create Spectrum external tables and register partitions" "30-60s"
+
+  local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
+  local TUNNEL_INSTANCE_ID
+  TUNNEL_INSTANCE_ID=$(platform_output warehouse TunnelInstanceId)
+  local RS_ENDPOINT
+  RS_ENDPOINT=$(platform_output warehouse WorkgroupEndpoint)
+
+  # Start SSM tunnel in background
+  aws ssm start-session \
+    --target "$TUNNEL_INSTANCE_ID" \
+    --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters "{\"host\":[\"${RS_ENDPOINT}\"],\"portNumber\":[\"5439\"],\"localPortNumber\":[\"5439\"]}" \
+    --profile "$AWS_PROFILE" --region "$REGION" &
+  local tunnel_pid=$!
+  echo "$tunnel_pid" > "$TUNNEL_PID_FILE"
+  echo "  Tunnel PID: $tunnel_pid (saved to .tunnel.pid)"
+
+  # Wait for tunnel to be ready
+  local tunnel_ready=false
+  for i in $(seq 1 15); do
+    if nc -z localhost 5439 2>/dev/null; then
+      tunnel_ready=true
+      break
+    fi
+    sleep 2
+  done
+
+  if [ "$tunnel_ready" = true ]; then
+    echo "  ✓ Tunnel connected"
+
+    # Load Redshift credentials
+    eval "$("$PLATFORM_REPO/scripts/tunnel.sh" env)"
+
+    # Create external tables via dbt-external-tables
+    (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation stage_external_sources --profiles-dir .) \
+      && echo "  ✓ Spectrum external tables created" \
+      || echo "  WARNING: stage_external_sources failed — run manually via make dbt"
+
+    # Register partitions
+    (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation add_spectrum_partitions --profiles-dir .) \
+      && echo "  ✓ Partitions registered" \
+      || echo "  WARNING: add_spectrum_partitions failed — run manually via make dbt"
+  else
+    echo "  WARNING: Tunnel not ready after 30s — skipping dbt operations"
+    echo "  Run manually: make tunnel (terminal 1), make dbt CMD=\"run-operation stage_external_sources\" (terminal 2)"
+  fi
+
+  step_done
+
   session_summary
   echo ""
   echo "  ✓ All stacks deployed, secrets seeded, image pushed, ingestion complete."
+  echo "  ✓ SSM tunnel running on localhost:5439 (PID $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'unknown'))"
+  echo "    Run dbt commands: make dbt CMD=\"...\""
+  echo "    Stop tunnel: make down (or kill $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'PID'))"
   echo ""
 }
 
@@ -379,6 +433,18 @@ cmd_down() {
   echo ""
 
   TRUST_VPC=$(trust_output VpcId 2>/dev/null || echo "vpc-placeholder")
+
+  # Kill Redshift SSM tunnel if running
+  local RS_TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
+  if [ -f "$RS_TUNNEL_PID_FILE" ]; then
+    local rs_tunnel_pid
+    rs_tunnel_pid="$(cat "$RS_TUNNEL_PID_FILE" 2>/dev/null || true)"
+    if [[ "$rs_tunnel_pid" =~ ^[0-9]+$ ]] && kill -0 "$rs_tunnel_pid" 2>/dev/null; then
+      kill "$rs_tunnel_pid" 2>/dev/null || true
+      echo "  ✓ Killed Redshift tunnel (PID $rs_tunnel_pid)"
+    fi
+    rm -f "$RS_TUNNEL_PID_FILE"
+  fi
 
   step_start "1/2" "Destroy Platform stacks" "3-5 min"
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk destroy --all --force \

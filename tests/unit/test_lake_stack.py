@@ -94,3 +94,11 @@ def test_bucket_denies_non_kms_puts() -> None:
 def test_bucket_dev_destroy_prod_retain() -> None:
     _template("dev").has_resource("AWS::S3::Bucket", {"DeletionPolicy": "Delete"})
     _template("prod").has_resource("AWS::S3::Bucket", {"DeletionPolicy": "Retain"})
+
+
+def test_stack_exports_stable_output_keys() -> None:
+    tpl = _template("dev")
+    outputs = tpl.to_json()["Outputs"]
+    assert "BucketName" in outputs
+    assert "BucketArn" in outputs
+    assert "KmsKeyArn" in outputs

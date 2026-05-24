@@ -42,7 +42,7 @@ cmd_env() {
   local bucket
   bucket=$(aws cloudformation describe-stacks \
     --stack-name "lake-access-iq-${CDK_ENV}" \
-    --query "Stacks[0].Outputs[?OutputKey==\`ExportsOutputRefLakeBucket9CD7BBD21345140F\`].OutputValue" \
+    --query "Stacks[0].Outputs[?OutputKey==\`BucketName\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
   printf 'export REDSHIFT_HOST=localhost\n'

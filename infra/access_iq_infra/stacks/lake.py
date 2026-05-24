@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aws_cdk import Duration, RemovalPolicy, Stack
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
 from aws_cdk import aws_s3 as s3
@@ -120,3 +120,7 @@ class LakeStack(Stack):
         self.lake_key = lake_key
         self.lake_bucket = lake_bucket
         self.lake_prefixes = LAKE_PREFIXES
+
+        CfnOutput(self, "BucketName", value=lake_bucket.bucket_name)
+        CfnOutput(self, "BucketArn", value=lake_bucket.bucket_arn)
+        CfnOutput(self, "KmsKeyArn", value=lake_key.key_arn)

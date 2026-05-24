@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test test-integration ci up down status ingest dbt tunnel tunnel-env
+.PHONY: setup fmt lint type test test-integration ci up down status ingest dbt tunnel tunnel-stop tunnel-env
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -57,11 +57,24 @@ ingest:  ## Run Bronze ingestion on ECS Fargate (3 parallel tasks)
 	./scripts/session.sh ingest
 
 dbt:  ## Run dbt command (e.g., make dbt CMD="run --select silver")
-	cd dbt && uv run dbt $(CMD) --profiles-dir .
+	eval $$(./scripts/tunnel.sh env) && cd dbt && uv run dbt $(CMD) --profiles-dir .
 
 # ── Redshift tunnel ────────────────────────────────────────────────
-tunnel:  ## Start SSM port-forwarding tunnel to Redshift (localhost:5439)
+tunnel:  ## Start SSM port-forwarding tunnel to Redshift (localhost:5439, foreground)
 	./scripts/tunnel.sh
+
+tunnel-stop:  ## Kill background SSM tunnel started by make up
+	@if [ -f .tunnel.pid ]; then \
+		pid=$$(cat .tunnel.pid); \
+		if kill -0 "$$pid" 2>/dev/null; then \
+			kill "$$pid" && echo "Killed tunnel (PID $$pid)"; \
+		else \
+			echo "Tunnel not running (stale PID $$pid)"; \
+		fi; \
+		rm -f .tunnel.pid; \
+	else \
+		echo "No .tunnel.pid file — tunnel not managed by make up"; \
+	fi
 
 tunnel-env:  ## Print export commands for dbt Redshift credentials
 	@./scripts/tunnel.sh env
