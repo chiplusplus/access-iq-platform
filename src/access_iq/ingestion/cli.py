@@ -168,7 +168,7 @@ def main() -> None:
             s3=s3,
             trust_bucket=base_cfg.bucket,
             prefix_root=diagnostics_cfg.prefix_root,
-            export_date=ingest_date,
+            export_date=None,
             platform_bucket=settings.platform_bucket,
             env=settings.env,
             source_name=diagnostics_cfg.source_name or "trust_s3_diagnostics",

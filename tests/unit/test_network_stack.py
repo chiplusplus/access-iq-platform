@@ -163,7 +163,7 @@ def test_s3_gateway_endpoint() -> None:
 
 def test_interface_endpoints_count() -> None:
     tpl = _template()
-    tpl.resource_count_is("AWS::EC2::VPCEndpoint", 6)  # 1 gateway + 5 interface
+    tpl.resource_count_is("AWS::EC2::VPCEndpoint", 9)  # 1 gateway + 8 interface (5 core + 3 SSM)
 
 
 def test_endpoint_sg_ingress_443() -> None:

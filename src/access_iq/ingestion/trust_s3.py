@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv as csv_mod
 import io
+import re
 import uuid
 from datetime import date
 from typing import Any
@@ -22,6 +23,8 @@ from access_iq.ingestion.manifests import (
 
 log = structlog.get_logger(__name__)
 
+_EXPORT_DATE_RE = re.compile(r"export_date=(\d{8})/?$")
+
 
 def _csv_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
     """Convert CSV bytes to Parquet buffer."""
@@ -37,6 +40,36 @@ def _csv_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
     pq.write_table(tbl, buf, compression="snappy")
     buf.seek(0)
     return buf
+
+
+def _xlsx_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
+    """Convert Excel (.xlsx) bytes to Parquet buffer."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not rows:
+        tbl = pa.table({})
+    else:
+        headers = [str(h) for h in rows[0]]
+        data = {
+            h: [str(row[i]) if row[i] is not None else None for row in rows[1:]]
+            for i, h in enumerate(headers)
+        }
+        tbl = pa.Table.from_pydict(data)
+    buf = io.BytesIO()
+    pq.write_table(tbl, buf, compression="snappy")
+    buf.seek(0)
+    return buf
+
+
+def _to_parquet_buffer(raw_bytes: bytes, key: str) -> io.BytesIO:
+    """Detect file type by S3 key extension and convert to Parquet."""
+    if key.lower().endswith((".xlsx", ".xls")):
+        return _xlsx_bytes_to_parquet_buffer(raw_bytes)
+    return _csv_bytes_to_parquet_buffer(raw_bytes)
 
 
 def ingest_trust_provider_ref_to_bronze(
@@ -77,7 +110,7 @@ def ingest_trust_provider_ref_to_bronze(
 
     response = s3.get_object(Bucket=trust_bucket, Key=trust_key)
     raw_bytes = response["Body"].read()
-    parquet_buf = _csv_bytes_to_parquet_buffer(raw_bytes)
+    parquet_buf = _to_parquet_buffer(raw_bytes, trust_key)
     extra = s3_kms_args(kms_key_arn)
     s3.upload_fileobj(
         Fileobj=parquet_buf,
@@ -108,18 +141,65 @@ def ingest_trust_provider_ref_to_bronze(
     return manifest.model_dump()
 
 
+def _discover_export_dates(s3: Any, trust_bucket: str, prefix_root: str) -> list[date]:
+    """List available export_date partitions under a Trust S3 prefix."""
+    prefix_root = prefix_root.rstrip("/") + "/"
+    paginator = s3.get_paginator("list_objects_v2")
+    dates: set[date] = set()
+    for page in paginator.paginate(Bucket=trust_bucket, Prefix=prefix_root, Delimiter="/"):
+        for cp in page.get("CommonPrefixes", []):
+            m = _EXPORT_DATE_RE.search(cp["Prefix"])
+            if m:
+                raw = m.group(1)
+                dates.add(date(int(raw[:4]), int(raw[4:6]), int(raw[6:8])))
+    return sorted(dates)
+
+
 def ingest_trust_diagnostics_export_date_to_bronze(
     *,
     s3: Any,
     trust_bucket: str,
     prefix_root: str,
-    export_date: date,
+    export_date: date | None = None,
     platform_bucket: str,
     env: str,
     source_name: str = "trust_s3_diagnostics",
     fail_fast: bool = True,
     kms_key_arn: str | None = None,
 ) -> dict[str, Any]:
+    if export_date is None:
+        available = _discover_export_dates(s3, trust_bucket, prefix_root)
+        if not available:
+            log.info("trust_s3_no_export_dates", prefix_root=prefix_root)
+            return {
+                "source": source_name,
+                "env": env,
+                "run_id": str(uuid.uuid4()),
+                "status": "skipped",
+                "reason": "no_export_dates_found",
+            }
+        log.info(
+            "trust_s3_discovered_dates",
+            count=len(available),
+            dates=[d.isoformat() for d in available],
+        )
+        last_result: dict[str, Any] = {}
+        for d in available:
+            last_result = ingest_trust_diagnostics_export_date_to_bronze(
+                s3=s3,
+                trust_bucket=trust_bucket,
+                prefix_root=prefix_root,
+                export_date=d,
+                platform_bucket=platform_bucket,
+                env=env,
+                source_name=source_name,
+                fail_fast=fail_fast,
+                kms_key_arn=kms_key_arn,
+            )
+            if last_result.get("status") == "failed" and fail_fast:
+                return last_result
+        return last_result
+
     run_id = str(uuid.uuid4())
     started_at = utc_now_iso()
 
@@ -153,6 +233,8 @@ def ingest_trust_diagnostics_export_date_to_bronze(
         for obj in page.get("Contents", []):
             trust_key = obj.get("Key")
             if not trust_key:
+                continue
+            if not trust_key.lower().endswith(".csv"):
                 continue
             try:
                 src_filename = trust_key.split("/")[-1] or "part.csv"
