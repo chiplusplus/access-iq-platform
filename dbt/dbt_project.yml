@@ -10,6 +10,10 @@ macro-paths: ["macros"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
+dispatch:
+  - macro_namespace: dbt_external_tables
+    search_order: ["access_iq", "dbt_external_tables"]
+
 models:
   access_iq:
     bronze:

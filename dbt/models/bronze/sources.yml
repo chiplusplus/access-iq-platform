@@ -10,15 +10,15 @@ sources:
         description: "EHR patient demographics"
         external:
           location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr_postgres/entity=patient_demographics/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          file_format: PARQUET
           partitions:
             - name: ingest_date
               data_type: date
               path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=ehr_postgres/entity=patient_demographics"
         columns:
           - name: patient_id
             data_type: bigint
@@ -57,15 +57,15 @@ sources:
         description: "EHR patient encounters"
         external:
           location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr_postgres/entity=encounters/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          file_format: PARQUET
           partitions:
             - name: ingest_date
               data_type: date
               path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=ehr_postgres/entity=encounters"
         columns:
           - name: encounter_id
             data_type: bigint
@@ -102,15 +102,15 @@ sources:
         description: "Trust provider sites and services reference data"
         external:
           location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=trust_s3_provider_ref/entity=provider_site_reference/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          file_format: PARQUET
           partitions:
             - name: ingest_date
               data_type: date
               path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=trust_s3_provider_ref/entity=provider_site_reference"
         columns:
           - name: provider_code
             data_type: varchar(20)
@@ -155,15 +155,15 @@ sources:
         description: "Trust diagnostic orders (lab, imaging)"
         external:
           location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=trust_s3_diagnostics/entity=diagnostics_orders/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          file_format: PARQUET
           partitions:
             - name: ingest_date
               data_type: date
               path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=trust_s3_diagnostics/entity=diagnostics_orders"
         columns:
           - name: diagnostic_id
             data_type: varchar(20)
@@ -192,15 +192,15 @@ sources:
         description: "SFTP appointment drops"
         external:
           location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=sftp_appointments/entity=appointments/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          file_format: PARQUET
           partitions:
             - name: ingest_date
               data_type: date
               path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=sftp_appointments/entity=appointments"
         columns:
           - name: appointment_id
             data_type: varchar(36)
@@ -239,15 +239,15 @@ sources:
         description: "Urgent care attendances"
         external:
           location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=urgent_care_postgres/entity=urgent_care_logs/"
-          row_format: >
-            serde 'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
-          stored_as: >
-            INPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
-            OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+          file_format: PARQUET
           partitions:
             - name: ingest_date
               data_type: date
               path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=urgent_care_postgres/entity=urgent_care_logs"
         columns:
           - name: uc_log_id
             data_type: bigint

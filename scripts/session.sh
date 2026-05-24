@@ -107,7 +107,7 @@ cmd_up() {
   local PLATFORM_BUCKET
   PLATFORM_BUCKET=$(aws cloudformation describe-stacks \
     --stack-name "lake-access-iq-${CDK_ENV}" \
-    --query "Stacks[0].Outputs[?OutputKey==\`BucketName\`].OutputValue" \
+    --query "Stacks[0].Outputs[?OutputKey==\`ExportsOutputRefLakeBucket9CD7BBD21345140F\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
   export BRONZE_S3_PREFIX="s3://${PLATFORM_BUCKET}/bronze"
   echo "  BRONZE_S3_PREFIX=${BRONZE_S3_PREFIX}"
