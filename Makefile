@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test test-integration ci up down status ingest dbt
+.PHONY: setup fmt lint type test test-integration ci up down status ingest dbt tunnel tunnel-env
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -58,3 +58,10 @@ ingest:  ## Run Bronze ingestion on ECS Fargate (3 parallel tasks)
 
 dbt:  ## Run dbt command (e.g., make dbt CMD="run --select silver")
 	cd dbt && uv run dbt $(CMD) --profiles-dir .
+
+# ── Redshift tunnel ────────────────────────────────────────────────
+tunnel:  ## Start SSM port-forwarding tunnel to Redshift (localhost:5439)
+	./scripts/tunnel.sh
+
+tunnel-env:  ## Print export commands for dbt Redshift credentials
+	@./scripts/tunnel.sh env

@@ -199,6 +199,67 @@ class WarehouseStack(Stack):
             description="Redshift Serverless namespace name",
         )
 
+        # ── SSM Tunnel Instance (dev only) ───────────────────────────────
+        # Lightweight EC2 for SSM port forwarding — enables local dbt development.
+        if cfg.env_name == "dev":
+            tunnel_sg = ec2.SecurityGroup(
+                self,
+                "TunnelSg",
+                vpc=vpc,
+                security_group_name=f"{prefix}-redshift-tunnel",
+                description="SSM tunnel instance for Redshift port forwarding",
+                allow_all_outbound=False,
+            )
+            tunnel_sg.add_egress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.tcp(443),
+                "HTTPS for SSM VPC endpoints",
+            )
+            tunnel_sg.add_egress_rule(
+                redshift_sg,
+                ec2.Port.tcp(5439),
+                "Forward to Redshift",
+            )
+            redshift_sg.add_ingress_rule(
+                tunnel_sg,
+                ec2.Port.tcp(5439),
+                "SSM tunnel instance",
+            )
+
+            tunnel_role = iam.Role(
+                self,
+                "TunnelRole",
+                role_name=f"{prefix}-ssm-tunnel",
+                assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
+                managed_policies=[
+                    iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"),
+                ],
+            )
+
+            tunnel_instance = ec2.Instance(
+                self,
+                "TunnelInstance",
+                instance_type=ec2.InstanceType.of(
+                    ec2.InstanceClass.T3,
+                    ec2.InstanceSize.MICRO,
+                ),
+                machine_image=ec2.MachineImage.latest_amazon_linux2023(),
+                vpc=vpc,
+                vpc_subnets=ec2.SubnetSelection(
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                ),
+                security_group=tunnel_sg,
+                role=tunnel_role,
+                require_imdsv2=True,
+            )
+
+            CfnOutput(
+                self,
+                "TunnelInstanceId",
+                value=tunnel_instance.instance_id,
+                description="EC2 instance ID for SSM port forwarding to Redshift",
+            )
+
         # ── Expose props ──────────────────────────────────────────────────────
         self.workgroup = workgroup
         self.namespace = namespace

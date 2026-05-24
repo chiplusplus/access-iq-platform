@@ -3,15 +3,13 @@ access_iq:
   outputs:
     dev:
       type: redshift
-      method: iam
+      method: database
       host: "{{ env_var('REDSHIFT_HOST', 'localhost') }}"
       port: 5439
-      user: "{{ env_var('REDSHIFT_USER', 'dbt_dev') }}"
+      user: "{{ env_var('REDSHIFT_USER', 'admin') }}"
+      password: "{{ env_var('REDSHIFT_PASSWORD', '') }}"
       dbname: dev
       schema: bronze_external
-      region: eu-west-2
-      autocreate: true
-      db_groups: []
       threads: 4
     prod:
       type: redshift

@@ -198,6 +198,9 @@ class NetworkStack(Stack):
             ("EcrApiEndpoint", ec2.InterfaceVpcEndpointAwsService.ECR),
             ("EcrDkrEndpoint", ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER),
             ("CloudWatchLogsEndpoint", ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS),
+            ("SsmEndpoint", ec2.InterfaceVpcEndpointAwsService.SSM),
+            ("SsmMessagesEndpoint", ec2.InterfaceVpcEndpointAwsService.SSM_MESSAGES),
+            ("Ec2MessagesEndpoint", ec2.InterfaceVpcEndpointAwsService.EC2_MESSAGES),
         ]:
             ec2.InterfaceVpcEndpoint(
                 self,
