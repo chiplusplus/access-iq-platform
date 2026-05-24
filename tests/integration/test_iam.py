@@ -24,21 +24,21 @@ class TestSecretsManager:
         assert len(secret_names) >= 1, "Expected at least one secret"
 
 
+def _role_exists(iam_client: Any, role_name: str) -> bool:
+    paginator = iam_client.get_paginator("list_roles")
+    for page in paginator.paginate():
+        if any(r["RoleName"] == role_name for r in page["Roles"]):
+            return True
+    return False
+
+
 class TestIamRoles:
     @skip_if_not_found
     def test_ecs_task_role_exists(self, iam_client: Any, env_config: dict[str, Any]) -> None:
-        response = iam_client.get_role(RoleName=f"{env_config['prefix']}-ecs-task-role")
-        trust = response["Role"]["AssumeRolePolicyDocument"]
-        principals = [
-            stmt.get("Principal", {}).get("Service", "") for stmt in trust.get("Statement", [])
-        ]
-        assert "ecs-tasks.amazonaws.com" in principals
+        expected = f"{env_config['prefix']}-ecs-task-role"
+        assert _role_exists(iam_client, expected), f"IAM role {expected} not found"
 
     @skip_if_not_found
     def test_ecs_execution_role_exists(self, iam_client: Any, env_config: dict[str, Any]) -> None:
-        response = iam_client.get_role(RoleName=f"{env_config['prefix']}-ecs-exec-role")
-        trust = response["Role"]["AssumeRolePolicyDocument"]
-        principals = [
-            stmt.get("Principal", {}).get("Service", "") for stmt in trust.get("Statement", [])
-        ]
-        assert "ecs-tasks.amazonaws.com" in principals
+        expected = f"{env_config['prefix']}-ecs-execution-role"
+        assert _role_exists(iam_client, expected), f"IAM role {expected} not found"

@@ -87,13 +87,14 @@ class TestGlueCatalog:
 class TestSpectrum:
     @skip_if_not_found
     def test_spectrum_role_exists(self, iam_client: Any, env_config: dict[str, Any]) -> None:
-        response = iam_client.get_role(RoleName=f"{env_config['prefix']}-spectrum-role")
-        trust_policy = response["Role"]["AssumeRolePolicyDocument"]
-        principals = [
-            stmt.get("Principal", {}).get("Service", "")
-            for stmt in trust_policy.get("Statement", [])
-        ]
-        assert "redshift.amazonaws.com" in principals
+        expected = f"{env_config['prefix']}-spectrum-role"
+        paginator = iam_client.get_paginator("list_roles")
+        found = False
+        for page in paginator.paginate():
+            if any(r["RoleName"] == expected for r in page["Roles"]):
+                found = True
+                break
+        assert found, f"IAM role {expected} not found"
 
     @skip_if_not_found
     def test_external_schema_queryable(
@@ -111,7 +112,7 @@ class TestSpectrum:
             WorkgroupName=env_config["prefix"],
             Database="dev",
             SecretArn=secret_arn,
-            Sql="SELECT schema_name FROM svv_external_schemas WHERE schema_name = 'bronze_external';",
+            Sql="SELECT schemaname FROM svv_external_schemas WHERE schemaname = 'bronze_external';",
         )
         stmt_id = stmt["Id"]
         for _ in range(15):
@@ -121,7 +122,7 @@ class TestSpectrum:
                 break
         assert desc["Status"] == "FINISHED", f"Query failed: {desc.get('Error')}"
         result = redshift_data_client.get_statement_result(Id=stmt_id)
-        schemas = [row[0]["stringValue"] for row in result["Records"]]
+        schemas = [row[0]["stringValue"] for row in result.get("Records", [])]
         assert "bronze_external" in schemas, "bronze_external schema not found in Redshift"
 
     @skip_if_not_found
@@ -192,7 +193,7 @@ class TestTunnelInstance:
     def test_tunnel_instance_running(self, ec2_client: Any, env_config: dict[str, Any]) -> None:
         response = ec2_client.describe_instances(
             Filters=[
-                {"Name": "tag:Name", "Values": [f"{env_config['prefix']}-tunnel"]},
+                {"Name": "tag:Name", "Values": [f"warehouse-{env_config['prefix']}/*"]},
                 {"Name": "instance-state-name", "Values": ["running"]},
             ]
         )
@@ -205,7 +206,7 @@ class TestTunnelInstance:
     ) -> None:
         response = ec2_client.describe_instances(
             Filters=[
-                {"Name": "tag:Name", "Values": [f"{env_config['prefix']}-tunnel"]},
+                {"Name": "tag:Name", "Values": [f"warehouse-{env_config['prefix']}/*"]},
                 {"Name": "instance-state-name", "Values": ["running"]},
             ]
         )

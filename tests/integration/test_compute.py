@@ -14,7 +14,7 @@ pytestmark = pytest.mark.integration
 class TestEcsCluster:
     @skip_if_not_found
     def test_ecs_cluster_exists(self, ecs_client: Any, env_config: dict[str, Any]) -> None:
-        response = ecs_client.describe_clusters(clusters=[f"{env_config['prefix']}-cluster"])
+        response = ecs_client.describe_clusters(clusters=[f"{env_config['prefix']}-ingestion"])
         clusters = [c for c in response["clusters"] if c["status"] == "ACTIVE"]
         assert clusters, "ECS cluster not found or not ACTIVE"
 
