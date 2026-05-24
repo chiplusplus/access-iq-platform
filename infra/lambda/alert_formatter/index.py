@@ -1,0 +1,123 @@
+"""Format CloudWatch alarm JSON into actionable alert messages."""
+
+from __future__ import annotations
+
+import json
+import os
+import urllib.request
+
+import boto3
+
+
+def handler(event: dict, context: object) -> None:
+    sns_client = boto3.client("sns")
+    logs_client = boto3.client("logs")
+    delivery_arn = os.environ["DELIVERY_TOPIC_ARN"]
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+
+    for record in event.get("Records", []):
+        raw = record.get("Sns", {}).get("Message", "{}")
+        try:
+            alarm = json.loads(raw)
+        except json.JSONDecodeError:
+            alarm = {}
+
+        summary = _format_alarm(alarm, logs_client)
+        subject = _format_subject(alarm)
+
+        sns_client.publish(
+            TopicArn=delivery_arn,
+            Subject=subject[:100],
+            Message=summary,
+        )
+
+        if webhook_url:
+            _post_slack(webhook_url, subject, summary)
+
+
+def _format_alarm(alarm: dict, logs_client: object) -> str:
+    trigger = alarm.get("Trigger", {})
+    metric = trigger.get("MetricName", "Unknown")
+    source = metric.split("-", 1)[1] if "-" in metric else metric
+
+    if "Crash" in metric:
+        failure_type = "CRASH (unhandled exception)"
+    elif "Failed" in metric:
+        failure_type = "FAILURE (manifest status: failed)"
+    else:
+        failure_type = "ALERT"
+
+    state = alarm.get("NewStateValue", "Unknown")
+    timestamp = alarm.get("StateChangeTime", "")
+    time_short = timestamp[:19].replace("T", " ") if timestamp else "unknown"
+    env = trigger.get("Namespace", "").split("/")[-1] or "unknown"
+
+    error_detail = _fetch_recent_error(logs_client, env, source)
+
+    lines = [
+        f"Type:   {failure_type}",
+        f"Source: {source}",
+        f"Env:    {env}",
+        f"Time:   {time_short} UTC",
+        f"State:  {state}",
+    ]
+    if error_detail:
+        lines.append(f"Error:  {error_detail}")
+
+    lines.append("")
+    lines.append("Next steps:")
+    lines.append(f"  1. Check logs: /access-iq/{env}/{source}")
+    lines.append(f"  2. Dashboard: access-iq-{env}-ingestion")
+
+    return "\n".join(lines)
+
+
+def _fetch_recent_error(logs_client: object, env: str, source: str) -> str:
+    """Query CloudWatch Logs for the most recent crash or failure event."""
+    log_group = f"/access-iq/{env}/{source}"
+    try:
+        resp = logs_client.filter_log_events(
+            logGroupName=log_group,
+            filterPattern='{ $.event = "ingest_crash" || $.event = "ingest_abort" }',
+            limit=1,
+            interleaved=True,
+        )
+        events = resp.get("events", [])
+        if not events:
+            return ""
+
+        msg = json.loads(events[0]["message"])
+
+        if "exception" in msg:
+            tb = msg["exception"]
+            last_line = tb.strip().splitlines()[-1]
+            return last_line
+
+        if "reason" in msg:
+            return msg["reason"]
+
+    except Exception:
+        return ""
+    return ""
+
+
+def _format_subject(alarm: dict) -> str:
+    trigger = alarm.get("Trigger", {})
+    metric = trigger.get("MetricName", "Unknown")
+    source = metric.split("-", 1)[1] if "-" in metric else metric
+    env = trigger.get("Namespace", "").split("/")[-1] or "?"
+    state = alarm.get("NewStateValue", "ALARM")
+
+    if state == "OK":
+        return f"[RESOLVED] {source} ({env})"
+    return f"[ALERT] {source} ingestion failed ({env})"
+
+
+def _post_slack(url: str, subject: str, body: str) -> None:
+    payload = {"text": f":rotating_light: *{subject}*\n```\n{body}\n```"}
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    urllib.request.urlopen(req)

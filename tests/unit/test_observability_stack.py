@@ -88,9 +88,9 @@ def test_alarm_has_sns_action() -> None:
     )
 
 
-def test_sns_topic_exists() -> None:
+def test_sns_topics_exist() -> None:
     tpl = _template()
-    tpl.resource_count_is("AWS::SNS::Topic", 1)
+    tpl.resource_count_is("AWS::SNS::Topic", 2)
 
 
 def test_dashboard_exists() -> None:

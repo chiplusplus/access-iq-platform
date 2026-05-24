@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
@@ -14,6 +15,8 @@ from aws_cdk import aws_sns_subscriptions as subs
 from constructs import Construct
 
 from access_iq_infra.settings import EnvConfig
+
+_INFRA_DIR = Path(__file__).resolve().parent.parent.parent
 
 INGESTION_SOURCES = ["ingest-postgres", "ingest-sftp", "ingest-trust-s3"]
 
@@ -73,16 +76,24 @@ class ObservabilityStack(Stack):
 
         self.log_groups = log_groups
 
-        # -- Section 2: SNS Topic (D-10, REQ-OBS-01) ----------
+        # -- Section 2: SNS Topics (D-10, REQ-OBS-01) ----------
+        # Alarm topic: receives raw CloudWatch alarm JSON from alarm actions.
         sns_topic = sns.Topic(
             self,
             "IngestionAlertsTopic",
             topic_name=f"{cfg.app_name}-{cfg.env_name}-ingestion-alerts",
         )
 
+        # Delivery topic: receives formatted, human-readable messages.
+        delivery_topic = sns.Topic(
+            self,
+            "AlertDeliveryTopic",
+            topic_name=f"{cfg.app_name}-{cfg.env_name}-alert-delivery",
+        )
+
         alert_email = cfg.obs.get("alert_email")
         if alert_email:
-            sns_topic.add_subscription(subs.EmailSubscription(alert_email))
+            delivery_topic.add_subscription(subs.EmailSubscription(alert_email))
 
         slack_channel_id = cfg.obs.get("slack_channel_id")
         slack_workspace_id = cfg.obs.get("slack_workspace_id")
@@ -95,37 +106,34 @@ class ObservabilityStack(Stack):
                 slack_channel_configuration_name=f"{cfg.app_name}-{cfg.env_name}-alerts",
                 slack_workspace_id=slack_workspace_id,
                 slack_channel_id=slack_channel_id,
-                notification_topics=[sns_topic],
+                notification_topics=[delivery_topic],
             )
 
+        # -- Alert Formatter Lambda ----------
+        # Parses raw CloudWatch alarm JSON and publishes a clean,
+        # actionable summary to the delivery topic (and Slack webhook).
+        formatter_env: dict[str, str] = {
+            "DELIVERY_TOPIC_ARN": delivery_topic.topic_arn,
+        }
         slack_webhook_url = cfg.obs.get("slack_webhook_url")
         if slack_webhook_url:
-            slack_fn = _lambda.Function(
-                self,
-                "SlackNotifier",
-                function_name=f"{cfg.app_name}-{cfg.env_name}-slack-notifier",
-                runtime=_lambda.Runtime.PYTHON_3_12,
-                handler="index.handler",
-                code=_lambda.Code.from_inline(
-                    "import json, os, urllib.request\n"
-                    "def handler(event, context):\n"
-                    '    url = os.environ["SLACK_WEBHOOK_URL"]\n'
-                    '    for rec in event.get("Records", []):\n'
-                    '        sns_msg = rec.get("Sns", {})\n'
-                    '        subject = sns_msg.get("Subject", "AWS Alert")\n'
-                    '        message = sns_msg.get("Message", "")\n'
-                    '        payload = {"text": f":rotating_light: *{subject}*\\n```{message}```"}\n'
-                    "        req = urllib.request.Request(\n"
-                    "            url, data=json.dumps(payload).encode(),\n"
-                    '            headers={"Content-Type": "application/json"},\n'
-                    "        )\n"
-                    "        urllib.request.urlopen(req)\n"
-                ),
-                environment={"SLACK_WEBHOOK_URL": slack_webhook_url},
-                timeout=Duration.seconds(10),
-                memory_size=128,
-            )
-            sns_topic.add_subscription(subs.LambdaSubscription(slack_fn))
+            formatter_env["SLACK_WEBHOOK_URL"] = slack_webhook_url
+
+        formatter_fn = _lambda.Function(
+            self,
+            "AlertFormatter",
+            function_name=f"{cfg.app_name}-{cfg.env_name}-alert-formatter",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            code=_lambda.Code.from_asset(str(_INFRA_DIR / "lambda" / "alert_formatter")),
+            environment=formatter_env,
+            timeout=Duration.seconds(15),
+            memory_size=128,
+        )
+        delivery_topic.grant_publish(formatter_fn)
+        for lg in log_groups.values():
+            lg.grant_read(formatter_fn)
+        sns_topic.add_subscription(subs.LambdaSubscription(formatter_fn))
 
         self.sns_topic = sns_topic
 
@@ -201,14 +209,14 @@ class ObservabilityStack(Stack):
 
         dashboard.add_widgets(
             cw.GraphWidget(
-                title="Ingestion Failures & Crashes - Last 24h",
+                title="Ingestion Failures & Crashes",
                 view=cw.GraphWidgetView.BAR,
                 left=[
                     cw.Metric(
                         namespace=metric_namespace,
                         metric_name=f"IngestionFailed-{src}",
                         statistic="Sum",
-                        period=Duration.hours(1),
+                        period=Duration.minutes(5),
                         label=f"{src} failed",
                     )
                     for src in INGESTION_SOURCES
@@ -218,7 +226,7 @@ class ObservabilityStack(Stack):
                         namespace=metric_namespace,
                         metric_name=f"IngestionCrash-{src}",
                         statistic="Sum",
-                        period=Duration.hours(1),
+                        period=Duration.minutes(5),
                         label=f"{src} crash",
                     )
                     for src in INGESTION_SOURCES
@@ -227,14 +235,14 @@ class ObservabilityStack(Stack):
                 height=6,
             ),
             cw.GraphWidget(
-                title="Successful Ingestions - Last 24h",
+                title="Successful Ingestions",
                 view=cw.GraphWidgetView.BAR,
                 left=[
                     cw.Metric(
                         namespace=metric_namespace,
                         metric_name=f"IngestionSuccess-{src}",
                         statistic="Sum",
-                        period=Duration.hours(1),
+                        period=Duration.minutes(5),
                         label=f"{src}",
                     )
                     for src in INGESTION_SOURCES
