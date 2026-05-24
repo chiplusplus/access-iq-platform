@@ -106,6 +106,11 @@ def iam_client(aws_session: boto3.Session) -> Any:
     return aws_session.client("iam")
 
 
+@pytest.fixture(scope="session")
+def lambda_client(aws_session: boto3.Session) -> Any:
+    return aws_session.client("lambda")
+
+
 def skip_if_not_found(func):
     """Decorator: skip test if AWS resource doesn't exist."""
     import functools
@@ -126,6 +131,7 @@ def skip_if_not_found(func):
                 "RepositoryNotFoundException",
                 "SecretNotFoundException",
                 "NoSuchEntity",
+                "DashboardNotFoundError",
             }
             if error_code in skip_codes:
                 pytest.skip(f"Resource not found: {error_code}")
