@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test test-integration ci up down status ingest dbt tunnel tunnel-stop tunnel-env
+.PHONY: setup fmt lint type test test-integration ci profile ready up down status ingest dbt tunnel tunnel-stop tunnel-env
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -22,6 +22,13 @@ test-integration:  ## Run integration tests against live AWS (requires deployed 
 	pytest -m integration --no-header -v
 
 ci: fmt lint type test  ## Run full CI pipeline
+
+# ── Data profiling (requires live S3 session) ──────────────────────────
+profile:  ## Run Bronze data profiling + generate data dictionary (requires make up + make ingest)
+	uv run --extra profiling python -m access_iq.profiling.profile_bronze
+
+ready:  ## Run Bronze-to-Silver readiness gate (requires make up + make ingest)
+	uv run python -m access_iq.profiling.readiness_gate
 
 # ── Infrastructure (CDK) ────────────────────────────────────────────
 # TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.
