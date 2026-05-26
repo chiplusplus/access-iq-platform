@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import io
 import json
+import tempfile
 
+import pandas as pd
+
+from access_iq.profiling.data_dictionary import (
+    ColumnStats,
+    EntityStats,
+    _build_gap_analysis,
+    generate_data_dictionary,
+)
+from access_iq.profiling.profile_bronze import _extract_entity_stats
 from access_iq.profiling.s3_discovery import (
     BRONZE_ENTITIES,
     find_latest_partition,
@@ -218,3 +228,159 @@ def test_resolve_latest_run_id_picks_latest_timestamp() -> None:
     s3 = FakeS3(pages=pages, objects=objects)
     result = resolve_latest_run_id(s3=s3, bucket="b", manifest_prefix="_manifests/src/")
     assert result == "new-run"
+
+
+# ---------------------------------------------------------------------------
+# data_dictionary tests
+# ---------------------------------------------------------------------------
+
+
+def _make_entity_stats(name: str, **overrides: object) -> EntityStats:
+    """Helper to build minimal EntityStats for testing."""
+    defaults: dict[str, object] = {
+        "entity_name": name,
+        "source": "ehr_postgres",
+        "row_count": 100,
+        "pk_col": "id",
+        "pk_unique": True,
+        "pk_null_count": 0,
+        "date_range_min": "2024-01-01",
+        "date_range_max": "2024-06-30",
+        "columns": [
+            ColumnStats(
+                name="id",
+                dtype="int64",
+                non_null_pct=100.0,
+                distinct_count=100,
+                min_val="1",
+                max_val="100",
+            ),
+        ],
+        "gap_analysis": [],
+    }
+    defaults.update(overrides)
+    return EntityStats(**defaults)  # type: ignore[arg-type]
+
+
+def test_data_dictionary_has_all_entity_sections(tmp_path: object) -> None:
+    """All 8 entities appear as ## sections in the generated dictionary."""
+    with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="r") as f:
+        out_path = f.name
+
+    stats = {name: _make_entity_stats(name) for name in EXPECTED_ENTITIES}
+    generate_data_dictionary(entity_stats=stats, output_path=out_path)
+
+    from pathlib import Path
+
+    content = Path(out_path).read_text()
+    for entity in EXPECTED_ENTITIES:
+        assert f"## {entity}" in content, f"Missing section for {entity}"
+
+
+def test_data_dictionary_gap_analysis_inline(tmp_path: object) -> None:
+    """Gap analysis appears inline under the entity section."""
+    with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="r") as f:
+        out_path = f.name
+
+    stats = {
+        "patient_demographics": _make_entity_stats(
+            "patient_demographics",
+            gap_analysis=["High nulls: `postcode` has 15.0% nulls (50 distinct values)"],
+        ),
+    }
+    generate_data_dictionary(
+        entity_stats=stats,
+        output_path=out_path,
+        entity_order=["patient_demographics"],
+    )
+
+    from pathlib import Path
+
+    content = Path(out_path).read_text()
+    assert "### Gap Analysis" in content
+    assert "High nulls: `postcode`" in content
+
+
+def test_extract_entity_stats_captures_nulls() -> None:
+    """_extract_entity_stats correctly reports null percentages."""
+    df = pd.DataFrame(
+        {
+            "patient_id": [1, 2, 3, 4, 5],
+            "name": ["A", None, "C", None, "E"],
+            "age": [30, 40, None, 50, 60],
+        }
+    )
+    entity_cfg = {
+        "source_prefix": "source=ehr_postgres/entity=patient_demographics",
+        "pk": "patient_id",
+        "pk_type": "bigint",
+        "join_keys": ["patient_id"],
+    }
+
+    stats = _extract_entity_stats(df=df, entity_name="patient_demographics", entity_cfg=entity_cfg)
+
+    assert stats.row_count == 5
+    assert stats.pk_unique is True
+    assert stats.pk_null_count == 0
+
+    # Find name column stats
+    name_col = next(c for c in stats.columns if c.name == "name")
+    assert name_col.non_null_pct == 60.0  # 3/5 non-null
+    assert name_col.distinct_count == 3
+
+    # Find age column stats
+    age_col = next(c for c in stats.columns if c.name == "age")
+    assert age_col.non_null_pct == 80.0  # 4/5 non-null
+
+
+def test_build_gap_analysis_flags_high_nulls() -> None:
+    """Columns with >10% nulls get flagged in gap analysis."""
+    stats = _make_entity_stats(
+        "test_entity",
+        columns=[
+            ColumnStats(
+                name="ok_col",
+                dtype="int64",
+                non_null_pct=95.0,
+                distinct_count=50,
+                min_val="",
+                max_val="",
+            ),
+            ColumnStats(
+                name="bad_col",
+                dtype="object",
+                non_null_pct=80.0,
+                distinct_count=10,
+                min_val="",
+                max_val="",
+            ),
+        ],
+    )
+    entity_cfg = {"pk": "id", "pk_type": "bigint", "join_keys": ["id"]}
+    gaps = _build_gap_analysis(stats=stats, entity_cfg=entity_cfg)
+
+    # bad_col should be flagged (80% non-null = 20% nulls)
+    assert any("bad_col" in g for g in gaps)
+    # ok_col should NOT be flagged (95% non-null = 5% nulls)
+    assert not any("ok_col" in g and "nulls" in g.lower() for g in gaps)
+
+
+def test_build_gap_analysis_flags_varchar_datetime() -> None:
+    """Appointments varchar datetime columns get flagged."""
+    stats = _make_entity_stats(
+        "appointments",
+        columns=[
+            ColumnStats(
+                name="appointment_start_datetime",
+                dtype="object",
+                non_null_pct=100.0,
+                distinct_count=50,
+                min_val="",
+                max_val="",
+            ),
+        ],
+    )
+    entity_cfg = {"pk": "appointment_id", "pk_type": "varchar", "join_keys": []}
+    gaps = _build_gap_analysis(stats=stats, entity_cfg=entity_cfg)
+
+    assert any("Type mismatch" in g and "appointment_start_datetime" in g for g in gaps)
