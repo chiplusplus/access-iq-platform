@@ -33,7 +33,7 @@ sources:
           - name: sex
             data_type: varchar(10)
           - name: ethnicity_ons
-            data_type: varchar(10)
+            data_type: varchar(64)
           - name: imd_decile
             data_type: bigint
           - name: chronic_conditions_count
@@ -98,6 +98,78 @@ sources:
           - name: updated_at
             data_type: timestamp
 
+      - name: referrals
+        description: "EHR referral records"
+        external:
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr_postgres/entity=referrals/"
+          file_format: PARQUET
+          partitions:
+            - name: ingest_date
+              data_type: date
+              path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=ehr_postgres/entity=referrals"
+        columns:
+          - name: referral_id
+            data_type: bigint
+          - name: patient_id
+            data_type: bigint
+          - name: source_provider_id
+            data_type: bigint
+          - name: target_provider_id
+            data_type: bigint
+          - name: referral_datetime
+            data_type: timestamp
+          - name: referral_type
+            data_type: varchar(32)
+          - name: referral_specialty
+            data_type: varchar(64)
+          - name: status
+            data_type: varchar(16)
+          - name: created_at
+            data_type: timestamp
+          - name: updated_at
+            data_type: timestamp
+
+      - name: diagnoses
+        description: "EHR coded diagnoses (ICD-10)"
+        external:
+          location: "{{ env_var('BRONZE_S3_PREFIX') }}/source=ehr_postgres/entity=diagnoses/"
+          file_format: PARQUET
+          partitions:
+            - name: ingest_date
+              data_type: date
+              path_macro: dbt_external_tables.key_value
+              vals:
+                macro: get_ingest_dates
+                args:
+                  source_prefix: "source=ehr_postgres/entity=diagnoses"
+        columns:
+          - name: diagnosis_id
+            data_type: bigint
+          - name: patient_id
+            data_type: bigint
+          - name: encounter_id
+            data_type: bigint
+          - name: diagnosis_code
+            data_type: varchar(32)
+          - name: diagnosis_desc
+            data_type: varchar(255)
+          - name: diagnosis_type
+            data_type: varchar(32)
+          - name: coded_datetime
+            data_type: timestamp
+          - name: clinical_datetime
+            data_type: timestamp
+          - name: source_system
+            data_type: varchar(32)
+          - name: created_at
+            data_type: timestamp
+          - name: updated_at
+            data_type: timestamp
+
       - name: provider_site_reference
         description: "Trust provider sites and services reference data"
         external:
@@ -112,6 +184,8 @@ sources:
                 args:
                   source_prefix: "source=trust_s3_provider_ref/entity=provider_site_reference"
         columns:
+          - name: provider_id
+            data_type: bigint
           - name: provider_code
             data_type: varchar(20)
           - name: site_name
