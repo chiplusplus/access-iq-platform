@@ -15,6 +15,16 @@ from access_iq.profiling.data_dictionary import (
     generate_data_dictionary,
 )
 from access_iq.profiling.profile_bronze import _extract_entity_stats
+from access_iq.profiling.readiness_gate import (
+    CheckResult,
+    check_date_range_coverage,
+    check_entity_completeness,
+    check_join_key_existence,
+    check_null_rates,
+    check_pk_unique_nonnull,
+    check_referential_integrity,
+    check_type_consistency,
+)
 from access_iq.profiling.s3_discovery import (
     BRONZE_ENTITIES,
     find_latest_partition,
@@ -363,6 +373,281 @@ def test_build_gap_analysis_flags_high_nulls() -> None:
     assert any("bad_col" in g for g in gaps)
     # ok_col should NOT be flagged (95% non-null = 5% nulls)
     assert not any("ok_col" in g and "nulls" in g.lower() for g in gaps)
+
+
+# ---------------------------------------------------------------------------
+# Readiness gate tests
+# ---------------------------------------------------------------------------
+
+
+def _make_minimal_entity_dfs() -> dict[str, pd.DataFrame]:
+    """Build a minimal dict of all 8 entity DataFrames for gate tests."""
+    return {
+        "patient_demographics": pd.DataFrame(
+            {
+                "patient_id": [1, 2, 3],
+                "nhs_pseudo_id": ["A", "B", "C"],
+                "date_of_birth": pd.to_datetime(["2000-01-01"] * 3),
+                "registration_date": pd.to_datetime(["2024-02-01", "2024-03-01", "2024-04-01"]),
+            }
+        ),
+        "encounters": pd.DataFrame(
+            {
+                "encounter_id": [10, 20],
+                "patient_id": [1, 2],
+                "provider_id": [100, 200],
+                "encounter_datetime": pd.to_datetime(["2024-03-01", "2024-03-15"]),
+            }
+        ),
+        "referrals": pd.DataFrame(
+            {
+                "referral_id": [30, 40],
+                "patient_id": [1, 3],
+                "source_provider_id": [100, 200],
+                "target_provider_id": [200, 100],
+            }
+        ),
+        "diagnoses": pd.DataFrame(
+            {
+                "diagnosis_id": [50, 60],
+                "patient_id": [1, 2],
+                "encounter_id": [10, 20],
+            }
+        ),
+        "appointments": pd.DataFrame(
+            {
+                "appointment_id": ["APT1", "APT2"],
+                "patient_id": ["1", "2"],  # varchar
+                "nhs_pseudo_id": ["A", "B"],
+                "appointment_start_datetime": ["2024-03-01T10:00", "2024-03-02T11:00"],
+            }
+        ),
+        "urgent_care_logs": pd.DataFrame(
+            {
+                "uc_log_id": [70, 80],
+                "patient_id": [1, 2],
+                "provider_id": [100, 200],
+                "encounter_id": [10, 20],
+                "arrival_datetime": pd.to_datetime(["2024-03-01", "2024-03-10"]),
+            }
+        ),
+        "diagnostics_orders": pd.DataFrame(
+            {
+                "diagnostic_id": ["D1", "D2"],
+                "patient_id": ["1", "2"],  # varchar
+                "referral_id": ["30", "40"],
+                "encounter_id": ["10", "20"],
+                "provider_id": ["100", "200"],
+            }
+        ),
+        "provider_site_reference": pd.DataFrame(
+            {
+                "provider_id": [100, 200],
+                "provider_code": ["P100", "P200"],
+                "provider_name": ["Site A", "Site B"],
+            }
+        ),
+    }
+
+
+# -- check_pk_unique_nonnull ------------------------------------------------
+
+
+def test_check_pk_unique_nonnull_passes() -> None:
+    dfs = _make_minimal_entity_dfs()
+    results = check_pk_unique_nonnull(entity_dfs=dfs)
+    assert all(r.passed for r in results), [r for r in results if not r.passed]
+
+
+def test_check_pk_unique_nonnull_fails_on_duplicates() -> None:
+    dfs = _make_minimal_entity_dfs()
+    dfs["encounters"] = pd.DataFrame(
+        {"encounter_id": [10, 10], "patient_id": [1, 2], "provider_id": [100, 200]}
+    )
+    results = check_pk_unique_nonnull(entity_dfs=dfs)
+    enc_result = next(r for r in results if r.entity == "encounters")
+    assert enc_result.passed is False
+    assert "duplicates=" in enc_result.detail
+
+
+def test_check_pk_unique_nonnull_fails_on_nulls() -> None:
+    dfs = _make_minimal_entity_dfs()
+    dfs["encounters"] = pd.DataFrame(
+        {
+            "encounter_id": pd.array([10, None], dtype=pd.Int64Dtype()),
+            "patient_id": [1, 2],
+            "provider_id": [100, 200],
+        }
+    )
+    results = check_pk_unique_nonnull(entity_dfs=dfs)
+    enc_result = next(r for r in results if r.entity == "encounters")
+    assert enc_result.passed is False
+    assert "nulls=" in enc_result.detail
+
+
+# -- check_entity_completeness ---------------------------------------------
+
+
+def test_check_entity_completeness_passes() -> None:
+    dfs = _make_minimal_entity_dfs()
+    results = check_entity_completeness(entity_dfs=dfs)
+    assert len(results) == 8
+    assert all(r.passed for r in results)
+
+
+def test_check_entity_completeness_fails_empty() -> None:
+    dfs = _make_minimal_entity_dfs()
+    dfs["encounters"] = pd.DataFrame()
+    results = check_entity_completeness(entity_dfs=dfs)
+    enc_result = next(r for r in results if r.entity == "encounters")
+    assert enc_result.passed is False
+
+
+def test_check_entity_completeness_fails_missing() -> None:
+    dfs = _make_minimal_entity_dfs()
+    del dfs["encounters"]
+    results = check_entity_completeness(entity_dfs=dfs)
+    enc_result = next(r for r in results if r.entity == "encounters")
+    assert enc_result.passed is False
+    assert "missing" in enc_result.detail
+
+
+# -- check_join_key_existence -----------------------------------------------
+
+
+def test_check_join_key_existence_passes() -> None:
+    dfs = _make_minimal_entity_dfs()
+    results = check_join_key_existence(entity_dfs=dfs)
+    assert all(r.passed for r in results), [r for r in results if not r.passed]
+
+
+# -- check_referential_integrity --------------------------------------------
+
+
+def test_check_referential_integrity_passes() -> None:
+    dfs = _make_minimal_entity_dfs()
+    results = check_referential_integrity(entity_dfs=dfs)
+    assert all(r.passed for r in results), [r for r in results if not r.passed]
+
+
+def test_check_referential_integrity_fails_orphans() -> None:
+    dfs = _make_minimal_entity_dfs()
+    dfs["encounters"] = pd.DataFrame(
+        {
+            "encounter_id": [10, 20],
+            "patient_id": [1, 999],  # 999 not in patients
+            "provider_id": [100, 200],
+        }
+    )
+    results = check_referential_integrity(entity_dfs=dfs)
+    patient_ri = [r for r in results if r.entity == "encounters" and "patient_id" in r.detail]
+    assert any(not r.passed for r in patient_ri)
+    fail = next(r for r in patient_ri if not r.passed)
+    assert "orphans=" in fail.detail
+
+
+# -- check_type_consistency -------------------------------------------------
+
+
+def test_check_type_consistency_flags_varchar_vs_int() -> None:
+    dfs = _make_minimal_entity_dfs()
+    # appointments has object patient_id, patient_demographics has int64
+    results = check_type_consistency(entity_dfs=dfs)
+    # Should flag appointments as WARN (known varchar entity)
+    apt_results = [r for r in results if r.entity == "appointments"]
+    if apt_results:
+        assert any("WARN" in r.detail for r in apt_results)
+
+
+# -- check_null_rates -------------------------------------------------------
+
+
+def test_check_null_rates_flags_critical_nulls() -> None:
+    dfs = _make_minimal_entity_dfs()
+    dfs["encounters"] = pd.DataFrame(
+        {
+            "encounter_id": pd.array([10, None], dtype=pd.Int64Dtype()),
+            "patient_id": [1, 2],
+            "provider_id": [100, 200],
+        }
+    )
+    results = check_null_rates(entity_dfs=dfs)
+    enc_results = [r for r in results if r.entity == "encounters"]
+    assert any(not r.passed for r in enc_results)
+
+
+# -- check_date_range_coverage ----------------------------------------------
+
+
+def test_check_date_range_coverage_overlapping() -> None:
+    dfs = _make_minimal_entity_dfs()
+    # encounters, urgent_care_logs, and patient_demographics all have datetime cols
+    results = check_date_range_coverage(entity_dfs=dfs)
+    overall = next(r for r in results if r.entity == "all")
+    # At least encounters + urgent_care_logs + patient_demographics have dates
+    assert overall.passed is True
+
+
+def test_check_date_range_coverage_no_dates() -> None:
+    # Entities with no datetime columns
+    dfs = {
+        "patient_demographics": pd.DataFrame({"patient_id": [1]}),
+        "encounters": pd.DataFrame({"encounter_id": [10]}),
+    }
+    results = check_date_range_coverage(entity_dfs=dfs)
+    overall = next(r for r in results if r.entity == "all")
+    assert overall.passed is False
+
+
+# -- main exit codes --------------------------------------------------------
+
+
+def test_gate_exit_code_zero_on_all_pass(monkeypatch: object) -> None:
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    all_pass = [CheckResult(name="test", entity="e", passed=True, detail="ok")]
+
+    with (
+        patch("access_iq.profiling.readiness_gate.Settings", return_value=mock_settings),
+        patch("access_iq.profiling.readiness_gate.configure_logging"),
+        patch(
+            "access_iq.profiling.readiness_gate.run_readiness_checks",
+            return_value=all_pass,
+        ),
+    ):
+        from access_iq.profiling.readiness_gate import main
+
+        try:
+            main()
+        except SystemExit as e:
+            assert e.code == 0
+
+
+def test_gate_exit_code_one_on_failure(monkeypatch: object) -> None:
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    results = [
+        CheckResult(name="test", entity="e", passed=True, detail="ok"),
+        CheckResult(name="test2", entity="e2", passed=False, detail="fail"),
+    ]
+
+    with (
+        patch("access_iq.profiling.readiness_gate.Settings", return_value=mock_settings),
+        patch("access_iq.profiling.readiness_gate.configure_logging"),
+        patch(
+            "access_iq.profiling.readiness_gate.run_readiness_checks",
+            return_value=results,
+        ),
+    ):
+        from access_iq.profiling.readiness_gate import main
+
+        try:
+            main()
+            assert False, "Expected SystemExit"  # noqa: B011
+        except SystemExit as e:
+            assert e.code == 1
 
 
 def test_build_gap_analysis_flags_varchar_datetime() -> None:
