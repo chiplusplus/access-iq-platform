@@ -11,8 +11,15 @@ dependencies = [
     "pydantic-settings>=2.6,<3",
     "python-dotenv==1.2.1",
     "structlog>=24.1,<26",
+    "pandas>=2.0",
     "pyarrow>=18.0",
     "openpyxl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+profiling = [
+    "ydata-profiling>=4.10,<5",
+    "pandas>=2.0",
 ]
 
 [build-system]
