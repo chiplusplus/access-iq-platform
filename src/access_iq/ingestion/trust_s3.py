@@ -44,7 +44,7 @@ def _csv_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
 
 def _xlsx_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
     """Convert Excel (.xlsx) bytes to Parquet buffer."""
-    from openpyxl import load_workbook
+    from openpyxl import load_workbook  # type: ignore[import-untyped]
 
     wb = load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
     ws = wb.active

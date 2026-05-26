@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.request
+from typing import Any
 
 import boto3
 
@@ -72,7 +73,7 @@ def _format_alarm(alarm: dict, logs_client: object) -> str:
     return "\n".join(lines)
 
 
-def _fetch_recent_error(logs_client: object, env: str, source: str) -> str:
+def _fetch_recent_error(logs_client: Any, env: str, source: str) -> str:
     """Query CloudWatch Logs for the most recent crash or failure event."""
     log_group = f"/access-iq/{env}/{source}"
     try:
@@ -91,10 +92,10 @@ def _fetch_recent_error(logs_client: object, env: str, source: str) -> str:
         if "exception" in msg:
             tb = msg["exception"]
             last_line = tb.strip().splitlines()[-1]
-            return last_line
+            return str(last_line)
 
         if "reason" in msg:
-            return msg["reason"]
+            return str(msg["reason"])
 
     except Exception:
         return ""
