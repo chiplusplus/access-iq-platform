@@ -1,0 +1,43 @@
+{
+  "app_name": "access-iq",
+  "env_name": "dev",
+  "account_id": "222308823356",
+  "user_name": "AWSReservedSSO_CHI-Engineer_56b619fe880e8582/chia",
+  "region": "eu-west-2",
+  "tags": {
+    "Environment": "dev",
+    "Project": "access-iq",
+    "ManagedBy": "cdk",
+    "CostCenter": "project"
+  },
+  "s3": {
+    "removal_policy": "DESTROY"
+  },
+  "iam": {
+    "external_bucket": "northshire-trust-exports-911848242214",
+    "trust_account_id": "911848242214"
+  },
+  "vpc": {
+    "platform_cidr": "10.10.0.0/16",
+    "trust_cidr": "10.0.0.0/16",
+    "max_azs": 3,
+    "nat_gateways": 1
+  },
+  "ecs": {
+    "cpu": 512,
+    "memory_limit_mib": 1024
+  },
+  "obs": {
+    "log_retention_days": 7,
+    "alert_email": "tools@chiplusplus.com",
+    "slack_channel_id": "",
+    "slack_workspace_id": "",
+    "slack_webhook_url": "https://hooks.slack.com/services/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"
+  },
+  "redshift": {
+    "base_capacity": 8,
+    "usage_limit_rpu_hours": 4,
+    "snapshot_retention_days": 7,
+    "db_name": "dev"
+  }
+}

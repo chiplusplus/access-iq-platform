@@ -130,7 +130,7 @@ def test_ingest_sftp_success_uploads_files_and_manifest(monkeypatch):
     transport = FakeTransport()
     sftp_client = FakeSFTP(
         names=["b.txt", "subdir", "a.txt"],
-        files={"a.txt": b"A", "b.txt": b"BB"},
+        files={"a.txt": b"id,val\n1,x\n", "b.txt": b"id,val\n2,y\n"},
         dir_names={"subdir"},
     )
 
@@ -159,6 +159,11 @@ def test_ingest_sftp_success_uploads_files_and_manifest(monkeypatch):
     assert transport.connected is True
     assert transport.closed is True
     assert sftp_client.closed is True
+
+    # Uploaded files should be Parquet (PAR1 magic bytes)
+    for upload in s3.uploads:
+        assert upload["Body"][:4] == b"PAR1", "Expected Parquet magic bytes"
+        assert upload["Key"].endswith(".parquet"), "Expected .parquet key suffix"
 
     manifest = json.loads(s3.puts[0]["Body"].decode("utf-8"))
     assert manifest["run_id"] == "run-1"
@@ -206,7 +211,7 @@ def test_ingest_sftp_fail_fast_false_continues(monkeypatch):
     transport = FakeTransport()
     sftp_client = FakeSFTP(
         names=["a.txt", "b.txt"],
-        files={"b.txt": b"ok"},
+        files={"b.txt": b"id,val\n1,x\n"},
         fail_open_for={"a.txt"},
     )
 

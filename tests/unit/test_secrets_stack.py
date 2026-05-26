@@ -24,6 +24,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         tags={},
         ecs={},
         obs={},
+        redshift={},
     )
 
 

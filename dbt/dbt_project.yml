@@ -1,0 +1,37 @@
+name: access_iq
+version: "0.1.0"
+config-version: 2
+profile: access_iq
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+dispatch:
+  - macro_namespace: dbt_external_tables
+    search_order: ["access_iq", "dbt_external_tables"]
+
+models:
+  access_iq:
+    bronze:
+      +schema: bronze_external
+      +materialized: ephemeral
+    silver:
+      +schema: silver
+      +materialized: incremental
+    gold:
+      +schema: gold
+      +materialized: table
+
+seeds:
+  access_iq:
+    +schema: seeds
+
+vars:
+  bronze_database: "{{ env_var('REDSHIFT_DB', 'dev') }}"
+  bronze_schema: bronze_external
+  silver_schema: silver
+  gold_schema: gold

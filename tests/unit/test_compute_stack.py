@@ -54,6 +54,12 @@ def _cfg() -> EnvConfig:
         tags={},
         ecs={"cpu": 512, "memory_limit_mib": 1024},
         obs={},
+        redshift={
+            "base_capacity": 8,
+            "usage_limit_rpu_hours": 4,
+            "snapshot_retention_days": 7,
+            "db_name": "dev",
+        },
     )
 
 

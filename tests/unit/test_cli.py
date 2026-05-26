@@ -200,4 +200,4 @@ def test_main_ingest_trust_s3_success(monkeypatch):
     assert prov_called["trust_bucket"] == "trust-bucket"
     assert prov_called["trust_key"] == "provider_references.json"
     assert diag_called["prefix_root"] == "diag/"
-    assert diag_called["export_date"] == date(2026, 2, 2)
+    assert diag_called["export_date"] is None

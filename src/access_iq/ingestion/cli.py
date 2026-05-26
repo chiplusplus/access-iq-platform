@@ -35,6 +35,18 @@ def main() -> None:
 
     structlog.contextvars.bind_contextvars(env=settings.env)
 
+    try:
+        _run(args, ingest_date, settings)
+    except SystemExit as exc:
+        if exc.code not in (None, 0):
+            log.error("ingest_abort", status="failed", cmd=args.cmd, reason=str(exc))
+        raise
+    except Exception:
+        log.exception("ingest_crash", status="failed", cmd=args.cmd)
+        raise SystemExit(1) from None
+
+
+def _run(args: argparse.Namespace, ingest_date: date, settings: Settings) -> None:
     if args.cmd == "ingest-postgres":
         dbs = list(settings.postgres_sources.keys()) if args.db == "all" else [args.db]
 
@@ -168,7 +180,7 @@ def main() -> None:
             s3=s3,
             trust_bucket=base_cfg.bucket,
             prefix_root=diagnostics_cfg.prefix_root,
-            export_date=ingest_date,
+            export_date=None,
             platform_bucket=settings.platform_bucket,
             env=settings.env,
             source_name=diagnostics_cfg.source_name or "trust_s3_diagnostics",

@@ -37,7 +37,10 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "infra"]
-addopts = "--maxfail=1"
+addopts = "--maxfail=1 -m 'not integration'"
+markers = [
+    "integration: tests that run against live AWS infrastructure (requires deployed stacks)",
+]
 
 [tool.mypy]
 python_version = "3.12"

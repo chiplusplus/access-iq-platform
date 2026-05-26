@@ -119,7 +119,12 @@ class ComputeStack(Stack):
                     {
                         "ehr_postgres": {
                             "dsn_env": "EHR_DSN",
-                            "tables": ["patient_demographics", "encounters"],
+                            "tables": [
+                                "patient_demographics",
+                                "encounters",
+                                "referrals",
+                                "diagnoses",
+                            ],
                         },
                         "urgent_care_postgres": {
                             "dsn_env": "URGENT_CARE_DSN",

@@ -3,7 +3,9 @@ name = "access-iq-dbt"
 version = "0.1.0"
 description = "Access-IQ dbt project (Silver staging + Gold marts). Filled in Phase 4."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "dbt-redshift==1.10.1",
+]
 
 [build-system]
 requires = ["hatchling"]

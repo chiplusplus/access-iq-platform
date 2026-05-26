@@ -17,6 +17,7 @@ class EnvConfig:
     tags: dict[str, str]
     ecs: dict[str, Any]
     obs: dict[str, Any]
+    redshift: dict[str, Any]
 
 
 def load_env_config(env_name: str) -> EnvConfig:
@@ -49,6 +50,7 @@ def load_env_config(env_name: str) -> EnvConfig:
             tags=dict(raw.get("tags", {})),
             ecs=dict(raw.get("ecs", {})),
             obs=dict(raw.get("obs", {})),
+            redshift=dict(raw.get("redshift", {})),
         )
     except KeyError as e:
         raise KeyError(f"Missing required config key {e} in {path}") from e

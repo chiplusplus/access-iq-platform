@@ -7,8 +7,9 @@ from typing import Any
 
 import boto3
 import psycopg2
+import pyarrow as pa
+import pyarrow.parquet as pq
 import structlog
-from psycopg2 import sql
 
 from access_iq.ingestion.idempotency import should_skip_if_already_successful
 from access_iq.ingestion.manifests import (
@@ -38,22 +39,16 @@ def ingest_table_to_bronze(
 
     bronze_key = (
         f"bronze/source={db}/entity={table}/"
-        f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/{table}.csv"
+        f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/{table}.parquet"
     )
 
     conn = psycopg2.connect(dsn)
     cursor = conn.cursor()
 
-    copy_sql = (
-        sql.SQL("COPY (SELECT * FROM {}) TO STDOUT WITH CSV HEADER")
-        .format(sql.Identifier(table))
-        .as_string(cursor)
-    )
-
     try:
         extra = s3_kms_args(kms_key_arn)
         s3_client.upload_fileobj(
-            Fileobj=_copy_stream(cursor, copy_sql),
+            Fileobj=_parquet_buffer(cursor, table),
             Bucket=platform_bucket,
             Key=bronze_key,
             ExtraArgs=extra if extra else None,
@@ -170,8 +165,14 @@ def ingest_postgres_source_to_bronze(
     return manifest.model_dump()
 
 
-def _copy_stream(cursor: Any, copy_sql: str) -> io.BytesIO:
-    buffer = io.BytesIO()
-    cursor.copy_expert(copy_sql, buffer)
-    buffer.seek(0)
-    return buffer
+def _parquet_buffer(cursor: Any, table: str) -> io.BytesIO:
+    """Fetch all rows via SELECT and write to in-memory Parquet buffer."""
+    cursor.execute(f'SELECT * FROM "{table}"')
+    columns = [desc[0] for desc in cursor.description]
+    rows = cursor.fetchall()
+    data = {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+    tbl = pa.Table.from_pydict(data)
+    buf = io.BytesIO()
+    pq.write_table(tbl, buf, compression="snappy")
+    buf.seek(0)
+    return buf
