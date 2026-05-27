@@ -22,6 +22,7 @@ on-run-start:
     RETURNS varchar VOLATILE
     LAMBDA '{{ env_var("HMAC_LAMBDA_NAME", "access-iq-dev-hmac-nhs-udf") }}'
     IAM_ROLE '{{ env_var("REDSHIFT_LAMBDA_UDF_ROLE_ARN") }}'
+  - "CREATE GROUP IF NOT EXISTS analysts"
   - "GRANT USAGE ON SCHEMA silver TO GROUP analysts"
   - "GRANT SELECT ON ALL TABLES IN SCHEMA silver TO GROUP analysts"
   - "REVOKE USAGE ON SCHEMA silver_keys FROM GROUP analysts"

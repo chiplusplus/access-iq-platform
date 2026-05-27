@@ -32,11 +32,11 @@ deduped AS (
 )
 
 SELECT
-    src.diagnostic_id::bigint                         AS diagnostic_id,
+    src.diagnostic_id::numeric::bigint                 AS diagnostic_id,
     pi.patient_sk,
-    src.referral_id::bigint                           AS referral_id,
-    src.encounter_id::bigint                          AS encounter_id,
-    src.provider_id::bigint                           AS provider_id,
+    src.referral_id::numeric::bigint                  AS referral_id,
+    src.encounter_id::numeric::bigint                 AS encounter_id,
+    src.provider_id::numeric::bigint                  AS provider_id,
     src.test_type,
     src.test_panel,
     src.request_date::date                            AS request_date,
@@ -46,5 +46,5 @@ SELECT
     src.ingest_date                                   AS _ingest_date,
     SYSDATE                                           AS _loaded_at
 FROM deduped src
-LEFT JOIN {{ ref('patient_identifiers') }} pi ON pi.patient_id = src.patient_id::bigint
+LEFT JOIN {{ ref('patient_identifiers') }} pi ON pi.patient_id = src.patient_id::numeric::bigint
 WHERE src._rn = 1
