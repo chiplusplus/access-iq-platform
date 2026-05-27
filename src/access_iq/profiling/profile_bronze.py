@@ -23,9 +23,9 @@ from access_iq.profiling.s3_discovery import (
 )
 
 try:
-    from data_profiling import ProfileReport  # type: ignore[import-untyped]
+    from data_profiling import ProfileReport
 except ImportError:
-    ProfileReport = None  # type: ignore[assignment,misc]
+    ProfileReport = None  # type: ignore[assignment,unused-ignore]
 
 log = structlog.get_logger(__name__)
 

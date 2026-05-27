@@ -168,7 +168,7 @@ def read_bronze_entity(
 
 
 def load_all_bronze_entities(
-    *, aws_profile: str, aws_region: str, platform_bucket: str
+    *, aws_profile: str | None, aws_region: str, platform_bucket: str
 ) -> dict[str, pd.DataFrame]:
     """Load all registered Bronze entities from S3 into DataFrames.
 

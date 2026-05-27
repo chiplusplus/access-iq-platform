@@ -43,6 +43,7 @@ jobs:
         working-directory: dbt
     env:
       BRONZE_S3_PREFIX: "s3://ci-placeholder/bronze"
+      REDSHIFT_LAMBDA_UDF_ROLE_ARN: "arn:aws:iam::000000000000:role/ci-placeholder"
       # ci target uses database method (no IAM handshake) so parse/compile work without Redshift
       DBT_TARGET: ci
     steps:
