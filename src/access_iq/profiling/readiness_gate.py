@@ -17,9 +17,7 @@ from access_iq.config import Settings
 from access_iq.logging_config import configure_logging
 from access_iq.profiling.s3_discovery import (
     BRONZE_ENTITIES,
-    find_latest_partition,
-    read_bronze_entity,
-    resolve_latest_run_id,
+    load_all_bronze_entities,
 )
 
 log = structlog.get_logger(__name__)
@@ -411,49 +409,13 @@ def check_date_range_coverage(*, entity_dfs: dict[str, pd.DataFrame]) -> list[Ch
 # ---------------------------------------------------------------------------
 
 
-def _load_entity_dfs(*, settings: Settings) -> dict[str, pd.DataFrame]:
-    """Read all Bronze entities from S3 into DataFrames."""
-    import boto3
-
-    session = boto3.Session(
-        profile_name=settings.aws_profile,
-        region_name=settings.aws_region,
-    )
-    s3 = session.client("s3")
-    bucket = settings.platform_bucket
-
-    entity_dfs: dict[str, pd.DataFrame] = {}
-    for entity_name, entity_cfg in BRONZE_ENTITIES.items():
-        partition = find_latest_partition(
-            s3=s3,
-            bucket=bucket,
-            entity_prefix=entity_cfg["source_prefix"],
-        )
-        if not partition:
-            log.warning("no_partition", entity=entity_name)
-            continue
-
-        source_part = entity_cfg["source_prefix"].split("/")[0]
-        date_part = partition.rstrip("/").split("/")[-1]
-        manifest_prefix = f"_manifests/{source_part}/{date_part}/"
-        run_id = resolve_latest_run_id(s3=s3, bucket=bucket, manifest_prefix=manifest_prefix)
-
-        read_prefix = f"{partition}run_id={run_id}/" if run_id else partition
-        df = read_bronze_entity(
-            s3_session=session,
-            bucket=bucket,
-            prefix=read_prefix,
-            region=settings.aws_region,
-        )
-        entity_dfs[entity_name] = df
-        log.info("loaded_entity", entity=entity_name, rows=len(df))
-
-    return entity_dfs
-
-
 def run_readiness_checks(*, settings: Settings) -> list[CheckResult]:
     """Execute all 7 readiness checks against live Bronze data."""
-    entity_dfs = _load_entity_dfs(settings=settings)
+    entity_dfs = load_all_bronze_entities(
+        aws_profile=settings.aws_profile,
+        aws_region=settings.aws_region,
+        platform_bucket=settings.platform_bucket,
+    )
 
     all_results: list[CheckResult] = []
     all_results.extend(check_entity_completeness(entity_dfs=entity_dfs))

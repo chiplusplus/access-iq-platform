@@ -19,9 +19,7 @@ from access_iq.profiling.data_dictionary import (
 )
 from access_iq.profiling.s3_discovery import (
     BRONZE_ENTITIES,
-    find_latest_partition,
-    read_bronze_entity,
-    resolve_latest_run_id,
+    load_all_bronze_entities,
 )
 
 try:
@@ -133,57 +131,21 @@ def _extract_entity_stats(*, df: pd.DataFrame, entity_name: str, entity_cfg: dic
 
 def _run(settings: Settings) -> None:
     """Run profiling across all Bronze entities."""
-    import boto3
-
-    session = boto3.Session(
-        profile_name=settings.aws_profile,
-        region_name=settings.aws_region,
-    )
-    s3 = session.client("s3")
-    bucket = settings.platform_bucket
-
     output_dir = os.environ.get("PROFILING_OUTPUT_DIR", DEFAULT_OUTPUT_DIR)
     dict_path = os.environ.get("PROFILING_DICT_PATH", DEFAULT_DICT_PATH)
+
+    entity_dfs = load_all_bronze_entities(
+        aws_profile=settings.aws_profile,
+        aws_region=settings.aws_region,
+        platform_bucket=settings.platform_bucket,
+    )
 
     all_stats: dict[str, EntityStats] = {}
 
     for entity_name, entity_cfg in BRONZE_ENTITIES.items():
-        bound = log.bind(entity=entity_name)
-
-        # Discover latest partition
-        partition = find_latest_partition(
-            s3=s3,
-            bucket=bucket,
-            entity_prefix=entity_cfg["source_prefix"],
-        )
-        if not partition:
-            bound.warning("no_partition", entity=entity_name)
-            continue
-
-        # Extract source_prefix parts for manifest lookup
-        source_part = entity_cfg["source_prefix"].split("/")[0]  # e.g. source=ehr_postgres
-        # Get ingest_date from partition
-        date_part = partition.rstrip("/").split("/")[-1]  # e.g. ingest_date=2024-01-15
-        manifest_prefix = f"_manifests/{source_part}/{date_part}/"
-
-        run_id = resolve_latest_run_id(s3=s3, bucket=bucket, manifest_prefix=manifest_prefix)
-
-        # Build read prefix
-        if run_id:
-            read_prefix = f"{partition}run_id={run_id}/"
-        else:
-            read_prefix = partition
-            bound.info("no_successful_run_id", msg="reading all files under partition")
-
-        # Read entity data
-        df = read_bronze_entity(
-            s3_session=session,
-            bucket=bucket,
-            prefix=read_prefix,
-            region=settings.aws_region,
-        )
-        if df.empty:
-            bound.warning("empty_dataframe", entity=entity_name)
+        df = entity_dfs.get(entity_name)
+        if df is None or df.empty:
+            log.warning("skipping_entity", entity=entity_name, reason="no data")
             continue
 
         # Profile
@@ -192,7 +154,9 @@ def _run(settings: Settings) -> None:
         # Extract stats
         stats = _extract_entity_stats(df=df, entity_name=entity_name, entity_cfg=entity_cfg)
         all_stats[entity_name] = stats
-        bound.info("entity_profiled", rows=stats.row_count, columns=len(stats.columns))
+        log.info(
+            "entity_profiled", entity=entity_name, rows=stats.row_count, columns=len(stats.columns)
+        )
 
     # Generate data dictionary
     generate_data_dictionary(entity_stats=all_stats, output_path=dict_path)

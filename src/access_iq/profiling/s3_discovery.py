@@ -139,11 +139,14 @@ def resolve_latest_run_id(*, s3: Any, bucket: str, manifest_prefix: str) -> str:
 
 def read_bronze_entity(
     *, s3_session: Any, bucket: str, prefix: str, region: str = "eu-west-2"
-) -> pd.DataFrame:
+) -> pd.DataFrame | None:
     """Read all Parquet files under *prefix* into a single DataFrame.
 
     Uses boto3 session credentials with pyarrow S3FileSystem so SSO
     profiles work correctly.
+
+    Returns ``None`` on error instead of an empty DataFrame so callers
+    can distinguish "no data" from "read failed".
     """
     import pyarrow.fs as pafs
 
@@ -161,4 +164,52 @@ def read_bronze_entity(
         return df
     except Exception:
         log.error("read_bronze_entity_failed", path=bare_path, exc_info=True)
-        return pd.DataFrame()
+        return None
+
+
+def load_all_bronze_entities(
+    *, aws_profile: str, aws_region: str, platform_bucket: str
+) -> dict[str, pd.DataFrame]:
+    """Load all registered Bronze entities from S3 into DataFrames.
+
+    Shared helper used by both ``profile_bronze`` and ``readiness_gate``
+    to avoid duplicating the partition-discovery / manifest-resolution /
+    read loop.
+    """
+    import boto3
+
+    session = boto3.Session(profile_name=aws_profile, region_name=aws_region)
+    s3 = session.client("s3")
+
+    entity_dfs: dict[str, pd.DataFrame] = {}
+    for entity_name, entity_cfg in BRONZE_ENTITIES.items():
+        partition = find_latest_partition(
+            s3=s3,
+            bucket=platform_bucket,
+            entity_prefix=entity_cfg["source_prefix"],
+        )
+        if not partition:
+            log.warning("no_partition", entity=entity_name)
+            continue
+
+        source_part = entity_cfg["source_prefix"].split("/")[0]
+        date_part = partition.rstrip("/").split("/")[-1]
+        manifest_prefix = f"_manifests/{source_part}/{date_part}/"
+        run_id = resolve_latest_run_id(
+            s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
+        )
+
+        read_prefix = f"{partition}run_id={run_id}/" if run_id else partition
+        df = read_bronze_entity(
+            s3_session=session,
+            bucket=platform_bucket,
+            prefix=read_prefix,
+            region=aws_region,
+        )
+        if df is None:
+            log.warning("read_failed", entity=entity_name)
+            continue
+        entity_dfs[entity_name] = df
+        log.info("loaded_entity", entity=entity_name, rows=len(df))
+
+    return entity_dfs
