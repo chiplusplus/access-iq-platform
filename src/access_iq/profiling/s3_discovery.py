@@ -97,12 +97,15 @@ def resolve_latest_run_id(*, s3: Any, bucket: str, manifest_prefix: str) -> str:
     """
     paginator = s3.get_paginator("list_objects_v2")
     successful_runs: list[tuple[str, str]] = []  # (timestamp, run_id)
+    manifest_count = 0
+    error_count = 0
 
     for page in paginator.paginate(Bucket=bucket, Prefix=manifest_prefix):
         for obj in page.get("Contents", []):
             key = obj.get("Key", "")
             if not key.endswith(".json"):
                 continue
+            manifest_count = manifest_count + 1
             try:
                 resp = s3.get_object(Bucket=bucket, Key=key)
                 body = json.loads(resp["Body"].read())
@@ -112,7 +115,16 @@ def resolve_latest_run_id(*, s3: Any, bucket: str, manifest_prefix: str) -> str:
                     if run_id:
                         successful_runs.append((ts, run_id))
             except Exception:
+                error_count = error_count + 1
                 log.warning("manifest_read_error", key=key, exc_info=True)
+
+    if error_count > 0 and error_count == manifest_count:
+        log.error(
+            "all_manifests_failed",
+            prefix=manifest_prefix,
+            total=manifest_count,
+            errors=error_count,
+        )
 
     if not successful_runs:
         log.info("no_successful_manifests", prefix=manifest_prefix)
