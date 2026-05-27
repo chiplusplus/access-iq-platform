@@ -75,7 +75,10 @@ def _build_gap_analysis(*, stats: EntityStats, entity_cfg: dict) -> list[str]:
     if entity in _VARCHAR_DATETIME_ENTITIES:
         expected_ts = _EXPECTED_TIMESTAMP_COLS.get(entity, set())
         for col in stats.columns:
-            if col.name in expected_ts and "int" not in col.dtype.lower():
+            if col.name in expected_ts and col.dtype.lower() not in (
+                "datetime64[ns]",
+                "datetime64[ns, utc]",
+            ):
                 gaps.append(
                     f"Type mismatch: `{col.name}` is {col.dtype}, "
                     f"expected timestamp -- Silver must cast"
