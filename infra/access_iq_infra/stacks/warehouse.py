@@ -144,10 +144,7 @@ class WarehouseStack(Stack):
             timeout=Duration.seconds(30),
             memory_size=128,
             environment={
-                "HMAC_KEY_SECRET_ARN": (
-                    f"arn:aws:secretsmanager:{self.region}:{self.account}"
-                    f":secret:access-iq/{cfg.env_name}/hmac-key*"
-                ),
+                "HMAC_KEY_SECRET_ARN": f"access-iq/{cfg.env_name}/hmac-key",
             },
             description="HMAC-SHA-256 UDF for Redshift NHS number pseudonymisation",
         )
