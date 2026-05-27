@@ -13,14 +13,16 @@ import hashlib
 import hmac as hmac_mod
 import importlib
 import json
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 # ``lambda`` is a Python keyword, so normal ``from access_iq.lambda...``
 # import syntax is a SyntaxError.  Use importlib instead.
-handler_module = importlib.import_module("access_iq.lambda.hmac_udf.handler")
-handler = handler_module.handler  # type: ignore[attr-defined]
+handler_module: Any = importlib.import_module("access_iq.lambda.hmac_udf.handler")
+handler = handler_module.handler
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,7 +40,7 @@ def _mock_sm(secret_string: str) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def _reset_key_cache(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[misc]
+def _reset_key_cache(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     """Clear the module-level key cache before and after each test."""
     handler_module._KEY_CACHE = None  # noqa: SLF001
     monkeypatch.setenv("HMAC_KEY_SECRET_ARN", TEST_SECRET_ARN)
@@ -56,9 +58,9 @@ def _expected_hex(key: str, value: str) -> str:
     return hmac_mod.new(key.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def _parse(result: str) -> dict:
+def _parse(result: str) -> dict[str, Any]:
     """Parse the JSON-string response from the handler."""
-    return json.loads(result)
+    return json.loads(result)  # type: ignore[no-any-return]
 
 
 def test_handler_single_value() -> None:
