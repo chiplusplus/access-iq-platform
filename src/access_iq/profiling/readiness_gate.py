@@ -348,7 +348,7 @@ def check_date_range_coverage(*, entity_dfs: dict[str, pd.DataFrame]) -> list[Ch
                     )
 
     # Find overlapping range across all entities
-    if len(entity_ranges) < 2:
+    if len(entity_ranges) < 3:
         results.append(
             CheckResult(
                 name="date_range_coverage",
