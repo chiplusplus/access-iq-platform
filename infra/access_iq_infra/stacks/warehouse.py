@@ -10,12 +10,14 @@ Snapshot lifecycle:
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
-from aws_cdk import CfnOutput, Stack
+from aws_cdk import CfnOutput, Duration, Stack
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
+from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_redshiftserverless as rs
 from aws_cdk import aws_s3 as s3
 from aws_cdk.custom_resources import (
@@ -120,6 +122,57 @@ class WarehouseStack(Stack):
             )
         )
 
+        # ── HMAC Lambda UDF (Phase 5, D-01/D-02) ────────────────────────────
+        # Lambda backing the Redshift CREATE EXTERNAL FUNCTION f_hmac_nhs_number.
+        # Uses Python runtime with boto3 (bundled in Lambda runtime) + stdlib hmac/hashlib.
+        # Only the key ARN is in the env var; the key itself is fetched at runtime (T-05-03).
+        hmac_lambda = _lambda.Function(
+            self,
+            "HmacUdfLambda",
+            function_name=f"{prefix}-hmac-nhs-udf",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="handler.handler",
+            code=_lambda.Code.from_asset(
+                str(
+                    Path(__file__).resolve().parents[2].parent
+                    / "src"
+                    / "access_iq"
+                    / "lambda"
+                    / "hmac_udf"
+                )
+            ),
+            timeout=Duration.seconds(30),
+            memory_size=128,
+            environment={
+                "HMAC_KEY_SECRET_ARN": (
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}"
+                    f":secret:access-iq/{cfg.env_name}/hmac-key*"
+                ),
+            },
+            description="HMAC-SHA-256 UDF for Redshift NHS number pseudonymisation",
+        )
+
+        # Grant Lambda read on the HMAC key in Secrets Manager
+        hmac_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}"
+                    f":secret:access-iq/{cfg.env_name}/hmac-key*"
+                ],
+            )
+        )
+
+        # IAM role for Redshift to invoke Lambda UDF (T-05-14)
+        lambda_udf_role = iam.Role(
+            self,
+            "LambdaUdfRole",
+            role_name=f"{prefix}-redshift-lambda-udf-role",
+            assumed_by=iam.ServicePrincipal("redshift.amazonaws.com"),
+            description="Allows Redshift to invoke Lambda UDFs (HMAC pseudonymisation)",
+        )
+        hmac_lambda.grant_invoke(lambda_udf_role)
+
         # ── CfnNamespace (T-04-03, D-01, D-12) ───────────────────────────────
         # Timestamped FinalSnapshotName avoids SnapshotAlreadyExistsFault on repeated
         # destroy/recreate cycles (Pitfall 6 mitigation).
@@ -131,7 +184,7 @@ class WarehouseStack(Stack):
             db_name=cfg.redshift.get("db_name", "dev"),
             kms_key_id=lake_key.key_arn,
             manage_admin_password=True,
-            iam_roles=[spectrum_role.role_arn],
+            iam_roles=[spectrum_role.role_arn, lambda_udf_role.role_arn],
             default_iam_role_arn=spectrum_role.role_arn,
             log_exports=["userlog", "connectionlog", "useractivitylog"],
             final_snapshot_name=snapshot_name,
@@ -197,6 +250,20 @@ class WarehouseStack(Stack):
             value=namespace.namespace_name,
             export_name=f"{prefix}-redshift-namespace",
             description="Redshift Serverless namespace name",
+        )
+        CfnOutput(
+            self,
+            "HmacLambdaName",
+            value=hmac_lambda.function_name,
+            export_name=f"{prefix}-hmac-lambda-name",
+            description="HMAC UDF Lambda function name (set as HMAC_LAMBDA_NAME env var for dbt)",
+        )
+        CfnOutput(
+            self,
+            "LambdaUdfRoleArn",
+            value=lambda_udf_role.role_arn,
+            export_name=f"{prefix}-lambda-udf-role-arn",
+            description="Redshift Lambda UDF execution role ARN (set as REDSHIFT_LAMBDA_UDF_ROLE_ARN for dbt)",
         )
 
         # ── SSM Tunnel Instance (dev only) ───────────────────────────────
@@ -265,3 +332,5 @@ class WarehouseStack(Stack):
         self.namespace = namespace
         self.spectrum_role = spectrum_role
         self.redshift_sg = redshift_sg
+        self.hmac_lambda = hmac_lambda
+        self.lambda_udf_role = lambda_udf_role
