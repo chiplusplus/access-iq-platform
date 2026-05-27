@@ -114,7 +114,11 @@ class WarehouseStack(Stack):
                     "glue:BatchCreatePartition",
                     "glue:UpdatePartition",
                 ],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:glue:{self.region}:{self.account}:catalog",
+                    f"arn:aws:glue:{self.region}:{self.account}:database/{catalog_database_name}",
+                    f"arn:aws:glue:{self.region}:{self.account}:table/{catalog_database_name}/*",
+                ],
             )
         )
 
