@@ -14,6 +14,19 @@ dispatch:
   - macro_namespace: dbt_external_tables
     search_order: ["access_iq", "dbt_external_tables"]
 
+on-run-start:
+  - "CREATE SCHEMA IF NOT EXISTS silver_quarantine"
+  - "CREATE SCHEMA IF NOT EXISTS silver_keys"
+  - >
+    CREATE OR REPLACE EXTERNAL FUNCTION f_hmac_nhs_number(varchar)
+    RETURNS varchar VOLATILE
+    LAMBDA '{{ env_var("HMAC_LAMBDA_NAME", "access-iq-dev-hmac-nhs-udf") }}'
+    IAM_ROLE '{{ env_var("REDSHIFT_LAMBDA_UDF_ROLE_ARN", "") }}'
+  - "GRANT USAGE ON SCHEMA silver TO GROUP analysts"
+  - "GRANT SELECT ON ALL TABLES IN SCHEMA silver TO GROUP analysts"
+  - "REVOKE USAGE ON SCHEMA silver_keys FROM GROUP analysts"
+  - "REVOKE USAGE ON SCHEMA silver_quarantine FROM GROUP analysts"
+
 models:
   access_iq:
     bronze:
@@ -22,6 +35,10 @@ models:
     silver:
       +schema: silver
       +materialized: incremental
+      keys:
+        +schema: silver_keys
+      quarantine:
+        +schema: silver_quarantine
     gold:
       +schema: gold
       +materialized: table

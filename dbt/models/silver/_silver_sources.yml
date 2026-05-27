@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: bronze_external
+    freshness:
+      warn_after: { count: 2, period: day }
+      error_after: { count: 3, period: day }
+    loaded_at_field: "ingest_date"
+    tables:
+      - name: patient_demographics
+      - name: encounters
+      - name: referrals
+      - name: diagnoses
+      - name: appointments
+      - name: urgent_care_logs
+      - name: provider_site_reference
+      - name: diagnostics_orders
