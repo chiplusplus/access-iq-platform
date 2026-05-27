@@ -28,7 +28,7 @@ profile:  ## Run Bronze data profiling + generate data dictionary (requires make
 	uv run --package access-iq-ingestion --extra profiling python -m access_iq.profiling.profile_bronze
 
 ready:  ## Run Bronze-to-Silver readiness gate (requires make up + make ingest)
-	uv run python -m access_iq.profiling.readiness_gate
+	uv run --package access-iq-ingestion --extra profiling python -m access_iq.profiling.readiness_gate
 
 # ── Infrastructure (CDK) ────────────────────────────────────────────
 # TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.
