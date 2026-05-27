@@ -137,7 +137,7 @@ def read_bronze_entity(
 
     bare_path = f"{bucket}/{prefix}"
     try:
-        creds = s3_session._session.get_credentials().get_frozen_credentials()
+        creds = s3_session.get_credentials().get_frozen_credentials()
         fs = pafs.S3FileSystem(
             region=region,
             access_key=creds.access_key,
