@@ -15,10 +15,22 @@ WITH bronze AS (
     {% endif %}
 ),
 
+nhs_validated AS (
+    SELECT *,
+        {{ nhs_mod11_check('nhs_pseudo_id') }} AS _nhs_validation_failure
+    FROM bronze
+),
+
+valid_only AS (
+    SELECT *
+    FROM nhs_validated
+    WHERE _nhs_validation_failure IS NULL
+),
+
 deduped AS (
     SELECT *,
         ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY updated_at DESC) AS _rn
-    FROM bronze
+    FROM valid_only
 )
 
 SELECT
