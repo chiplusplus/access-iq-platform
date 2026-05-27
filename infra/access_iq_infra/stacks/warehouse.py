@@ -9,7 +9,6 @@ Snapshot lifecycle:
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from typing import Any
 
@@ -170,7 +169,8 @@ class WarehouseStack(Stack):
         # ── CfnNamespace (T-04-03, D-01, D-12) ───────────────────────────────
         # Timestamped FinalSnapshotName avoids SnapshotAlreadyExistsFault on repeated
         # destroy/recreate cycles (Pitfall 6 mitigation).
-        snapshot_name = f"{prefix}-final-{int(time.time())}"
+        snapshot_suffix = self.node.try_get_context("snapshot_suffix") or "latest"
+        snapshot_name = f"{prefix}-final-{snapshot_suffix}"
         namespace = rs.CfnNamespace(
             self,
             "Namespace",
