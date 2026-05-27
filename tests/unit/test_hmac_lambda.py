@@ -56,6 +56,11 @@ def _expected_hex(key: str, value: str) -> str:
     return hmac_mod.new(key.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _parse(result: str) -> dict:
+    """Parse the JSON-string response from the handler."""
+    return json.loads(result)
+
+
 def test_handler_single_value() -> None:
     """Single NHS number returns correct HMAC hex."""
     nhs = "9434765919"
@@ -63,9 +68,9 @@ def test_handler_single_value() -> None:
 
     sm = _mock_sm(json.dumps({"key": TEST_KEY}))
     with patch("access_iq.lambda.hmac_udf.handler.boto3.client", return_value=sm):
-        result = handler({"arguments": [[nhs]]}, None)
+        result = _parse(handler({"arguments": [[nhs]]}, None))
 
-    assert result == {"results": [expected]}
+    assert result == {"success": True, "results": [expected]}
 
 
 def test_handler_batch() -> None:
@@ -75,18 +80,18 @@ def test_handler_batch() -> None:
 
     sm = _mock_sm(json.dumps({"key": TEST_KEY}))
     with patch("access_iq.lambda.hmac_udf.handler.boto3.client", return_value=sm):
-        result = handler({"arguments": [[n] for n in numbers]}, None)
+        result = _parse(handler({"arguments": [[n] for n in numbers]}, None))
 
-    assert result == {"results": expected}
+    assert result == {"success": True, "results": expected}
 
 
 def test_handler_null_value() -> None:
     """None input produces None output (Redshift contract)."""
     sm = _mock_sm(json.dumps({"key": TEST_KEY}))
     with patch("access_iq.lambda.hmac_udf.handler.boto3.client", return_value=sm):
-        result = handler({"arguments": [[None]]}, None)
+        result = _parse(handler({"arguments": [[None]]}, None))
 
-    assert result == {"results": [None]}
+    assert result == {"success": True, "results": [None]}
 
 
 def test_handler_mixed_null_and_values() -> None:
@@ -96,9 +101,9 @@ def test_handler_mixed_null_and_values() -> None:
 
     sm = _mock_sm(json.dumps({"key": TEST_KEY}))
     with patch("access_iq.lambda.hmac_udf.handler.boto3.client", return_value=sm):
-        result = handler({"arguments": [[nhs], [None], [nhs]]}, None)
+        result = _parse(handler({"arguments": [[nhs], [None], [nhs]]}, None))
 
-    assert result == {"results": [expected_hex, None, expected_hex]}
+    assert result == {"success": True, "results": [expected_hex, None, expected_hex]}
 
 
 def test_handler_parity_with_pseudonymise() -> None:
@@ -115,7 +120,7 @@ def test_handler_parity_with_pseudonymise() -> None:
 
     sm = _mock_sm(json.dumps({"key": key}))
     with patch("access_iq.lambda.hmac_udf.handler.boto3.client", return_value=sm):
-        result = handler({"arguments": [[nhs]]}, None)
+        result = _parse(handler({"arguments": [[nhs]]}, None))
 
     assert result["results"][0] == reference
 

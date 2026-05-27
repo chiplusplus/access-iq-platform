@@ -45,10 +45,18 @@ cmd_env() {
     --query "Stacks[0].Outputs[?OutputKey==\`BucketName\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
+  local hmac_lambda_name
+  hmac_lambda_name=$(stack_output HmacLambdaName)
+
+  local lambda_udf_role_arn
+  lambda_udf_role_arn=$(stack_output LambdaUdfRoleArn)
+
   printf 'export REDSHIFT_HOST=localhost\n'
   printf 'export REDSHIFT_USER=%s\n' "$user"
   printf 'export REDSHIFT_PASSWORD=%s\n' "$(printf '%q' "$password")"
   printf 'export BRONZE_S3_PREFIX=s3://%s/bronze\n' "$bucket"
+  printf 'export HMAC_LAMBDA_NAME=%s\n' "$hmac_lambda_name"
+  printf 'export REDSHIFT_LAMBDA_UDF_ROLE_ARN=%s\n' "$lambda_udf_role_arn"
 }
 
 cmd_tunnel() {

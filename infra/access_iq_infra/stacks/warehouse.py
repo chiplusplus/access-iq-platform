@@ -144,21 +144,22 @@ class WarehouseStack(Stack):
             timeout=Duration.seconds(30),
             memory_size=128,
             environment={
-                "HMAC_KEY_SECRET_ARN": f"access-iq/{cfg.env_name}/hmac-key",
+                "HMAC_KEY_SECRET_ARN": f"access-iq/{cfg.env_name}/pseudonymisation-key",
             },
             description="HMAC-SHA-256 UDF for Redshift NHS number pseudonymisation",
         )
 
-        # Grant Lambda read on the HMAC key in Secrets Manager
+        # Grant Lambda read on the HMAC key in Secrets Manager + KMS decrypt
         hmac_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["secretsmanager:GetSecretValue"],
                 resources=[
                     f"arn:aws:secretsmanager:{self.region}:{self.account}"
-                    f":secret:access-iq/{cfg.env_name}/hmac-key*"
+                    f":secret:access-iq/{cfg.env_name}/pseudonymisation-key*"
                 ],
             )
         )
+        lake_key.grant_decrypt(hmac_lambda)
 
         # IAM role for Redshift to invoke Lambda UDF (T-05-14)
         lambda_udf_role = iam.Role(

@@ -13,7 +13,7 @@ Redshift batch contract
 
 Return format::
 
-    {"results": ["hex1", "hex2", null]}
+    {"success": true, "results": ["hex1", "hex2", null]}
 
 Threat mitigations
 ------------------
@@ -49,7 +49,7 @@ def _get_key() -> bytes:
     return _KEY_CACHE
 
 
-def handler(event: dict, context: object) -> dict:  # noqa: ARG001
+def handler(event: dict, context: object) -> str:  # noqa: ARG001
     """Redshift Lambda UDF entry point.
 
     Parameters
@@ -61,8 +61,10 @@ def handler(event: dict, context: object) -> dict:  # noqa: ARG001
 
     Returns
     -------
-    dict
-        ``{"results": ["hex", "hex", null, ...]}``
+    str
+        JSON string — Redshift Serverless requires ``json.dumps()`` on the
+        response dict, not a bare dict (the runtime double-encodes it, and
+        Redshift parses the inner JSON string).
     """
     key = _get_key()
     results: list[str | None] = []
@@ -72,4 +74,4 @@ def handler(event: dict, context: object) -> dict:  # noqa: ARG001
             results.append(None)
         else:
             results.append(hmac.new(key, str(value).encode("utf-8"), hashlib.sha256).hexdigest())
-    return {"results": results}
+    return json.dumps({"success": True, "results": results})
