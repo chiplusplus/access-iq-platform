@@ -89,13 +89,13 @@ class WarehouseStack(Stack):
         )
 
         # ── Spectrum IAM Role (T-04-02, D-14) ────────────────────────────────
-        # Read-only on lake bucket + Glue Catalog; no write permissions.
+        # S3 read on lake + Glue Catalog read/partition management.
         spectrum_role = iam.Role(
             self,
             "SpectrumRole",
             role_name=f"{prefix}-spectrum-role",
             assumed_by=iam.ServicePrincipal("redshift.amazonaws.com"),
-            description="Spectrum: S3 read on lake + Glue Catalog access",
+            description="Spectrum: S3 read on lake + Glue Catalog read/partition management",
         )
         lake_bucket.grant_read(spectrum_role)
         lake_key.grant_decrypt(spectrum_role)
@@ -111,12 +111,9 @@ class WarehouseStack(Stack):
                     "glue:BatchGetPartition",
                     "glue:CreateTable",
                     "glue:UpdateTable",
-                    "glue:DeleteTable",
                     "glue:CreatePartition",
                     "glue:BatchCreatePartition",
                     "glue:UpdatePartition",
-                    "glue:DeletePartition",
-                    "glue:BatchDeletePartition",
                 ],
                 resources=["*"],
             )
