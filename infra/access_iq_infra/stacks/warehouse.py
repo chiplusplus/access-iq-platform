@@ -110,9 +110,12 @@ class WarehouseStack(Stack):
                     "glue:BatchGetPartition",
                     "glue:CreateTable",
                     "glue:UpdateTable",
+                    "glue:DeleteTable",
                     "glue:CreatePartition",
                     "glue:BatchCreatePartition",
                     "glue:UpdatePartition",
+                    "glue:DeletePartition",
+                    "glue:BatchDeletePartition",
                 ],
                 resources=[
                     f"arn:aws:glue:{self.region}:{self.account}:catalog",

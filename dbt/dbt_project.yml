@@ -15,6 +15,7 @@ dispatch:
     search_order: ["access_iq", "dbt_external_tables"]
 
 on-run-start:
+  - "CREATE SCHEMA IF NOT EXISTS silver"
   - "CREATE SCHEMA IF NOT EXISTS silver_quarantine"
   - "CREATE SCHEMA IF NOT EXISTS silver_keys"
   - >
@@ -22,7 +23,15 @@ on-run-start:
     RETURNS varchar VOLATILE
     LAMBDA '{{ env_var("HMAC_LAMBDA_NAME", "access-iq-dev-hmac-nhs-udf") }}'
     IAM_ROLE '{{ env_var("REDSHIFT_LAMBDA_UDF_ROLE_ARN") }}'
-  - "CREATE GROUP IF NOT EXISTS analysts"
+  - >
+    {% if execute %}
+      {% set result = run_query("SELECT 1 FROM pg_group WHERE groname = 'analysts'") %}
+      {% if result | length == 0 %}
+        CREATE GROUP analysts
+      {% else %}
+        SELECT 1
+      {% endif %}
+    {% endif %}
   - "GRANT USAGE ON SCHEMA silver TO GROUP analysts"
   - "GRANT SELECT ON ALL TABLES IN SCHEMA silver TO GROUP analysts"
   - "REVOKE USAGE ON SCHEMA silver_keys FROM GROUP analysts"

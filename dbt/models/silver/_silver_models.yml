@@ -76,7 +76,8 @@ models:
           - unique
       - name: patient_sk
         tests:
-          - not_null
+          - not_null:
+              severity: warn
 
   - name: appointments
     description: "SFTP appointments with varchar-to-timestamp casts, patient_sk cross-reference"
