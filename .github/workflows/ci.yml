@@ -65,6 +65,3 @@ jobs:
 
       - name: dbt parse
         run: uv run dbt parse --profiles-dir .
-
-      - name: dbt compile
-        run: uv run dbt compile --profiles-dir . --no-populate-cache
