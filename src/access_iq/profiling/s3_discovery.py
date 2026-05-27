@@ -130,30 +130,23 @@ def read_bronze_entity(
 ) -> pd.DataFrame:
     """Read all Parquet files under *prefix* into a single DataFrame.
 
-    Uses ``pandas.read_parquet`` with pyarrow engine. Falls back to
-    ``pyarrow.fs.S3FileSystem`` if storage_options fails.
+    Uses boto3 session credentials with pyarrow S3FileSystem so SSO
+    profiles work correctly.
     """
-    s3_path = f"s3://{bucket}/{prefix}"
+    import pyarrow.fs as pafs
 
-    # Try with profile from session first
-    profile_name = s3_session._session.profile if hasattr(s3_session, "_session") else None
+    bare_path = f"{bucket}/{prefix}"
     try:
-        storage_opts: dict[str, Any] = {}
-        if profile_name:
-            storage_opts["profile"] = profile_name
-        df = pd.read_parquet(s3_path, engine="pyarrow", storage_options=storage_opts)
-        log.info("read_bronze_entity", path=s3_path, rows=len(df))
+        creds = s3_session._session.get_credentials().get_frozen_credentials()
+        fs = pafs.S3FileSystem(
+            region=region,
+            access_key=creds.access_key,
+            secret_key=creds.secret_key,
+            session_token=creds.token,
+        )
+        df = pd.read_parquet(bare_path, engine="pyarrow", filesystem=fs)
+        log.info("read_bronze_entity", path=bare_path, rows=len(df))
         return df
     except Exception:
-        log.info("storage_options_fallback", path=s3_path)
-
-    try:
-        import pyarrow.fs as pafs
-
-        fs = pafs.S3FileSystem(region=region)
-        df = pd.read_parquet(s3_path, engine="pyarrow", filesystem=fs)
-        log.info("read_bronze_entity", path=s3_path, rows=len(df))
-        return df
-    except Exception:
-        log.error("read_bronze_entity_failed", path=s3_path, exc_info=True)
+        log.error("read_bronze_entity_failed", path=bare_path, exc_info=True)
         return pd.DataFrame()

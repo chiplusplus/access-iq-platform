@@ -25,7 +25,7 @@ ci: fmt lint type test  ## Run full CI pipeline
 
 # ── Data profiling (requires live S3 session) ──────────────────────────
 profile:  ## Run Bronze data profiling + generate data dictionary (requires make up + make ingest)
-	uv run --extra profiling python -m access_iq.profiling.profile_bronze
+	uv run --package access-iq-ingestion --extra profiling python -m access_iq.profiling.profile_bronze
 
 ready:  ## Run Bronze-to-Silver readiness gate (requires make up + make ingest)
 	uv run python -m access_iq.profiling.readiness_gate

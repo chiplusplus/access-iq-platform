@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 profiling = [
-    "ydata-profiling>=4.10,<5",
+    "fg-data-profiling>=4.19,<5",
     "pandas>=2.0",
 ]
 

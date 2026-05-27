@@ -25,12 +25,9 @@ from access_iq.profiling.s3_discovery import (
 )
 
 try:
-    from ydata_profiling import ProfileReport  # type: ignore[import-untyped]
+    from data_profiling import ProfileReport  # type: ignore[import-untyped]
 except ImportError:
-    try:
-        from pandas_profiling import ProfileReport  # type: ignore[import-untyped,no-redef]
-    except ImportError:
-        ProfileReport = None  # type: ignore[assignment,misc]
+    ProfileReport = None  # type: ignore[assignment,misc]
 
 log = structlog.get_logger(__name__)
 
@@ -41,11 +38,11 @@ DEFAULT_DICT_PATH = "docs/data-dictionary.md"
 def profile_entity(*, df: pd.DataFrame, entity_name: str, output_dir: str) -> Any | None:
     """Generate an HTML profiling report for a single entity.
 
-    Returns the ProfileReport object, or None if ydata-profiling is not
+    Returns the ProfileReport object, or None if fg-data-profiling is not
     installed.
     """
     if ProfileReport is None:
-        log.warning("ydata_profiling_not_installed", entity=entity_name)
+        log.warning("data_profiling_not_installed", entity=entity_name)
         return None
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)

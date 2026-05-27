@@ -3,8 +3,15 @@ name = "access-iq-workspace"
 version = "0.1.0"
 description = "Access-IQ workspace root (uv workspace)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 # NO runtime deps here — members own their own.
+
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+conflicts = [[
+    { package = "access-iq-ingestion", extra = "profiling" },
+    { package = "access-iq-infra" },
+]]
 
 [tool.uv.workspace]
 members = ["src/access_iq", "infra", "dbt", "flows", "dashboard"]
