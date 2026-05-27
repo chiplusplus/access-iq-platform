@@ -48,7 +48,6 @@ def profile_entity(*, df: pd.DataFrame, entity_name: str, output_dir: str) -> An
         df,
         title=f"Bronze Profile: {entity_name}",
         minimal=True,
-        explorative=True,
     )
     out_path = f"{output_dir}/{entity_name}.html"
     profile.to_file(out_path)
