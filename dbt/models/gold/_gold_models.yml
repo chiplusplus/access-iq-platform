@@ -1,0 +1,209 @@
+version: 2
+
+models:
+  # -- Dimensions --
+  - name: dim_patient
+    description: "SCD2-scaffolded patient dimension (D-01). Change tracking activates with simulator update."
+    columns:
+      - name: patient_sk
+        description: "HMAC-SHA-256 patient surrogate key -- FK to Silver"
+        tests:
+          - not_null
+          - unique
+      - name: is_current
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+      - name: valid_from
+        tests:
+          - not_null
+      - name: age_band
+        tests:
+          - dbt_expectations.expect_column_values_to_be_in_set:
+              value_set:
+                [
+                  "0-15",
+                  "16-24",
+                  "25-34",
+                  "35-44",
+                  "45-54",
+                  "55-64",
+                  "65-74",
+                  "75+",
+                ]
+      - name: imd_decile
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+              max_value: 10
+
+  - name: dim_date
+    description: "Calendar date dimension generated via SQL integer series (D-02). Spans 2020-2030."
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 3650
+          max_value: 4100
+    columns:
+      - name: date_sk
+        description: "Integer surrogate key YYYYMMDD"
+        tests:
+          - not_null
+          - unique
+      - name: calendar_date
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_specialty
+    description: "Referral specialty dimension derived from Silver referrals"
+    columns:
+      - name: specialty_sk
+        tests:
+          - not_null
+          - unique
+      - name: specialty_code
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_site
+    description: "Provider site dimension derived from Silver providers (active sites)"
+    columns:
+      - name: site_sk
+        tests:
+          - not_null
+          - unique
+      - name: provider_code
+        tests:
+          - not_null
+          - unique
+      - name: provider_id
+        tests:
+          - not_null
+
+  - name: dim_imd
+    description: "IMD decile reference dimension wrapping dim_imd seed"
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 10
+          max_value: 10
+    columns:
+      - name: imd_sk
+        tests:
+          - not_null
+          - unique
+      - name: imd_decile
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_ethnicity
+    description: "ONS 16+1 ethnicity dimension wrapping dim_ethnicity_ons seed"
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 17
+          max_value: 20
+    columns:
+      - name: ethnicity_sk
+        tests:
+          - not_null
+          - unique
+      - name: ethnicity_code
+        tests:
+          - not_null
+          - unique
+
+  # -- Fact Tables --
+  - name: fct_wait_times
+    description: "RTT wait times at per-referral grain (D-05). Breach = >18 weeks (126 days)."
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 1
+    columns:
+      - name: referral_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+      - name: referral_date
+        tests:
+          - not_null
+      - name: wait_days
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 1825
+              row_condition: "wait_days IS NOT NULL"
+      - name: rtt_breach_flag
+        tests:
+          - accepted_values:
+              values: [true, false]
+
+  - name: fct_inequality
+    description: "Long-form inequality metrics (D-06). Grain: metric x period x stratifier x stratum. Small-cell suppression D-07."
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 1
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["metric_name", "period", "stratifier", "stratum"]
+    columns:
+      - name: metric_name
+        tests:
+          - not_null
+      - name: stratifier
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["imd_decile", "age_band", "ethnicity_ons", "sex"]
+      - name: stratum
+        tests:
+          - not_null
+
+  - name: fct_urgent_care
+    description: "A&E attendances with breach flags at per-attendance grain (REQ-GOLD-UC-01)"
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 1
+    columns:
+      - name: uc_log_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+      - name: four_hour_breach_flag
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+      - name: twelve_hour_breach_flag
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: fct_utilisation
+    description: "Appointment utilisation with DNA/attendance flags at per-appointment grain (REQ-GOLD-UTIL-01)"
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          min_value: 1
+    columns:
+      - name: appointment_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+      - name: dna_flag
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+      - name: appointment_month
+        tests:
+          - not_null
