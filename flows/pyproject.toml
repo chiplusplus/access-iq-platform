@@ -3,7 +3,12 @@ name = "access-iq-flows"
 version = "0.1.0"
 description = "Access-IQ Prefect flows. Filled in Phase 7."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "great-expectations>=1.17,<2.0",
+    "psycopg2-binary>=2.9",
+    "boto3>=1.28",
+    "structlog>=23.1",
+]
 
 [build-system]
 requires = ["hatchling"]
