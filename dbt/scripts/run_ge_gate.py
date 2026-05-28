@@ -65,7 +65,7 @@ def build_suite_for_table(
         suite.add_expectation(
             gx.expectations.ExpectColumnDistinctValuesToBeInSet(
                 column="sex",
-                value_set=["M", "F", "I", "U", "Other/Unkn"],
+                value_set=["M", "F", "I", "U"],
             )
         )
     elif table_name == "encounters":

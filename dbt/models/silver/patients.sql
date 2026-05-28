@@ -52,7 +52,10 @@ with_imd AS (
 SELECT
     {{ hmac_pseudonymise('nhs_pseudo_id') }}  AS patient_sk,
     age_band,
-    sex,
+    CASE
+        WHEN sex IN ('M', 'F', 'I', 'U') THEN sex
+        ELSE 'U'
+    END                                       AS sex,
     ethnicity_ons,
     _lsoa_imd_decile                          AS imd_decile,
     imd_label,
