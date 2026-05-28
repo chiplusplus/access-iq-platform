@@ -95,7 +95,7 @@ class TestGEGateExitBehavior:
             patch.object(_mod, "write_results_to_redshift"),
             patch.object(_mod, "write_results_to_s3", return_value="_dq/x/ge_results.json"),
             patch.object(_mod, "publish_cloudwatch_metrics"),
-            patch("boto3.client"),
+            patch.object(_mod, "boto3", MagicMock()),
             pytest.raises(SystemExit) as exc_info,
         ):
             _mod.main()
@@ -119,7 +119,7 @@ class TestGEGateExitBehavior:
             patch.object(_mod, "write_results_to_redshift"),
             patch.object(_mod, "write_results_to_s3", return_value="_dq/x/ge_results.json"),
             patch.object(_mod, "publish_cloudwatch_metrics"),
-            patch("boto3.client"),
+            patch.object(_mod, "boto3", MagicMock()),
             pytest.raises(SystemExit) as exc_info,
         ):
             _mod.main()
@@ -141,7 +141,7 @@ class TestGEGateExitBehavior:
             patch.object(_mod, "write_results_to_redshift"),
             patch.object(_mod, "write_results_to_s3", return_value="_dq/x/ge_results.json"),
             patch.object(_mod, "publish_cloudwatch_metrics"),
-            patch("boto3.client"),
+            patch.object(_mod, "boto3", MagicMock()),
             pytest.raises(SystemExit) as exc_info,
         ):
             _mod.main()
@@ -179,8 +179,8 @@ class TestGEResultsWrite:
         with patch("psycopg2.connect", return_value=mock_conn):
             write_results_to_redshift("postgresql://user:pass@host/db", results)
 
-        # One CREATE TABLE IF NOT EXISTS + one INSERT per table
-        assert mock_cursor.execute.call_count == 1 + len(SILVER_TABLES)
+        # CREATE SCHEMA + CREATE TABLE IF NOT EXISTS + one INSERT per table
+        assert mock_cursor.execute.call_count == 2 + len(SILVER_TABLES)
 
     def test_creates_table_if_not_exists(self) -> None:
         """write_results_to_redshift issues CREATE TABLE IF NOT EXISTS."""
@@ -194,6 +194,8 @@ class TestGEResultsWrite:
         with patch("psycopg2.connect", return_value=mock_conn):
             write_results_to_redshift("postgresql://user:pass@host/db", results)
 
-        first_call_sql: str = mock_cursor.execute.call_args_list[0][0][0]
-        assert "CREATE TABLE IF NOT EXISTS" in first_call_sql
-        assert "gold._dq_results" in first_call_sql
+        schema_call_sql: str = mock_cursor.execute.call_args_list[0][0][0]
+        assert "CREATE SCHEMA IF NOT EXISTS" in schema_call_sql
+        table_call_sql: str = mock_cursor.execute.call_args_list[1][0][0]
+        assert "CREATE TABLE IF NOT EXISTS" in table_call_sql
+        assert "gold._dq_results" in table_call_sql
