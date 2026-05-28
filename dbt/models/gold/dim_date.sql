@@ -7,10 +7,11 @@
     Source: self-generated via integer series (Redshift does not support generate_series on dates)
     Key decisions: D-02 (SQL generate_series, no seed CSV)
 #}
-WITH int_series AS (
-    SELECT (ROW_NUMBER() OVER ()) - 1 AS n
-    FROM stl_scan
-    LIMIT 4018  -- 2020-01-01 to 2030-12-31 = 4018 days
+WITH d0 AS (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9),
+int_series AS (
+    SELECT (a.n * 1000 + b.n * 100 + c.n * 10 + d.n) AS n
+    FROM d0 a CROSS JOIN d0 b CROSS JOIN d0 c CROSS JOIN d0 d
+    WHERE (a.n * 1000 + b.n * 100 + c.n * 10 + d.n) < 4018
 ),
 dates AS (
     SELECT DATEADD(day, n, '2020-01-01'::date) AS calendar_date

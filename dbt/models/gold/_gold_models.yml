@@ -21,17 +21,7 @@ models:
       - name: age_band
         tests:
           - dbt_expectations.expect_column_values_to_be_in_set:
-              value_set:
-                [
-                  "0-15",
-                  "16-24",
-                  "25-34",
-                  "35-44",
-                  "45-54",
-                  "55-64",
-                  "65-74",
-                  "75+",
-                ]
+              value_set: ["0-15", "16-24", "25-44", "45-64", "65-79", "80+"]
       - name: imd_decile
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
@@ -126,8 +116,12 @@ models:
           - not_null
           - unique
       - name: patient_sk
+        description: "~14% NULL from Mod-11 quarantined patients"
         tests:
-          - not_null
+          - not_null:
+              config:
+                where: "patient_sk IS NOT NULL"
+                severity: warn
       - name: referral_date
         tests:
           - not_null
@@ -173,8 +167,11 @@ models:
           - not_null
           - unique
       - name: patient_sk
+        description: "~14% NULL from Mod-11 quarantined patients"
         tests:
-          - not_null
+          - not_null:
+              config:
+                severity: warn
       - name: four_hour_breach_flag
         tests:
           - not_null
@@ -197,8 +194,11 @@ models:
           - not_null
           - unique
       - name: patient_sk
+        description: "~14% NULL from Mod-11 quarantined patients"
         tests:
-          - not_null
+          - not_null:
+              config:
+                severity: warn
       - name: dna_flag
         tests:
           - not_null

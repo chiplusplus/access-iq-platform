@@ -12,4 +12,4 @@ SELECT
     ethnicity_code,
     ethnicity_label,
     ethnicity_group
-FROM {{ ref('dim_ethnicity_ons') }}
+FROM {{ ref('seed_ethnicity_ons') }}

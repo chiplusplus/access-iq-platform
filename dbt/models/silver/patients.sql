@@ -43,9 +43,9 @@ with_imd AS (
         imd.imd_label,
         imd.deprivation_level
     FROM deduped
-    LEFT JOIN {{ ref('lsoa_imd_lookup') }} lsoa_imd
+    LEFT JOIN {{ ref('seed_lsoa_imd_lookup') }} lsoa_imd
         ON lsoa_imd.lsoa_code = deduped.lsoa_code
-    LEFT JOIN {{ ref('dim_imd') }} imd
+    LEFT JOIN {{ ref('seed_imd') }} imd
         ON imd.imd_decile = lsoa_imd.imd_decile
 )
 

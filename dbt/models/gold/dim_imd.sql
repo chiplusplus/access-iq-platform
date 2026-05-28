@@ -12,4 +12,4 @@ SELECT
     imd_decile,
     imd_label,
     deprivation_level
-FROM {{ ref('dim_imd') }}
+FROM {{ ref('seed_imd') }}

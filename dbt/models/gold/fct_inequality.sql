@@ -18,7 +18,7 @@
 #}
 
 WITH dim_p AS (
-    SELECT patient_sk, imd_decile, age_band, sex, ethnicity_ons
+    SELECT patient_sk, imd_decile, age_band, sex, COALESCE(ethnicity_ons, 'Unknown') AS ethnicity_ons
     FROM {{ ref('dim_patient') }}
     WHERE is_current
 ),
@@ -217,7 +217,7 @@ with_ridit AS (
             WHEN b.stratifier = 'imd_decile' THEN
                 (SUM(b.population_count) OVER (
                     PARTITION BY b.metric_name, b.period, b.stratifier
-                    ORDER BY b.stratum::integer
+                    ORDER BY CASE WHEN b.stratifier = 'imd_decile' THEN b.stratum::integer ELSE 0 END
                     ROWS UNBOUNDED PRECEDING
                 ) - 0.5 * b.population_count)
                 * 1.0
@@ -225,30 +225,59 @@ with_ridit AS (
                     PARTITION BY b.metric_name, b.period, b.stratifier
                 ), 0)
             ELSE NULL
-        END AS ridit_score
+        END AS ridit_score,
+        CASE
+            WHEN b.stratifier = 'imd_decile' THEN
+                b.population_count * 1.0
+                / NULLIF(SUM(b.population_count) OVER (
+                    PARTITION BY b.metric_name, b.period, b.stratifier
+                ), 0)
+            ELSE NULL
+        END AS weight
     FROM base b
+),
+
+sii_rii AS (
+    SELECT
+        metric_name,
+        period,
+        (COUNT(*)::float * SUM(weight::float * ridit_score::float * metric_value::float)
+         - SUM(weight::float * ridit_score::float) * SUM(weight::float * metric_value::float))
+        / NULLIF(
+            COUNT(*)::float * SUM(weight::float * ridit_score::float * ridit_score::float)
+            - POWER(SUM(weight::float * ridit_score::float), 2),
+            0
+        ) AS sii_value,
+        (COUNT(*)::float * SUM(weight::float * ridit_score::float * metric_value::float)
+         - SUM(weight::float * ridit_score::float) * SUM(weight::float * metric_value::float))
+        / NULLIF(
+            COUNT(*)::float * SUM(weight::float * ridit_score::float * ridit_score::float)
+            - POWER(SUM(weight::float * ridit_score::float), 2),
+            0
+        )
+        / NULLIF(
+            SUM(population_count::float * metric_value::float) / NULLIF(SUM(population_count::float), 0),
+            0
+        ) AS rii_value
+    FROM with_ridit
+    WHERE stratifier = 'imd_decile' AND ridit_score IS NOT NULL
+    GROUP BY metric_name, period
 )
 
 -- ── Final SELECT with small-cell suppression (D-07) ─────────────────────────
 
 SELECT
-    metric_name,
-    period,
-    stratifier,
-    stratum,
-    -- Small-cell suppression: counts < 5 replaced with NULL (NHS Digital standard D-07)
-    CASE WHEN population_count < 5 THEN NULL ELSE population_count END AS population_count,
-    CASE WHEN population_count < 5 THEN NULL ELSE metric_value    END  AS metric_value,
-    ridit_score,
-    -- SII/RII only computed for imd_decile stratifier (ordinal rank required for OLS)
-    CASE
-        WHEN stratifier = 'imd_decile' AND ridit_score IS NOT NULL
-        THEN {{ calc_sii('metric_value', 'population_count', 'ridit_score') }}
-        ELSE NULL
-    END AS sii_value,
-    CASE
-        WHEN stratifier = 'imd_decile' AND ridit_score IS NOT NULL
-        THEN {{ calc_rii('metric_value', 'population_count', 'ridit_score') }}
-        ELSE NULL
-    END AS rii_value
-FROM with_ridit
+    r.metric_name,
+    r.period,
+    r.stratifier,
+    r.stratum,
+    CASE WHEN r.population_count < 5 THEN NULL ELSE r.population_count END AS population_count,
+    CASE WHEN r.population_count < 5 THEN NULL ELSE r.metric_value    END  AS metric_value,
+    r.ridit_score,
+    s.sii_value,
+    s.rii_value
+FROM with_ridit r
+LEFT JOIN sii_rii s
+    ON r.metric_name = s.metric_name
+    AND r.period = s.period
+    AND r.stratifier = 'imd_decile'

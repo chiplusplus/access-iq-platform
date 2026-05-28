@@ -31,7 +31,7 @@ ready:  ## Run Bronze-to-Silver readiness gate (requires make up + make ingest)
 	uv run --package access-iq-ingestion --extra profiling python -m access_iq.profiling.readiness_gate
 
 dq-gate:  ## Run GE validation gate on Silver tables (requires make up + tunnel)
-	eval $$(./scripts/tunnel.sh env) && uv run --package access-iq-flows python dbt/scripts/run_ge_gate.py
+	eval $$(./scripts/tunnel.sh env) && AWS_PROFILE=$${AWS_PROFILE:-CHI-Engineer-222308823356} uv run --package access-iq-flows python dbt/scripts/run_ge_gate.py
 
 # ── Infrastructure (CDK) ────────────────────────────────────────────
 # TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.

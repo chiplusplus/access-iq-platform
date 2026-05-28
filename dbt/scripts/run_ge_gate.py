@@ -113,6 +113,7 @@ def write_results_to_redshift(
                     created_at    TIMESTAMP   DEFAULT GETDATE()
                 )
             """)
+            cur.execute("DELETE FROM gold._dq_results WHERE run_date = CURRENT_DATE")
             for r in results:
                 cur.execute(
                     """

@@ -51,12 +51,20 @@ cmd_env() {
   local lambda_udf_role_arn
   lambda_udf_role_arn=$(stack_output LambdaUdfRoleArn)
 
+  local kms_key_arn
+  kms_key_arn=$(aws cloudformation describe-stacks \
+    --stack-name "lake-access-iq-${CDK_ENV}" \
+    --query "Stacks[0].Outputs[?OutputKey==\`KmsKeyArn\`].OutputValue" \
+    --output text --profile "$AWS_PROFILE" --region "$REGION")
+
   printf 'export REDSHIFT_HOST=localhost\n'
   printf 'export REDSHIFT_USER=%s\n' "$user"
   printf 'export REDSHIFT_PASSWORD=%s\n' "$(printf '%q' "$password")"
   printf 'export BRONZE_S3_PREFIX=s3://%s/bronze\n' "$bucket"
+  printf 'export PLATFORM_BUCKET=%s\n' "$bucket"
   printf 'export HMAC_LAMBDA_NAME=%s\n' "$hmac_lambda_name"
   printf 'export REDSHIFT_LAMBDA_UDF_ROLE_ARN=%s\n' "$lambda_udf_role_arn"
+  printf 'export LAKE_KMS_KEY_ARN=%s\n' "$kms_key_arn"
 }
 
 cmd_tunnel() {
