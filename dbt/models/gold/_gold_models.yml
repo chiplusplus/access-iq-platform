@@ -112,29 +112,53 @@ models:
           min_value: 1
     columns:
       - name: referral_id
+        description: "Primary key — one row per referral from Silver referrals"
         tests:
           - not_null
           - unique
       - name: patient_sk
-        description: "~14% NULL from Mod-11 quarantined patients"
+        description: "Surrogate key to dim_patient; ~14% NULL from Mod-11 quarantined patients"
         tests:
           - not_null:
               config:
                 where: "patient_sk IS NOT NULL"
                 severity: warn
+      - name: specialty_sk
+        description: "Surrogate key to dim_specialty based on referral_specialty"
+      - name: site_sk
+        description: "Surrogate key to dim_site based on referred_to_site"
       - name: referral_date
+        description: "Date the referral was made (truncated from referral_datetime)"
         tests:
           - not_null
+      - name: treatment_date
+        description: "Date of first attended outpatient encounter after referral for this patient"
       - name: wait_days
+        description: "Calendar days between referral_date and treatment_date (NHS RTT clock)"
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               min_value: 0
               max_value: 1825
               row_condition: "wait_days IS NOT NULL"
       - name: rtt_breach_flag
+        description: "TRUE when wait_days > 126 (NHS 18-week RTT standard)"
         tests:
           - accepted_values:
               values: [true, false]
+      - name: dm01_request_date
+        description: "Earliest diagnostics order request date for this patient"
+      - name: dm01_result_date
+        description: "Earliest diagnostics order result date for this patient"
+      - name: dm01_wait_days
+        description: "Calendar days between dm01_request_date and dm01_result_date"
+      - name: dm01_breach_flag
+        description: "TRUE when dm01_wait_days > 42 (NHS 6-week DM01 standard)"
+      - name: referral_month
+        description: "Month truncation of referral_datetime for time-series aggregation"
+      - name: referral_specialty
+        description: "Raw specialty code from the referral"
+      - name: status
+        description: "Referral status from Silver (e.g. completed, pending)"
 
   - name: fct_inequality
     description: "Long-form inequality metrics (D-06). Grain: metric x period x stratifier x stratum. Small-cell suppression D-07."
@@ -145,16 +169,31 @@ models:
           column_list: ["metric_name", "period", "stratifier", "stratum"]
     columns:
       - name: metric_name
+        description: "Metric identifier: wait_time_median, four_hour_breach_rate, or dna_rate"
         tests:
           - not_null
+      - name: period
+        description: "Month (DATE) the metric covers, truncated from source event datetime"
       - name: stratifier
+        description: "Demographic dimension: imd_decile, age_band, ethnicity_ons, or sex"
         tests:
           - not_null
           - accepted_values:
               values: ["imd_decile", "age_band", "ethnicity_ons", "sex"]
       - name: stratum
+        description: "Value within the stratifier (e.g. '3' for imd_decile, '0-17' for age_band)"
         tests:
           - not_null
+      - name: population_count
+        description: "Number of events in this cell; NULL when < 5 (small-cell suppression D-07)"
+      - name: metric_value
+        description: "Computed metric for this cell; NULL when population_count < 5 (D-07)"
+      - name: ridit_score
+        description: "Ridit score for SII/RII calculation; only populated for imd_decile stratifier"
+      - name: sii_value
+        description: "Slope Index of Inequality (weighted OLS); only populated for imd_decile stratifier"
+      - name: rii_value
+        description: "Relative Index of Inequality (SII / mean); only populated for imd_decile stratifier"
 
   - name: fct_urgent_care
     description: "A&E attendances with breach flags at per-attendance grain (REQ-GOLD-UC-01)"
@@ -163,25 +202,56 @@ models:
           min_value: 1
     columns:
       - name: uc_log_id
+        description: "Primary key — one row per A&E attendance from Silver urgent_care"
         tests:
           - not_null
           - unique
       - name: patient_sk
-        description: "~14% NULL from Mod-11 quarantined patients"
+        description: "Surrogate key to dim_patient; ~14% NULL from Mod-11 quarantined patients"
         tests:
           - not_null:
               config:
                 severity: warn
+      - name: provider_id
+        description: "Provider identifier from source urgent care log"
+      - name: site_sk
+        description: "Surrogate key to dim_site based on provider_id"
+      - name: arrival_datetime
+        description: "Timestamp the patient arrived at A&E"
+      - name: triage_datetime
+        description: "Timestamp the patient was triaged; NULL if not recorded"
+      - name: seen_by_clinician_datetime
+        description: "Timestamp the patient was first seen by a clinician; NULL if not recorded"
+      - name: departure_datetime
+        description: "Timestamp the patient left A&E; NULL if not recorded"
+      - name: arrival_to_triage_mins
+        description: "Minutes from arrival to triage; NULL when triage_datetime missing"
+      - name: arrival_to_seen_mins
+        description: "Minutes from arrival to first clinician contact; NULL when seen_by_clinician_datetime missing"
+      - name: arrival_to_discharge_mins
+        description: "Minutes from arrival to departure; NULL when departure_datetime missing"
       - name: four_hour_breach_flag
+        description: "TRUE when arrival_to_discharge_mins > 240 (NHS 4-hour A&E standard)"
         tests:
           - not_null
           - accepted_values:
               values: [true, false]
       - name: twelve_hour_breach_flag
+        description: "TRUE when arrival_to_discharge_mins > 720 (NHS 12-hour trolley wait standard)"
         tests:
           - not_null
           - accepted_values:
               values: [true, false]
+      - name: admitted_flag
+        description: "TRUE when outcome indicates hospital admission"
+      - name: triage_category
+        description: "Manchester Triage System category from source"
+      - name: presenting_complaint
+        description: "Free-text presenting complaint from source"
+      - name: outcome
+        description: "Attendance outcome (e.g. discharged, admitted) from source"
+      - name: arrival_month
+        description: "Month truncation of arrival_datetime for time-series aggregation"
 
   - name: fct_utilisation
     description: "Appointment utilisation with DNA/attendance flags at per-appointment grain (REQ-GOLD-UTIL-01)"
@@ -190,20 +260,51 @@ models:
           min_value: 1
     columns:
       - name: appointment_id
+        description: "Primary key — one row per appointment from Silver appointments"
         tests:
           - not_null
           - unique
       - name: patient_sk
-        description: "~14% NULL from Mod-11 quarantined patients"
+        description: "Surrogate key to dim_patient; ~14% NULL from Mod-11 quarantined patients"
         tests:
           - not_null:
               config:
                 severity: warn
+      - name: site_sk
+        description: "Surrogate key to dim_site via service_location_id"
+      - name: appointment_start_datetime
+        description: "Scheduled start time of the appointment"
+      - name: appointment_end_datetime
+        description: "Scheduled end time of the appointment"
+      - name: appointment_type
+        description: "Type of appointment (e.g. follow-up, new)"
+      - name: mode
+        description: "Delivery mode (e.g. face-to-face, telephone, video)"
+      - name: slot_type
+        description: "Slot classification from source booking system"
+      - name: booking_status
+        description: "Raw booking status from Silver (e.g. attended, DNA, cancelled)"
       - name: dna_flag
+        description: "TRUE when booking_status = 'DNA' (Did Not Attend)"
         tests:
           - not_null
           - accepted_values:
               values: [true, false]
+      - name: attended_flag
+        description: "TRUE when booking_status = 'attended'"
+      - name: cancelled_flag
+        description: "TRUE when booking_status contains 'cancel'"
+      - name: wait_time_days
+        description: "Days waited for this appointment from Silver source"
+      - name: imd_decile
+        description: "IMD deprivation decile re-derived from dim_patient (1 = most deprived)"
+      - name: age_band
+        description: "Age band re-derived from dim_patient"
+      - name: sex
+        description: "Sex code re-derived from dim_patient (NHS Data Dictionary)"
+      - name: ethnicity_ons
+        description: "ONS ethnicity code re-derived from dim_patient"
       - name: appointment_month
+        description: "Month truncation of appointment_start_datetime for time-series aggregation"
         tests:
           - not_null
