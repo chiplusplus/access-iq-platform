@@ -5,6 +5,9 @@ description = "Access-IQ Prefect flows. Filled in Phase 7."
 requires-python = ">=3.12"
 dependencies = [
     "great-expectations>=1.17,<2.0",
+    "sqlalchemy>=2.0,<3.0",
+    "redshift-connector>=2.1",
+    "sqlalchemy-redshift>=0.8",
     "psycopg2-binary>=2.9",
     "boto3>=1.28",
     "structlog>=23.1",
