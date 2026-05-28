@@ -184,6 +184,33 @@ class ObservabilityStack(Stack):
             dashboard_name=f"{cfg.app_name}-{cfg.env_name}-ingestion",
         )
 
+        # -- DQ Results Panel (REQ-DQ-02) ----------
+        # Metrics published by dbt/scripts/run_ge_gate.py via put_metric_data
+        dq_namespace = "AccessIQ/DataQuality"
+        dq_widget = cw.GraphWidget(
+            title="Data Quality Gate Status (GE Runs vs Failures)",
+            view=cw.GraphWidgetView.BAR,
+            left=[
+                cw.Metric(
+                    namespace=dq_namespace,
+                    metric_name="GEGateRuns",
+                    statistic="Sum",
+                    period=Duration.hours(1),
+                    label="GE Runs",
+                ),
+                cw.Metric(
+                    namespace=dq_namespace,
+                    metric_name="GEGateFailures",
+                    statistic="Sum",
+                    period=Duration.hours(1),
+                    label="GE Failures",
+                ),
+            ],
+            width=12,
+            height=6,
+        )
+        dashboard.add_widgets(dq_widget)
+
         dashboard.add_widgets(
             cw.GraphWidget(
                 title="Ingestion Failures & Crashes",
