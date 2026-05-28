@@ -175,10 +175,18 @@ class WarehouseStack(Stack):
         hmac_lambda.grant_invoke(lambda_udf_role)
 
         # ── CfnNamespace (T-04-03, D-01, D-12) ───────────────────────────────
-        # Timestamped FinalSnapshotName avoids SnapshotAlreadyExistsFault on repeated
-        # destroy/recreate cycles (Pitfall 6 mitigation).
-        snapshot_suffix = self.node.try_get_context("snapshot_suffix") or "latest"
-        snapshot_name = f"{prefix}-final-{snapshot_suffix}"
+        # Dev: skip final snapshot to avoid SnapshotAlreadyExistsFault on
+        # repeated destroy/recreate cycles.
+        # Prod: timestamped snapshot name prevents collisions.
+        snapshot_props: dict[str, Any] = {}
+        if cfg.env_name != "dev":
+            import time
+
+            snapshot_suffix = self.node.try_get_context("snapshot_suffix") or str(int(time.time()))
+            snapshot_props["final_snapshot_name"] = f"{prefix}-final-{snapshot_suffix}"
+            snapshot_props["final_snapshot_retention_period"] = cfg.redshift.get(
+                "snapshot_retention_days", 7
+            )
         namespace = rs.CfnNamespace(
             self,
             "Namespace",
@@ -189,8 +197,7 @@ class WarehouseStack(Stack):
             iam_roles=[spectrum_role.role_arn, lambda_udf_role.role_arn],
             default_iam_role_arn=spectrum_role.role_arn,
             log_exports=["userlog", "connectionlog", "useractivitylog"],
-            final_snapshot_name=snapshot_name,
-            final_snapshot_retention_period=cfg.redshift.get("snapshot_retention_days", 7),
+            **snapshot_props,
         )
 
         # ── CfnWorkgroup (T-04-01, D-13) ─────────────────────────────────────
