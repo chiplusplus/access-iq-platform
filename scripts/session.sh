@@ -497,19 +497,37 @@ cmd_down() {
 cmd_status() {
   local status
 
-  echo ""
-  echo "═══ Trust Account (${TRUST_PROFILE}) ═══"
-  echo ""
+  # ── Colour helpers (no-colour if piped) ──
+  if [ -t 1 ]; then
+    _g="\033[1;32m" _r="\033[1;31m" _y="\033[1;33m" _c="\033[1;36m" _d="\033[0;37m" _0="\033[0m"
+  else
+    _g="" _r="" _y="" _c="" _d="" _0=""
+  fi
+
+  ok()   { printf "${_g}✓${_0} %s\n" "$1"; }
+  warn() { printf "${_y}⚠${_0} %s\n" "$1"; }
+  fail() { printf "${_r}✗${_0} %s\n" "$1"; }
+
+  status_icon() {
+    local val="$1" good="$2"
+    if [ "$val" = "$good" ]; then ok "$val"; else fail "$val"; fi
+  }
+
+  # ─────────────────────────────────────────────────────────────────────
+  printf "\n${_c}═══ 1/6  Trust Account (%s) ═══${_0}\n\n" "$TRUST_PROFILE"
+  # ─────────────────────────────────────────────────────────────────────
 
   status=$(aws cloudformation describe-stacks --stack-name NorthshireTrustStack \
     --query 'Stacks[0].StackStatus' --output text \
-    --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT DEPLOYED")
-  printf "  %-28s %s\n" "NorthshireTrustStack" "$status"
+    --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_DEPLOYED")
+  printf "  %-30s " "CloudFormation"
+  status_icon "$status" "CREATE_COMPLETE"
 
   status=$(aws rds describe-db-instances \
     --query 'DBInstances[?starts_with(DBInstanceIdentifier,`northshire`)].DBInstanceStatus|[0]' \
     --output text --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
-  printf "  %-28s %s\n" "RDS (northshire)" "$status"
+  printf "  %-30s " "RDS"
+  status_icon "$status" "available"
 
   status=$(aws transfer list-servers \
     --query 'Servers[0].State' --output text \
@@ -518,49 +536,305 @@ cmd_status() {
   sftp_type=$(aws transfer list-servers \
     --query 'Servers[0].EndpointType' --output text \
     --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null || echo "?")
-  printf "  %-28s %s (%s)\n" "SFTP Server" "$status" "$sftp_type"
+  printf "  %-30s " "SFTP ($sftp_type)"
+  status_icon "$status" "ONLINE"
 
-  echo ""
-  echo "═══ Platform Account (${CDK_ENV}) ═══"
-  echo ""
+  # Trust S3 exports
+  local trust_bucket
+  trust_bucket=$(trust_output ExternalBucketName 2>/dev/null || echo "")
+  if [ -n "$trust_bucket" ] && [ "$trust_bucket" != "None" ]; then
+    local diag_count prov_count
+    diag_count=$(aws s3 ls "s3://${trust_bucket}/diagnostics/" --recursive \
+      --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null | grep -c '\S' || echo "0")
+    prov_count=$(aws s3 ls "s3://${trust_bucket}/providers/" --recursive \
+      --profile "$TRUST_PROFILE" --region "$REGION" 2>/dev/null | grep -c '\S' || echo "0")
+    printf "  %-30s " "S3 Exports"
+    if [ "$diag_count" -gt 0 ] && [ "$prov_count" -gt 0 ]; then
+      ok "diagnostics ($diag_count files) | providers ($prov_count files)"
+    elif [ "$diag_count" -gt 0 ] || [ "$prov_count" -gt 0 ]; then
+      warn "diagnostics ($diag_count) | providers ($prov_count) — partial"
+    else
+      fail "no export files found"
+    fi
+  fi
+
+  # ─────────────────────────────────────────────────────────────────────
+  printf "\n${_c}═══ 2/6  Platform Stacks (%s) ═══${_0}\n\n" "$CDK_ENV"
+  # ─────────────────────────────────────────────────────────────────────
 
   for stack in lake secrets catalog ecr ingestion-role network observability compute warehouse; do
     status=$(aws cloudformation describe-stacks --stack-name "${stack}-access-iq-${CDK_ENV}" \
       --query 'Stacks[0].StackStatus' --output text \
-      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT DEPLOYED")
-    printf "  %-28s %s\n" "$stack" "$status"
+      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_DEPLOYED")
+    printf "  %-30s " "$stack"
+    if echo "$status" | grep -q "COMPLETE"; then ok "$status"; else fail "$status"; fi
   done
 
-  local rs_status
-  rs_status=$(aws redshift-serverless get-workgroup \
-    --workgroup-name "access-iq-${CDK_ENV}" \
-    --query 'workgroup.status' --output text \
-    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
-  printf "  %-28s %s\n" "Redshift Workgroup" "$rs_status"
+  # ─────────────────────────────────────────────────────────────────────
+  printf "\n${_c}═══ 3/6  Connectivity ═══${_0}\n\n"
+  # ─────────────────────────────────────────────────────────────────────
 
-  echo ""
-  echo "═══ Connectivity ═══"
-  echo ""
-
-  status=$(aws ec2 describe-vpc-peering-connections \
-    --filters "Name=status-code,Values=active" \
-    --query 'VpcPeeringConnections[0].{Id:VpcPeeringConnectionId,Status:Status.Code}' \
+  local peering_status peering_id
+  peering_id=$(aws ec2 describe-vpc-peering-connections \
+    --filters "Name=status-code,Values=active" "Name=tag:Name,Values=*access-iq*" \
+    --query 'VpcPeeringConnections[0].VpcPeeringConnectionId' \
     --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
-  printf "  %-28s %s\n" "VPC Peering" "$status"
+  peering_status=$(aws ec2 describe-vpc-peering-connections \
+    --filters "Name=status-code,Values=active" "Name=tag:Name,Values=*access-iq*" \
+    --query 'VpcPeeringConnections[0].Status.Code' \
+    --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
+  printf "  %-30s " "VPC Peering"
+  if [ "$peering_status" = "active" ]; then ok "active ($peering_id)"; else fail "$peering_status"; fi
 
   local cluster_status
   cluster_status=$(aws ecs describe-clusters \
     --clusters "access-iq-${CDK_ENV}-ingestion" \
     --query 'clusters[0].status' --output text \
     --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
-  printf "  %-28s %s\n" "ECS Cluster" "$cluster_status"
+  printf "  %-30s " "ECS Cluster"
+  status_icon "$cluster_status" "ACTIVE"
 
   local running_tasks
   running_tasks=$(aws ecs list-tasks \
     --cluster "access-iq-${CDK_ENV}-ingestion" \
     --query 'taskArns | length(@)' --output text \
     --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "0")
-  printf "  %-28s %s\n" "Running ECS Tasks" "$running_tasks"
+  printf "  %-30s " "Running ECS Tasks"
+  printf "%s\n" "$running_tasks"
+
+  local rs_status
+  rs_status=$(aws redshift-serverless get-workgroup \
+    --workgroup-name "access-iq-${CDK_ENV}" \
+    --query 'workgroup.status' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NONE")
+  printf "  %-30s " "Redshift Workgroup"
+  status_icon "$rs_status" "AVAILABLE"
+
+  # SSM tunnel
+  local tunnel_pid_file="$PLATFORM_REPO/.tunnel.pid"
+  printf "  %-30s " "SSM Tunnel (:5439)"
+  if [ -f "$tunnel_pid_file" ]; then
+    local tpid
+    tpid=$(cat "$tunnel_pid_file" 2>/dev/null || echo "")
+    if [ -n "$tpid" ] && kill -0 "$tpid" 2>/dev/null; then
+      ok "running (PID $tpid)"
+    else
+      fail "stale PID file (process gone)"
+    fi
+  elif nc -z localhost 5439 2>/dev/null; then
+    ok "port open (external tunnel?)"
+  else
+    fail "not running"
+  fi
+
+  # ─────────────────────────────────────────────────────────────────────
+  printf "\n${_c}═══ 4/6  Data Lake (S3 Bronze) ═══${_0}\n\n"
+  # ─────────────────────────────────────────────────────────────────────
+
+  local platform_bucket
+  platform_bucket=$(aws cloudformation describe-stacks \
+    --stack-name "lake-access-iq-${CDK_ENV}" \
+    --query "Stacks[0].Outputs[?OutputKey==\`BucketName\`].OutputValue" \
+    --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+  if [ -z "$platform_bucket" ] || [ "$platform_bucket" = "None" ]; then
+    printf "  ${_r}Lake bucket not found — lake stack not deployed${_0}\n"
+  else
+    local entities=(
+      "source=ehr_postgres/entity=patient_demographics"
+      "source=ehr_postgres/entity=encounters"
+      "source=ehr_postgres/entity=referrals"
+      "source=ehr_postgres/entity=diagnoses"
+      "source=sftp_appointments/entity=appointments"
+      "source=trust_s3_provider_ref/entity=provider_site_reference"
+      "source=trust_s3_diagnostics/entity=diagnostics_orders"
+      "source=urgent_care_postgres/entity=urgent_care_logs"
+    )
+    local entity_labels=(
+      "patient_demographics"
+      "encounters"
+      "referrals"
+      "diagnoses"
+      "appointments"
+      "provider_site_reference"
+      "diagnostics_orders"
+      "urgent_care_logs"
+    )
+
+    local total_ok=0 total_entities=${#entities[@]}
+    for i in "${!entities[@]}"; do
+      local prefix="bronze/${entities[$i]}/"
+      local label="${entity_labels[$i]}"
+      local file_count
+      file_count=$(aws s3 ls "s3://${platform_bucket}/${prefix}" --recursive \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null \
+        | grep -c '\.parquet$' || echo "0")
+      printf "  %-30s " "$label"
+      if [ "$file_count" -gt 0 ]; then
+        ok "$file_count parquet file(s)"
+        total_ok=$((total_ok + 1))
+      else
+        fail "empty"
+      fi
+    done
+    printf "\n  %-30s " "Bronze coverage"
+    if [ "$total_ok" -eq "$total_entities" ]; then
+      ok "${total_ok}/${total_entities} entities populated"
+    else
+      warn "${total_ok}/${total_entities} entities populated"
+    fi
+  fi
+
+  # ─────────────────────────────────────────────────────────────────────
+  printf "\n${_c}═══ 5/6  Glue Catalog ═══${_0}\n\n"
+  # ─────────────────────────────────────────────────────────────────────
+
+  local glue_db="access-iq-${CDK_ENV}-bronze"
+  local glue_tables
+  glue_tables=$(aws glue get-tables --database-name "$glue_db" \
+    --query 'TableList[*].Name' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+  printf "  %-30s " "Database ($glue_db)"
+  if [ -n "$glue_tables" ] && [ "$glue_tables" != "None" ]; then
+    local table_count
+    table_count=$(echo "$glue_tables" | wc -w | tr -d ' ')
+    ok "$table_count table(s) registered"
+
+    for tbl in $glue_tables; do
+      local part_count
+      part_count=$(aws glue get-partitions --database-name "$glue_db" --table-name "$tbl" \
+        --query 'Partitions | length(@)' --output text --no-paginate \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null | head -1 | tr -d '[:space:]')
+      part_count=${part_count:-0}
+      printf "  %-30s " "  $tbl"
+      if [ "$part_count" -gt 0 ] 2>/dev/null; then
+        ok "$part_count partition(s)"
+      else
+        warn "no partitions"
+      fi
+    done
+  else
+    fail "database not found or empty"
+  fi
+
+  # ─────────────────────────────────────────────────────────────────────
+  printf "\n${_c}═══ 6/6  Spectrum Tables (Redshift) ═══${_0}\n\n"
+  # ─────────────────────────────────────────────────────────────────────
+
+  if [ "$rs_status" != "AVAILABLE" ]; then
+    printf "  ${_y}Skipped — Redshift workgroup not available${_0}\n"
+  else
+    local RS_SECRET_ARN
+    RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+      --namespace-name "access-iq-${CDK_ENV}" \
+      --query 'namespace.adminPasswordSecretArn' \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+    if [ -z "$RS_SECRET_ARN" ] || [ "$RS_SECRET_ARN" = "None" ]; then
+      fail "Cannot resolve Redshift admin secret"
+    else
+      # Check external schema exists
+      local schema_stmt_id
+      schema_stmt_id=$(aws redshift-data execute-statement \
+        --workgroup-name "access-iq-${CDK_ENV}" \
+        --database dev \
+        --secret-arn "$RS_SECRET_ARN" \
+        --sql "SELECT schemaname FROM svv_external_schemas WHERE schemaname = 'bronze_external'" \
+        --query 'Id' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+      if [ -n "$schema_stmt_id" ]; then
+        # Wait for schema check
+        local schema_done="SUBMITTED"
+        while [ "$schema_done" != "FINISHED" ] && [ "$schema_done" != "FAILED" ]; do
+          sleep 1
+          schema_done=$(aws redshift-data describe-statement --id "$schema_stmt_id" \
+            --query 'Status' --output text \
+            --profile "$AWS_PROFILE" --region "$REGION")
+        done
+
+        if [ "$schema_done" = "FINISHED" ]; then
+          local schema_rows
+          schema_rows=$(aws redshift-data get-statement-result --id "$schema_stmt_id" \
+            --query 'TotalNumRows' --output text \
+            --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "0")
+          printf "  %-30s " "bronze_external schema"
+          if [ "$schema_rows" -gt 0 ]; then ok "exists"; else fail "not found"; fi
+        else
+          printf "  %-30s " "bronze_external schema"
+          fail "query failed"
+        fi
+      fi
+
+      # Query row counts for all Spectrum tables in one statement
+      local count_sql
+      count_sql=$(cat <<'EOSQL'
+SELECT 'patient_demographics' AS tbl, COUNT(*) AS cnt FROM bronze_external.patient_demographics
+UNION ALL SELECT 'encounters', COUNT(*) FROM bronze_external.encounters
+UNION ALL SELECT 'referrals', COUNT(*) FROM bronze_external.referrals
+UNION ALL SELECT 'diagnoses', COUNT(*) FROM bronze_external.diagnoses
+UNION ALL SELECT 'appointments', COUNT(*) FROM bronze_external.appointments
+UNION ALL SELECT 'provider_site_reference', COUNT(*) FROM bronze_external.provider_site_reference
+UNION ALL SELECT 'diagnostics_orders', COUNT(*) FROM bronze_external.diagnostics_orders
+UNION ALL SELECT 'urgent_care_logs', COUNT(*) FROM bronze_external.urgent_care_logs
+EOSQL
+)
+
+      local count_stmt_id
+      count_stmt_id=$(aws redshift-data execute-statement \
+        --workgroup-name "access-iq-${CDK_ENV}" \
+        --database dev \
+        --secret-arn "$RS_SECRET_ARN" \
+        --sql "$count_sql" \
+        --query 'Id' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+      if [ -n "$count_stmt_id" ]; then
+        printf "  ${_d}Querying row counts (may take 10-30s)...${_0}\r"
+
+        local count_done="SUBMITTED"
+        local wait_secs=0
+        while [ "$count_done" != "FINISHED" ] && [ "$count_done" != "FAILED" ] && [ "$wait_secs" -lt 60 ]; do
+          sleep 2
+          wait_secs=$((wait_secs + 2))
+          count_done=$(aws redshift-data describe-statement --id "$count_stmt_id" \
+            --query 'Status' --output text \
+            --profile "$AWS_PROFILE" --region "$REGION")
+        done
+
+        printf "  %-30s \n" ""  # clear the "Querying..." line
+
+        if [ "$count_done" = "FINISHED" ]; then
+          local result_json
+          result_json=$(aws redshift-data get-statement-result --id "$count_stmt_id" \
+            --query 'Records' --output json \
+            --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "[]")
+
+          local all_populated=true
+          echo "$result_json" | jq -r '.[] | "\(.[0].stringValue) \(.[1].longValue // .[1].stringValue)"' 2>/dev/null | \
+          while read -r tbl cnt; do
+            printf "  %-30s " "$tbl"
+            if [ "$cnt" -gt 0 ] 2>/dev/null; then
+              printf "${_g}✓${_0} %s rows\n" "$(printf "%'d" "$cnt" 2>/dev/null || echo "$cnt")"
+            else
+              printf "${_r}✗${_0} empty (0 rows)\n"
+            fi
+          done
+        elif [ "$count_done" = "FAILED" ]; then
+          local err_msg
+          err_msg=$(aws redshift-data describe-statement --id "$count_stmt_id" \
+            --query 'Error' --output text \
+            --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "unknown")
+          printf "  %-30s " "Row counts"
+          fail "query failed: $err_msg"
+        else
+          printf "  %-30s " "Row counts"
+          warn "timed out after 60s"
+        fi
+      fi
+    fi
+  fi
 
   echo ""
 }
