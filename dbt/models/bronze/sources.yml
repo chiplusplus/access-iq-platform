@@ -189,7 +189,7 @@ sources:
                   source_prefix: "source=trust_s3_provider_ref/entity=provider_site_reference"
         columns:
           - name: provider_id
-            data_type: bigint
+            data_type: varchar(20)
           - name: provider_code
             data_type: varchar(20)
           - name: site_name
