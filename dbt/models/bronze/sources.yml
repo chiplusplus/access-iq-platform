@@ -5,6 +5,10 @@ sources:
     schema: bronze_external
     loader: spectrum
     description: "Bronze layer via Redshift Spectrum on S3 Parquet files"
+    freshness:
+      warn_after: { count: 2, period: day }
+      error_after: { count: 3, period: day }
+    loaded_at_field: "ingest_date"
     tables:
       - name: patient_demographics
         description: "EHR patient demographics"

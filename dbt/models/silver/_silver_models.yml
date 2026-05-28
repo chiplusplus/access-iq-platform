@@ -1,0 +1,113 @@
+version: 2
+
+models:
+  - name: patients
+    description: "Conformed patient demographics with HMAC pseudonymised patient_sk, IMD from LSOA join"
+    columns:
+      - name: patient_sk
+        description: "HMAC-SHA-256 of NHS number — primary key"
+        tests:
+          - not_null
+          - unique
+      - name: _ingest_date
+        tests:
+          - not_null
+
+  - name: patient_identifiers
+    description: "Caldicott-restricted patient identifiers (silver_keys schema)"
+    columns:
+      - name: patient_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+
+  - name: patients_quarantine
+    description: "Patients failing NHS Mod-11 validation (silver_quarantine schema)"
+    columns:
+      - name: patient_id
+        tests:
+          - not_null
+      - name: rejection_reason
+        tests:
+          - not_null
+
+  - name: encounters
+    description: "EHR encounters with patient_sk FK, UTC timestamps"
+    columns:
+      - name: encounter_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+
+  - name: referrals
+    description: "EHR referrals with patient_sk FK, UTC timestamps"
+    columns:
+      - name: referral_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+
+  - name: diagnoses
+    description: "EHR coded diagnoses (ICD-10) with patient_sk FK"
+    columns:
+      - name: diagnosis_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+
+  - name: diagnostics_orders
+    description: "Trust diagnostic orders with type-conformed IDs and dates"
+    columns:
+      - name: diagnostic_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null:
+              severity: warn
+
+  - name: appointments
+    description: "SFTP appointments with varchar-to-timestamp casts, patient_sk cross-reference"
+    columns:
+      - name: appointment_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+
+  - name: urgent_care
+    description: "Urgent care attendances with UTC timestamps, patient_sk FK"
+    columns:
+      - name: uc_log_id
+        tests:
+          - not_null
+          - unique
+      - name: patient_sk
+        tests:
+          - not_null
+
+  - name: providers
+    description: "Provider site reference — no patient linkage"
+    columns:
+      - name: provider_code
+        tests:
+          - not_null
+          - unique
+      - name: provider_id
+        tests:
+          - not_null

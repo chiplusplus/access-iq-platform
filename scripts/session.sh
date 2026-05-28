@@ -326,6 +326,28 @@ cmd_up() {
 
   step_done
 
+  # Write .env for local tools (profiling, readiness gate) that use pydantic Settings.
+  # ECS tasks get these from Secrets Manager; locally we use .env (gitignored).
+  local TRUST_BUCKET
+  TRUST_BUCKET=$(trust_output ExternalBucketName 2>/dev/null || echo "northshire-trust-external-exports")
+
+  cat > "$PLATFORM_REPO/.env" <<EOF
+ACCESS_IQ_ENV=${CDK_ENV}
+ACCESS_IQ_AWS_REGION=${REGION}
+ACCESS_IQ_PLATFORM_BUCKET=${PLATFORM_BUCKET}
+ACCESS_IQ_AWS_PROFILE=${AWS_PROFILE}
+ACCESS_IQ_POSTGRES_SOURCES={"ehr_postgres": {"dsn_env": "EHR_DSN", "tables": ["patient_demographics","encounters","referrals","diagnoses"]}, "urgent_care_postgres": {"dsn_env": "URGENT_CARE_DSN", "tables": ["urgent_care_logs"]}}
+ACCESS_IQ_SFTP_SOURCES={"appointments": {"host_env":"SFTP_HOST","port_env":"SFTP_PORT","user_env":"SFTP_USER","private_key_env":"SFTP_PRIVATE_KEY","remote_dir":"/outbound/appointments/","source_name":"sftp_appointments"}}
+ACCESS_IQ_TRUST_S3={"base":{"bucket":"${TRUST_BUCKET}","profile":"${AWS_PROFILE}"},"diagnostics":{"prefix_root":"diagnostics","source_name":"trust_s3_diagnostics"},"provider_ref":{"key":"providers/sites_and_services_master.xlsx","source_name":"trust_s3_provider_ref"}}
+EHR_DSN=${EHR_DSN}
+URGENT_CARE_DSN=${URGENT_DSN}
+SFTP_HOST=${SFTP_ENDPOINT}
+SFTP_PORT=22
+SFTP_USER=${SFTP_USER_VAL}
+SFTP_PRIVATE_KEY=${SFTP_PRIVATE_KEY_VAL}
+EOF
+  echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
+
   # ── Step 8: Build and push Docker image to ECR ──
   step_start "7/8" "Build and push ingestion image to ECR" "1-3 min"
 
@@ -348,8 +370,10 @@ cmd_up() {
   # ── Step 7: Run Bronze ingestion (all 3 sources) ──
   cmd_ingest
 
+  # cmd_ingest assumes an STS role and unsets AWS_PROFILE; restore it.
+  AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
+
   # Verify Spectrum schema creation completed (submitted in step 4/7).
-  # AWS_PROFILE may have been unset by cmd_ingest (STS assume-role), so use saved value.
   if [ -n "${SPECTRUM_STMT_ID:-}" ]; then
     local saved_profile="${AWS_PROFILE:-CHI-Engineer-222308823356}"
     local stmt_status="SUBMITTED"

@@ -3,8 +3,15 @@ name = "access-iq-workspace"
 version = "0.1.0"
 description = "Access-IQ workspace root (uv workspace)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 # NO runtime deps here — members own their own.
+
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+conflicts = [[
+    { package = "access-iq-ingestion", extra = "profiling" },
+    { package = "access-iq-infra" },
+]]
 
 [tool.uv.workspace]
 members = ["src/access_iq", "infra", "dbt", "flows", "dashboard"]
@@ -21,6 +28,7 @@ dev = [
     "types-boto3-s3",
     "boto3-stubs",
     "types-paramiko",
+    "pandas-stubs",
     "moto[s3]>=5.0,<6",
 ]
 
@@ -51,6 +59,10 @@ warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
 exclude = "infra/cdk.out/.*"
+
+[[tool.mypy.overrides]]
+module = "data_profiling.*"
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["access_iq"]

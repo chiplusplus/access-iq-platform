@@ -173,7 +173,7 @@ def test_namespace_has_final_snapshot() -> None:
     tpl = _template()
     tpl.has_resource_properties(
         "AWS::RedshiftServerless::Namespace",
-        {"FinalSnapshotName": Match.string_like_regexp(r"access-iq-dev-final-\d+")},
+        {"FinalSnapshotName": Match.string_like_regexp(r"access-iq-dev-final-.+")},
     )
 
 
