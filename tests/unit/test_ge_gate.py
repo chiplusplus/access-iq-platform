@@ -126,12 +126,41 @@ class TestGEGateExitBehavior:
 
         assert exc_info.value.code == 1
 
-    def test_missing_dsn_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """GE gate raises KeyError when REDSHIFT_DSN not set."""
+    def test_missing_dsn_uses_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """GE gate builds DSN from REDSHIFT_HOST/USER/PASSWORD when REDSHIFT_DSN absent."""
         monkeypatch.delenv("REDSHIFT_DSN", raising=False)
+        monkeypatch.setenv("REDSHIFT_HOST", "localhost")
+        monkeypatch.setenv("REDSHIFT_USER", "admin")
+        monkeypatch.setenv("REDSHIFT_PASSWORD", "secret")
         monkeypatch.setenv("PLATFORM_BUCKET", "test-bucket")
 
-        with pytest.raises(KeyError):
+        passing_results = [_make_result(t, "PASSED") for t in SILVER_TABLES]
+
+        with (
+            patch.object(_mod, "run_ge_validation", return_value=passing_results),
+            patch.object(_mod, "write_results_to_redshift"),
+            patch.object(_mod, "write_results_to_s3", return_value="_dq/x/ge_results.json"),
+            patch.object(_mod, "publish_cloudwatch_metrics"),
+            patch("boto3.client"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            _mod.main()
+
+        assert exc_info.value.code == 0
+
+    def test_missing_bucket_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """GE gate raises RuntimeError when no bucket can be resolved."""
+        monkeypatch.setenv("REDSHIFT_DSN", "postgresql://user:pass@host/db")
+        monkeypatch.delenv("PLATFORM_BUCKET", raising=False)
+        monkeypatch.delenv("BRONZE_S3_PREFIX", raising=False)
+
+        passing_results = [_make_result(t, "PASSED") for t in SILVER_TABLES]
+
+        with (
+            patch.object(_mod, "run_ge_validation", return_value=passing_results),
+            patch.object(_mod, "write_results_to_redshift"),
+            pytest.raises(RuntimeError, match="PLATFORM_BUCKET"),
+        ):
             _mod.main()
 
 

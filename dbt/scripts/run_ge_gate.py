@@ -142,9 +142,33 @@ def write_results_to_s3(
     return key
 
 
+def _build_dsn() -> str:
+    """Build SQLAlchemy DSN from individual env vars set by tunnel.sh."""
+    if dsn := os.environ.get("REDSHIFT_DSN"):
+        return dsn
+    host = os.environ.get("REDSHIFT_HOST", "localhost")
+    port = os.environ.get("REDSHIFT_PORT", "5439")
+    user = os.environ.get("REDSHIFT_USER", "admin")
+    password = os.environ.get("REDSHIFT_PASSWORD", "")
+    dbname = os.environ.get("REDSHIFT_DBNAME", "dev")
+    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{dbname}"
+
+
+def _resolve_bucket() -> str:
+    """Resolve S3 bucket from PLATFORM_BUCKET or BRONZE_S3_PREFIX."""
+    if bucket := os.environ.get("PLATFORM_BUCKET"):
+        return bucket
+    prefix = os.environ.get("BRONZE_S3_PREFIX", "")
+    if prefix.startswith("s3://"):
+        return prefix.split("/")[2]
+    raise RuntimeError(
+        "Set PLATFORM_BUCKET or BRONZE_S3_PREFIX (from `eval $(./scripts/tunnel.sh env)`)"
+    )
+
+
 def run_ge_validation() -> list[GERunResult]:
     """Run GE validation on 4 Silver tables and return results."""
-    dsn = os.environ["REDSHIFT_DSN"]
+    dsn = _build_dsn()
     run_id = str(uuid.uuid4())
     today = date.today().isoformat()
 
@@ -243,8 +267,8 @@ def publish_cloudwatch_metrics(results: list[GERunResult], failures: list[GERunR
 
 def main() -> None:
     """Run GE gate: validate Silver tables, write results, exit with status."""
-    dsn = os.environ["REDSHIFT_DSN"]
-    bucket = os.environ["PLATFORM_BUCKET"]
+    dsn = _build_dsn()
+    bucket = _resolve_bucket()
 
     results = run_ge_validation()
 
