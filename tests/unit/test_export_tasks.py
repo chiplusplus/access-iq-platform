@@ -43,9 +43,9 @@ class TestExportTasks:
 
         assert mock_cursor.execute.call_count == len(GOLD_TABLES)
 
-        # First table is fct_wait_times
+        # First table alphabetically is dim_date (GOLD_TABLES is a sorted frozenset)
         first_sql = mock_cursor.execute.call_args_list[0][0][0]
-        assert "gold_export/table=fct_wait_times/export_date=2026-05-29/" in first_sql
+        assert "gold_export/table=dim_date/export_date=2026-05-29/" in first_sql
         assert "FORMAT AS PARQUET" in first_sql
         assert "PARALLEL OFF" in first_sql
 
