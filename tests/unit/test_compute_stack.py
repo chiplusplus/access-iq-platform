@@ -46,6 +46,8 @@ SAFE_ENV_NAMES = {
     "HMAC_LAMBDA_NAME",
     "ALERT_SNS_TOPIC_ARN",
     "SPECTRUM_ROLE_ARN",
+    # Worker env vars
+    "PREFECT_API_URL",
 }
 
 
@@ -125,10 +127,10 @@ def test_one_ecs_cluster() -> None:
     tpl.resource_count_is("AWS::ECS::Cluster", 1)
 
 
-def test_four_task_definitions() -> None:
-    """3 ingestion task defs + 1 pipeline task def = 4 total."""
+def test_five_task_definitions() -> None:
+    """3 ingestion task defs + 1 pipeline task def + 1 worker task def = 5 total."""
     tpl = _template()
-    tpl.resource_count_is("AWS::ECS::TaskDefinition", 4)
+    tpl.resource_count_is("AWS::ECS::TaskDefinition", 5)
 
 
 def test_task_def_cpu_memory() -> None:
@@ -230,6 +232,9 @@ def test_source_config_env_vars_match_task() -> None:
                 for cfg_var in config_env_names:
                     assert cfg_var in env_names, f"pipeline missing {cfg_var}"
                 continue
+            if source not in ingestion_expected:
+                # Worker or other non-ingestion task -- skip config blob check
+                continue
             env_names = {e.get("Name") for e in container.get("Environment", [])}
             config_vars = env_names & config_env_names
             assert ingestion_expected[source] in config_vars, (
@@ -244,4 +249,39 @@ def test_cluster_name_follows_convention() -> None:
     tpl.has_resource_properties(
         "AWS::ECS::Cluster",
         {"ClusterName": "access-iq-dev-ingestion"},
+    )
+
+
+# -- Worker Task Definition tests (Phase 7 -- gap closure) ----------
+
+
+def test_worker_task_def_cpu_memory() -> None:
+    """Worker uses cheapest Fargate tier: 256 CPU / 512 MB."""
+    tpl = _template()
+    tpl.has_resource_properties(
+        "AWS::ECS::TaskDefinition",
+        {"Cpu": "256", "Memory": "512"},
+    )
+
+
+def test_worker_container_name() -> None:
+    """Worker container is named 'prefect-worker'."""
+    tpl = _template()
+    task_defs = tpl.find_resources("AWS::ECS::TaskDefinition")
+    found = False
+    for _lid, res in task_defs.items():
+        containers = res.get("Properties", {}).get("ContainerDefinitions", [])
+        for container in containers:
+            if container.get("Name") == "prefect-worker":
+                found = True
+    assert found, "Expected container named 'prefect-worker' in a task definition"
+
+
+def test_worker_task_def_cfn_output() -> None:
+    """Worker task def produces a CfnOutput for its ARN."""
+    tpl = _template()
+    outputs = tpl.find_outputs("*")
+    worker_outputs = [k for k in outputs if "prefectworker" in k.lower()]
+    assert len(worker_outputs) >= 1, (
+        f"Expected CfnOutput for prefect-worker task def, found: {list(outputs.keys())}"
     )
