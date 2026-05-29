@@ -55,10 +55,10 @@ def _template() -> Template:
     return Template.from_stack(stack)
 
 
-def test_four_iam_roles_exist() -> None:
-    """IngestionRoleStack should create exactly 4 IAM roles."""
+def test_five_iam_roles_exist() -> None:
+    """IngestionRoleStack should create exactly 5 IAM roles."""
     tpl = _template()
-    tpl.resource_count_is("AWS::IAM::Role", 4)
+    tpl.resource_count_is("AWS::IAM::Role", 5)
 
 
 def test_ecs_task_role_trust_policy() -> None:
