@@ -45,6 +45,12 @@ def run_ge_gate() -> None:
 
     results = mod.run_ge_validation()
 
+    if not results:
+        raise RuntimeError(
+            "GE gate returned empty results — no expectations were evaluated. "
+            "Check Silver tables exist and GE suites are configured."
+        )
+
     dsn = os.environ["REDSHIFT_DSN"]
     bucket = os.environ["PLATFORM_BUCKET"]
 
