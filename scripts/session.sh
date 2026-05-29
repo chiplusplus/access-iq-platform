@@ -114,49 +114,53 @@ cmd_up() {
 
   step_start "4/9" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
-  local RS_WORKGROUP="access-iq-${CDK_ENV}"
-  local RS_DB="dev"
-
-  # Wait for workgroup to be AVAILABLE (may take 30-60s after CDK deploy)
-  local rs_status="CREATING"
-  local wait_count=0
-  while [ "$rs_status" != "AVAILABLE" ] && [ "$wait_count" -lt 30 ]; do
-    rs_status=$(aws redshift-serverless get-workgroup \
-      --workgroup-name "$RS_WORKGROUP" \
-      --query 'workgroup.status' --output text \
-      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_FOUND")
-    if [ "$rs_status" != "AVAILABLE" ]; then
-      sleep 10
-      wait_count=$((wait_count + 1))
-      echo "    Waiting for workgroup... ($rs_status)"
-    fi
-  done
-
-  if [ "$rs_status" = "AVAILABLE" ]; then
-    local SPECTRUM_ROLE_ARN
-    SPECTRUM_ROLE_ARN=$(aws cloudformation describe-stacks \
-      --stack-name "warehouse-access-iq-${CDK_ENV}" \
-      --query "Stacks[0].Outputs[?OutputKey=='SpectrumRoleArn'].OutputValue" \
-      --output text --profile "$AWS_PROFILE" --region "$REGION")
-    local GLUE_DB="access-iq-${CDK_ENV}-bronze"
-
-    local RS_SECRET_ARN
-    RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
-      --namespace-name "$RS_WORKGROUP" \
-      --query 'namespace.adminPasswordSecretArn' \
-      --output text --profile "$AWS_PROFILE" --region "$REGION")
-
-    SPECTRUM_STMT_ID=""
-    SPECTRUM_STMT_ID=$(aws redshift-data execute-statement \
-      --workgroup-name "$RS_WORKGROUP" \
-      --database "$RS_DB" \
-      --secret-arn "$RS_SECRET_ARN" \
-      --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}'; GRANT USAGE ON SCHEMA bronze_external TO PUBLIC; GRANT SELECT ON ALL TABLES IN SCHEMA bronze_external TO PUBLIC;" \
-      --query 'Id' --output text \
-      --profile "$AWS_PROFILE" --region "$REGION")
-    echo "  Spectrum schema statement submitted (will verify at end)"
+  SPECTRUM_STMT_ID=""
+  if [ "$skip_seed" = true ]; then
+    echo "  Skipping Redshift pre-warm (--skip-seed)"
   else
-    echo "  WARNING: Redshift workgroup not available after 5 min -- skipping pre-warm"
+    local RS_WORKGROUP="access-iq-${CDK_ENV}"
+    local RS_DB="dev"
+
+    # Wait for workgroup to be AVAILABLE (may take 30-60s after CDK deploy)
+    local rs_status="CREATING"
+    local wait_count=0
+    while [ "$rs_status" != "AVAILABLE" ] && [ "$wait_count" -lt 30 ]; do
+      rs_status=$(aws redshift-serverless get-workgroup \
+        --workgroup-name "$RS_WORKGROUP" \
+        --query 'workgroup.status' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_FOUND")
+      if [ "$rs_status" != "AVAILABLE" ]; then
+        sleep 10
+        wait_count=$((wait_count + 1))
+        echo "    Waiting for workgroup... ($rs_status)"
+      fi
+    done
+
+    if [ "$rs_status" = "AVAILABLE" ]; then
+      local SPECTRUM_ROLE_ARN
+      SPECTRUM_ROLE_ARN=$(aws cloudformation describe-stacks \
+        --stack-name "warehouse-access-iq-${CDK_ENV}" \
+        --query "Stacks[0].Outputs[?OutputKey=='SpectrumRoleArn'].OutputValue" \
+        --output text --profile "$AWS_PROFILE" --region "$REGION")
+      local GLUE_DB="access-iq-${CDK_ENV}-bronze"
+
+      local RS_SECRET_ARN
+      RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+        --namespace-name "$RS_WORKGROUP" \
+        --query 'namespace.adminPasswordSecretArn' \
+        --output text --profile "$AWS_PROFILE" --region "$REGION")
+
+      SPECTRUM_STMT_ID=$(aws redshift-data execute-statement \
+        --workgroup-name "$RS_WORKGROUP" \
+        --database "$RS_DB" \
+        --secret-arn "$RS_SECRET_ARN" \
+        --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}'; GRANT USAGE ON SCHEMA bronze_external TO PUBLIC; GRANT SELECT ON ALL TABLES IN SCHEMA bronze_external TO PUBLIC;" \
+        --query 'Id' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION")
+      echo "  Spectrum schema statement submitted (will verify at end)"
+    else
+      echo "  WARNING: Redshift workgroup not available after 5 min -- skipping pre-warm"
+    fi
   fi
 
   step_done
@@ -373,7 +377,11 @@ EOF
   step_done
 
   # ── Step 7: Run Bronze ingestion (all 3 sources) ──
-  cmd_ingest
+  if [ "$skip_seed" = true ]; then
+    echo "  Skipping Bronze ingestion (--skip-seed)"
+  else
+    cmd_ingest
+  fi
 
   # cmd_ingest assumes an STS role and unsets AWS_PROFILE; restore it.
   AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
@@ -434,18 +442,22 @@ EOF
   if [ "$tunnel_ready" = true ]; then
     echo "  ✓ Tunnel connected"
 
-    # Load Redshift credentials
-    eval "$("$PLATFORM_REPO/scripts/tunnel.sh" env)"
+    if [ "$skip_seed" = true ]; then
+      echo "  Skipping Spectrum tables + partitions (--skip-seed)"
+    else
+      # Load Redshift credentials
+      eval "$("$PLATFORM_REPO/scripts/tunnel.sh" env)"
 
-    # Create external tables via dbt-external-tables
-    (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation stage_external_sources --profiles-dir .) \
-      && echo "  ✓ Spectrum external tables created" \
-      || echo "  WARNING: stage_external_sources failed — run manually via make dbt"
+      # Create external tables via dbt-external-tables
+      (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation stage_external_sources --profiles-dir .) \
+        && echo "  ✓ Spectrum external tables created" \
+        || echo "  WARNING: stage_external_sources failed — run manually via make dbt"
 
-    # Register partitions
-    (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation add_spectrum_partitions --profiles-dir .) \
-      && echo "  ✓ Partitions registered" \
-      || echo "  WARNING: add_spectrum_partitions failed — run manually via make dbt"
+      # Register partitions
+      (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation add_spectrum_partitions --profiles-dir .) \
+        && echo "  ✓ Partitions registered" \
+        || echo "  WARNING: add_spectrum_partitions failed — run manually via make dbt"
+    fi
   else
     echo "  WARNING: Tunnel not ready after 30s — skipping dbt operations"
     echo "  Run manually: make tunnel (terminal 1), make dbt CMD=\"run-operation stage_external_sources\" (terminal 2)"
@@ -563,9 +575,10 @@ EOF
       ECS_CLUSTER_ARN="$ECS_CLUSTER_ARN" \
       ECS_TASK_ROLE_ARN="$ECS_TASK_ROLE_ARN" \
       ECS_EXECUTION_ROLE_ARN="$ECS_EXECUTION_ROLE_ARN" \
+      PLATFORM_VPC_ID="$PLATFORM_VPC" \
       PRIVATE_SUBNET_IDS="$PRIVATE_SUBNET_IDS" \
       ECS_TASK_SG_ID="$ECS_TASK_SG_ID" \
-      prefect deploy --prefect-file flows/prefect.yaml --name dev 2>/dev/null || true)
+      prefect deploy --prefect-file flows/prefect.yaml --name dev --no-prompt 2>/dev/null || true)
 
     printf "  Prefect work pool + flow deployed (self-hosted)\n"
     printf "  Prefect UI: http://localhost:4200 (tunnel PID %s)\n" "$prefect_tunnel_pid"
