@@ -74,6 +74,16 @@ class ObservabilityStack(Stack):
             )
             log_groups[source] = lg
 
+        # Pipeline log group (Phase 7 — full orchestration flow)
+        pipeline_lg = logs.LogGroup(
+            self,
+            "LogGroup-pipeline",
+            log_group_name=f"/access-iq/{cfg.env_name}/pipeline",
+            retention=retention,
+            removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
+        )
+        log_groups["pipeline"] = pipeline_lg
+
         self.log_groups = log_groups
 
         # -- Section 2: SNS Topics (D-10, REQ-OBS-01) ----------

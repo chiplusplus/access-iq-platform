@@ -97,6 +97,15 @@ class WarehouseStack(Stack):
             description="Spectrum: S3 read on lake + Glue Catalog read/partition management",
         )
         lake_bucket.grant_read(spectrum_role)
+        # Gold export: UNLOAD writes Parquet to gold_export/ prefix (Phase 7, D-05)
+        lake_bucket.grant_write(spectrum_role, "gold_export/*")
+        # UNLOAD also requires s3:GetBucketAcl on the bucket itself
+        spectrum_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetBucketAcl"],
+                resources=[lake_bucket.bucket_arn],
+            )
+        )
         lake_key.grant_decrypt(spectrum_role)
         spectrum_role.add_to_principal_policy(
             iam.PolicyStatement(

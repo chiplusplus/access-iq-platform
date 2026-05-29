@@ -142,6 +142,16 @@ class IngestionRoleStack(Stack):
         )
         ecs_task_role.attach_inline_policy(ecs_task_policy)
 
+        # SNS: allow pipeline on_failure hook to publish alerts (Phase 7)
+        ecs_task_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=["sns:Publish"],
+                resources=[
+                    f"arn:aws:sns:{cfg.region}:{cfg.account_id}:{cfg.app_name}-{cfg.env_name}-ingestion-alerts",
+                ],
+            )
+        )
+
         # KMS: use grant_encrypt_decrypt (updates both role policy AND key resource policy)
         lake_key.grant_encrypt_decrypt(ecs_task_role)
 
