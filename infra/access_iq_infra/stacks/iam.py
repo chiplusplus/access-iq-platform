@@ -306,7 +306,10 @@ class IngestionRoleStack(Stack):
             iam.PolicyStatement(
                 sid="LogsWrite",
                 actions=["logs:CreateLogStream", "logs:PutLogEvents"],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:logs:{cfg.region}:{cfg.account_id}:log-group:/access-iq/{cfg.env_name}/*",
+                    f"arn:aws:logs:{cfg.region}:{cfg.account_id}:log-group:/access-iq/{cfg.env_name}/*:log-stream:*",
+                ],
             )
         )
         self.prefect_worker_role = prefect_worker_role
