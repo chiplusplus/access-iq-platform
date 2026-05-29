@@ -189,3 +189,41 @@ def test_only_usage_limit_cr_exists() -> None:
     assert len(resources) == 1, (
         f"Expected exactly 1 Custom::AWS resource (usage limit only), found {len(resources)}"
     )
+
+
+def test_spectrum_role_has_gold_export_write() -> None:
+    """Spectrum role has s3:PutObject on gold_export/* prefix for UNLOAD (Phase 7, D-05)."""
+    tpl = _template()
+    policies = tpl.find_resources("AWS::IAM::Policy")
+    found = False
+    for _lid, policy in policies.items():
+        statements = policy.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+        for stmt in statements:
+            actions = stmt.get("Action", [])
+            if isinstance(actions, str):
+                actions = [actions]
+            resources = stmt.get("Resource", [])
+            if isinstance(resources, str):
+                resources = [resources]
+            resource_str = str(resources)
+            if "s3:PutObject" in actions and "gold_export" in resource_str:
+                found = True
+                break
+    assert found, "Spectrum role missing s3:PutObject on gold_export/* prefix"
+
+
+def test_spectrum_role_has_get_bucket_acl() -> None:
+    """Spectrum role has s3:GetBucketAcl for UNLOAD (Phase 7)."""
+    tpl = _template()
+    policies = tpl.find_resources("AWS::IAM::Policy")
+    found = False
+    for _lid, policy in policies.items():
+        statements = policy.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+        for stmt in statements:
+            actions = stmt.get("Action", [])
+            if isinstance(actions, str):
+                actions = [actions]
+            if "s3:GetBucketAcl" in actions:
+                found = True
+                break
+    assert found, "Spectrum role missing s3:GetBucketAcl permission"

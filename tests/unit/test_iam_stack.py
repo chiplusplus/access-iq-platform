@@ -265,6 +265,27 @@ def test_operator_role_has_pass_role_permission() -> None:
     )
 
 
+def test_ecs_task_role_has_sns_publish() -> None:
+    """ECS task role has sns:Publish for pipeline on_failure alerting (Phase 7)."""
+    tpl = _template()
+    policies = tpl.find_resources("AWS::IAM::Policy")
+    found = False
+    for _lid, policy in policies.items():
+        statements = policy.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+        for stmt in statements:
+            actions = stmt.get("Action", [])
+            if isinstance(actions, str):
+                actions = [actions]
+            if "sns:Publish" in actions:
+                resource_str = str(stmt.get("Resource", ""))
+                assert "ingestion-alerts" in resource_str, (
+                    "sns:Publish should be scoped to ingestion-alerts topic"
+                )
+                found = True
+                break
+    assert found, "ECS task role missing sns:Publish permission"
+
+
 def test_sso_role_unchanged() -> None:
     """SSO ingestion role still uses ArnPrincipal trust, not ServicePrincipal."""
     tpl = _template()
