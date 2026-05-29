@@ -9,6 +9,17 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
+_SELF_HOSTED_FALLBACK = "http://prefect-server.access-iq.local:4200"
+
+
+def _prefect_ui_base() -> str:
+    """Derive Prefect UI base URL from PREFECT_API_URL, falling back to self-hosted."""
+    api_url = os.environ.get("PREFECT_API_URL", "")
+    if api_url:
+        # Strip /api suffix to get the UI base
+        return api_url.removesuffix("/api").removesuffix("/")
+    return _SELF_HOSTED_FALLBACK
+
 
 def sns_on_failure(flow: object, flow_run: object, state: object) -> None:
     """Publish pipeline failure to SNS ingestion-alerts topic.
@@ -32,7 +43,7 @@ def sns_on_failure(flow: object, flow_run: object, state: object) -> None:
             f"Access-IQ daily_ingest FAILED\n"
             f"Flow run: {flow_run_id}\n"
             f"State: {state_name} - {state_message}\n"
-            f"UI: https://app.prefect.cloud/flow-runs/flow-run/{flow_run_id}"
+            f"UI: {_prefect_ui_base()}/flow-runs/flow-run/{flow_run_id}"
         )
         sns.publish(
             TopicArn=topic_arn,
