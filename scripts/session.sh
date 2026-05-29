@@ -519,6 +519,11 @@ EOF
       --query 'SecurityGroups[0].GroupId' --output text \
       --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
 
+    if [ -z "$PRIVATE_SUBNET_IDS" ]; then
+      echo "  ERROR: No private subnets found for VPC $PLATFORM_VPC — cannot deploy Prefect flow"
+      return 1
+    fi
+
     # Create/update ecs work pool (idempotent)
     prefect work-pool create "access-iq-${CDK_ENV}-pipeline" \
       --type ecs --overwrite 2>/dev/null || true
