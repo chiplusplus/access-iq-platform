@@ -356,7 +356,7 @@ class ComputeStack(Stack):
             command=[
                 "bash",
                 "-c",
-                f"pip install prefect-aws==0.5.3 && prefect worker start --pool {cfg.app_name}-{cfg.env_name}-pipeline --type ecs",
+                f"pip install prefect-aws==0.7.9 && prefect worker start --pool {cfg.app_name}-{cfg.env_name}-pipeline --type ecs",
             ],
             environment={
                 "PREFECT_API_URL": _prefect_api_url,

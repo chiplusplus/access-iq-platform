@@ -305,6 +305,11 @@ class WarehouseStack(Stack):
                 ec2.Port.tcp(5439),
                 "Forward to Redshift",
             )
+            tunnel_sg.add_egress_rule(
+                ecs_task_sg,
+                ec2.Port.tcp(4200),
+                "Forward to Prefect server",
+            )
             redshift_sg.add_ingress_rule(
                 tunnel_sg,
                 ec2.Port.tcp(5439),

@@ -223,6 +223,8 @@ class NetworkStack(Stack):
                 private_dns_enabled=True,
             )
 
+        CfnOutput(self, "VpcId", value=vpc.vpc_id, description="Platform VPC ID")
+
         # ── Section 9: Expose for Phase 3 ECS stack ──────────────────────────
         self.vpc = vpc
         self.ecs_task_sg = ecs_sg

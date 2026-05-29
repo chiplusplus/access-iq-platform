@@ -54,8 +54,8 @@ infra-destroy:  ## Destroy CDK stacks
 	cd infra && uv run cdk destroy --all --force $(CDK_CONTEXT)
 
 # ── Session orchestration ───────────────────────────────────────────
-up:  ## Deploy Trust + Platform stacks (SKIP_GENERATE=1 reuse data, SKIP_SEED=1 infra only)
-	./scripts/session.sh up $(if $(SKIP_GENERATE),--skip-generate) $(if $(SKIP_SEED),--skip-seed)
+up:  ## Deploy Trust + Platform stacks (SKIP_GENERATE=1 reuse data, SKIP_SEED=1 infra only, SKIP_INFRA=1 reuse stacks)
+	./scripts/session.sh up $(if $(SKIP_GENERATE),--skip-generate) $(if $(SKIP_SEED),--skip-seed) $(if $(SKIP_INFRA),--skip-infra)
 
 down:  ## Destroy all stacks
 	./scripts/session.sh down

@@ -66,10 +66,12 @@ platform_output() {
 cmd_up() {
   local skip_generate=""
   local skip_seed=false
+  local skip_infra=false
   for arg in "$@"; do
     case "$arg" in
       --skip-generate) skip_generate="--skip-generate" ;;
       --skip-seed) skip_seed=true ;;
+      --skip-infra) skip_infra=true ;;
     esac
   done
 
@@ -77,11 +79,14 @@ cmd_up() {
   echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest → dbt Spectrum"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
+  [ "$skip_infra" = true ] && echo "  Skipping infrastructure deployments (reusing existing stacks)"
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
   step_start "1/9" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
-  if [ "$skip_seed" = true ]; then
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping Trust deploy (--skip-infra)"
+  elif [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
       --profile "$TRUST_PROFILE" --require-approval never)
@@ -98,8 +103,12 @@ cmd_up() {
 
   step_start "3/9" "Deploy Platform stacks" "5-10min"
 
-  (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
-    -c "env=${CDK_ENV}" -c "trust_vpc_id=${TRUST_VPC}" --require-approval never)
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping Platform deploy (--skip-infra)"
+  else
+    (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
+      -c "env=${CDK_ENV}" -c "trust_vpc_id=${TRUST_VPC}" --require-approval never)
+  fi
 
   # Export BRONZE_S3_PREFIX for dbt
   local PLATFORM_BUCKET
@@ -176,14 +185,19 @@ cmd_up() {
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
   step_start "5/9" "Redeploy Trust with routes and peering SG rules" "~2 min"
-  echo "  Platform VPC:  $PLATFORM_VPC"
-  echo "  Peering ID:    $PEERING_ID"
-  (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
-    -c "platformVpcId=$PLATFORM_VPC" \
-    -c "platformCidr=10.10.0.0/16" \
-    -c "platformAccountId=$(aws sts get-caller-identity --query Account --output text --profile "$AWS_PROFILE")" \
-    -c "peeringConnectionId=$PEERING_ID" \
-    --require-approval never)
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping Trust redeploy (--skip-infra)"
+  else
+    echo "  Platform VPC:  $PLATFORM_VPC"
+    echo "  Peering ID:    $PEERING_ID"
+    (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
+      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy \
+      -c "platformVpcId=$PLATFORM_VPC" \
+      -c "platformCidr=10.10.0.0/16" \
+      -c "platformAccountId=$(aws sts get-caller-identity --query Account --output text --profile "$AWS_PROFILE")" \
+      -c "peeringConnectionId=$PEERING_ID" \
+      --require-approval never)
+  fi
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
@@ -370,7 +384,7 @@ EOF
       "$(echo "$ECR_URI" | cut -d/ -f1)" 2>/dev/null
 
   # Build and push
-  (cd "$PLATFORM_REPO" && docker build --platform linux/amd64 -t "${ECR_URI}:latest" .)
+  (cd "$PLATFORM_REPO" && docker build --platform linux/amd64 -f flows/Dockerfile -t "${ECR_URI}:latest" .)
   docker push "${ECR_URI}:latest"
   echo "  ✓ Pushed ${ECR_URI}:latest"
 
@@ -538,9 +552,14 @@ EOF
     local ecr_uri
     ecr_uri=$(aws cloudformation describe-stacks \
       --stack-name "ecr-access-iq-${CDK_ENV}" \
-      --query "Stacks[0].Outputs[?OutputKey=='PipelineRepoUri'].OutputValue" \
+      --query "Stacks[0].Outputs[?OutputKey=='IngestionRepoUri'].OutputValue" \
       --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
     local PIPELINE_IMAGE_URI="${ecr_uri}:latest"
+    local PIPELINE_TASK_DEF_ARN
+    PIPELINE_TASK_DEF_ARN=$(aws ecs describe-task-definition \
+      --task-definition "access-iq-${CDK_ENV}-pipeline" \
+      --query 'taskDefinition.taskDefinitionArn' \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
     local ECS_CLUSTER_ARN="$cluster_arn"
     local ECS_TASK_ROLE_ARN="$task_role_arn"
     local ECS_EXECUTION_ROLE_ARN="$exec_role_arn"
@@ -552,33 +571,89 @@ EOF
     local PRIVATE_SUBNET_IDS
     PRIVATE_SUBNET_IDS=$(aws ec2 describe-subnets \
       --filters "Name=vpc-id,Values=$PLATFORM_VPC" "Name=tag:aws-cdk:subnet-type,Values=Private" \
-      --query 'Subnets[*].SubnetId' --output text \
-      --profile "$AWS_PROFILE" --region "$REGION" | tr '\t' ',' 2>/dev/null || echo "")
+      --query 'Subnets[*].SubnetId' --output json \
+      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "[]")
     local ECS_TASK_SG_ID
     ECS_TASK_SG_ID=$(aws ec2 describe-security-groups \
       --filters "Name=vpc-id,Values=$PLATFORM_VPC" "Name=group-name,Values=*ecs-task*" \
       --query 'SecurityGroups[0].GroupId' --output text \
       --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
 
-    if [ -z "$PRIVATE_SUBNET_IDS" ]; then
+    if [ "$PRIVATE_SUBNET_IDS" = "[]" ] || [ -z "$PRIVATE_SUBNET_IDS" ]; then
       echo "  ERROR: No private subnets found for VPC $PLATFORM_VPC — cannot deploy Prefect flow"
       return 1
     fi
 
+    # Generate deployment YAML with resolved network values (Prefect templates
+    # can't handle JSON arrays, so we bake in the actual values).
+    local DEPLOY_YAML="$PLATFORM_REPO/.prefect-deploy.yaml"
+    local SUBNET_YAML
+    SUBNET_YAML=$(echo "$PRIVATE_SUBNET_IDS" | jq -r '.[] | "              - \"" + . + "\""' )
+
+    cat > "$DEPLOY_YAML" <<EOYAML
+name: access-iq-flows
+prefect-version: "3.7.2"
+
+deployments:
+  - name: dev
+    flow_name: daily-ingest
+    entrypoint: flows/access_iq_flows/daily_ingest.py:daily_ingest
+    pull:
+      - prefect.deployments.steps.set_working_directory:
+          directory: /app
+    work_pool:
+      name: access-iq-${CDK_ENV}-pipeline
+      work_queue_name: default
+      job_variables:
+        task_definition_arn: "${PIPELINE_TASK_DEF_ARN}"
+        image: "${PIPELINE_IMAGE_URI}"
+        cluster: "${ECS_CLUSTER_ARN}"
+        vpc_id: "${PLATFORM_VPC}"
+        task_start_timeout_seconds: 300
+        task_watch_poll_interval: 5
+        network_configuration:
+          subnets:
+${SUBNET_YAML}
+          securityGroups:
+              - "${ECS_TASK_SG_ID}"
+          assignPublicIp: "DISABLED"
+    schedules:
+      - cron: "0 2 * * *"
+        timezone: "Europe/London"
+        active: false
+    parameters:
+      env: ${CDK_ENV}
+EOYAML
+
     # Create/update ecs work pool (idempotent)
-    prefect work-pool create "access-iq-${CDK_ENV}-pipeline" \
+    "$PLATFORM_REPO/.venv/bin/prefect" work-pool create "access-iq-${CDK_ENV}-pipeline" \
       --type ecs --overwrite 2>/dev/null || true
+
+    # Fix work pool template defaults (prefect-aws templates them to 0/None)
+    "$PLATFORM_REPO/.venv/bin/python" -c "
+import json, httpx
+client = httpx.Client(base_url='$PREFECT_API_URL')
+pools = client.post('/work_pools/filter', json={}).json()
+pool = [p for p in pools if p['name'] == 'access-iq-${CDK_ENV}-pipeline'][0]
+tmpl = pool['base_job_template']
+props = tmpl['variables']['properties']
+props['task_start_timeout_seconds'] = {'title':'Task Start Timeout Seconds','default':300,'type':'integer'}
+props['task_watch_poll_interval'] = {'title':'Task Watch Poll Interval','default':5,'type':'number'}
+props['configure_cloudwatch_logs']['default'] = True
+props['cloudwatch_logs_options']['default'] = {
+    'awslogs-group': '/access-iq/${CDK_ENV}/pipeline',
+    'awslogs-region': '${REGION}',
+    'awslogs-stream-prefix': 'flow-run',
+}
+client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
+" 2>/dev/null || true
 
     # Deploy flow definition against self-hosted server
     (cd "$PLATFORM_REPO" && \
-      PIPELINE_IMAGE_URI="$PIPELINE_IMAGE_URI" \
-      ECS_CLUSTER_ARN="$ECS_CLUSTER_ARN" \
-      ECS_TASK_ROLE_ARN="$ECS_TASK_ROLE_ARN" \
-      ECS_EXECUTION_ROLE_ARN="$ECS_EXECUTION_ROLE_ARN" \
-      PLATFORM_VPC_ID="$PLATFORM_VPC" \
-      PRIVATE_SUBNET_IDS="$PRIVATE_SUBNET_IDS" \
-      ECS_TASK_SG_ID="$ECS_TASK_SG_ID" \
-      prefect deploy --prefect-file flows/prefect.yaml --name dev --no-prompt 2>/dev/null || true)
+      "$PLATFORM_REPO/.venv/bin/prefect" deploy --prefect-file "$DEPLOY_YAML" --name dev --no-prompt \
+        || true)
+
+    rm -f "$DEPLOY_YAML"
 
     printf "  Prefect work pool + flow deployed (self-hosted)\n"
     printf "  Prefect UI: http://localhost:4200 (tunnel PID %s)\n" "$prefect_tunnel_pid"
@@ -1246,7 +1321,7 @@ cmd_pipeline() {
   step_start "2/2" "Trigger flow run" "<10s"
   local run_date
   run_date=$(date +%Y-%m-%d)
-  prefect deployment run 'daily-ingest/dev' \
+  "$PLATFORM_REPO/.venv/bin/prefect" deployment run 'daily-ingest/dev' \
     --param "run_date=${run_date}" 2>&1 | tee /tmp/prefect_run.log
   printf "  Prefect UI: http://localhost:4200\n"
   step_done

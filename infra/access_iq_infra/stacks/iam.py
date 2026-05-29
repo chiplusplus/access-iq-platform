@@ -166,6 +166,13 @@ class IngestionRoleStack(Stack):
 
         self.ecs_task_role = ecs_task_role
 
+        CfnOutput(
+            self,
+            "EcsTaskRoleArn",
+            value=ecs_task_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-ecs-task-role-arn",
+        )
+
         # ── ECS Execution Role (D-13) ───────────────────────────────────
         ecs_execution_role = iam.Role(
             self,
@@ -190,6 +197,13 @@ class IngestionRoleStack(Stack):
         )
 
         self.ecs_execution_role = ecs_execution_role
+
+        CfnOutput(
+            self,
+            "EcsExecutionRoleArn",
+            value=ecs_execution_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-ecs-execution-role-arn",
+        )
 
         # ── ECS Operator Role (control-plane) ──────────────────────────────
         # Separated from ingestion_role (data-plane) so a leaked data
@@ -286,6 +300,7 @@ class IngestionRoleStack(Stack):
                     "ecs:RunTask",
                     "ecs:StopTask",
                     "ecs:DescribeTasks",
+                    "ecs:TagResource",
                 ],
                 resources=["*"],
                 conditions={
@@ -293,6 +308,28 @@ class IngestionRoleStack(Stack):
                         "ecs:cluster": f"arn:aws:ecs:{cfg.region}:{cfg.account_id}:cluster/{cfg.app_name}-{cfg.env_name}-ingestion"
                     }
                 },
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="EcsTaskDefinition",
+                actions=[
+                    "ecs:RegisterTaskDefinition",
+                    "ecs:DeregisterTaskDefinition",
+                    "ecs:DescribeTaskDefinition",
+                ],
+                resources=["*"],
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="Ec2Describe",
+                actions=[
+                    "ec2:DescribeVpcs",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeSecurityGroups",
+                ],
+                resources=["*"],
             )
         )
         prefect_worker_role.add_to_principal_policy(

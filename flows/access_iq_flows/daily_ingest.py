@@ -61,8 +61,8 @@ def task_ingest_sftp(run_date: str, settings: Settings) -> dict:
         manifest = ingest_sftp_directory_to_bronze(
             host=os.environ.get(src.host_env, ""),
             port=int(os.environ.get(src.port_env, "22")),
-            user=os.environ.get(src.user_env, ""),
-            private_key_env=src.private_key_env,
+            username=os.environ.get(src.user_env, ""),
+            private_key=os.environ.get(src.private_key_env or "", None) or None,
             remote_dir=src.remote_dir,
             source_name=src.source_name,
             platform_bucket=settings.platform_bucket,
@@ -84,32 +84,36 @@ def task_ingest_trust_s3(run_date: str, settings: Settings) -> dict:
         log.warning("trust_s3_config_missing", reason="trust_s3 not configured — skipping")
         return {}
 
+    import boto3
+
+    session = boto3.Session(region_name=settings.aws_region)
+    s3 = session.client("s3")
+
     base_bucket = trust_s3_cfg.base.bucket
 
     # Diagnostics
     diag_cfg = trust_s3_cfg.diagnostics
     diag_manifest = ingest_trust_diagnostics_export_date_to_bronze(
+        s3=s3,
         trust_bucket=base_bucket,
         prefix_root=diag_cfg.prefix_root or "",
         source_name=diag_cfg.source_name or "trust_diagnostics",
-        export_date=run_date.replace("-", ""),  # Trust uses YYYYMMDD
+        export_date=ingest_date,
         platform_bucket=settings.platform_bucket,
-        ingest_date=ingest_date,
         env=settings.env,
-        aws_region=settings.aws_region,
         kms_key_arn=settings.lake_kms_key_arn,
     )
 
     # Provider reference
     prov_cfg = trust_s3_cfg.provider_ref
     prov_manifest = ingest_trust_provider_ref_to_bronze(
+        s3=s3,
         trust_bucket=base_bucket,
-        key=prov_cfg.key or "",
+        trust_key=prov_cfg.key or "",
         source_name=prov_cfg.source_name or "trust_provider_ref",
         platform_bucket=settings.platform_bucket,
         ingest_date=ingest_date,
         env=settings.env,
-        aws_region=settings.aws_region,
         kms_key_arn=settings.lake_kms_key_arn,
     )
 
