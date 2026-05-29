@@ -112,6 +112,7 @@ ComputeStack(
     log_groups=obs.log_groups,
     warehouse_stack=warehouse,
     observability_stack=obs,
+    prefect_worker_role=iam_stack.prefect_worker_role,
     env=cdk_env,
 )
 
