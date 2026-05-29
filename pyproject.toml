@@ -13,6 +13,9 @@ conflicts = [[
     { package = "access-iq-infra" },
 ]]
 
+[tool.uv.sources]
+access-iq-ingestion = { workspace = true }
+
 [tool.uv.workspace]
 members = ["src/access_iq", "infra", "dbt", "flows", "dashboard"]
 
