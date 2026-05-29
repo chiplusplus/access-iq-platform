@@ -279,53 +279,6 @@ class ComputeStack(Stack):
 
         task_defs["pipeline"] = pipeline_task_def
 
-        # -- Section 4c: Prefect Worker Task Definition (Phase 7 -- gap closure) --
-        # Lightweight worker (256/512) that polls Prefect Cloud and launches pipeline
-        # tasks via ECS API. Runs only during active sessions (make up / make down).
-        worker_task_def = ecs.FargateTaskDefinition(
-            self,
-            "WorkerTaskDef",
-            family=f"{cfg.app_name}-{cfg.env_name}-prefect-worker",
-            cpu=256,
-            memory_limit_mib=512,
-            task_role=ecs_task_role,
-            execution_role=ecs_execution_role,
-        )
-
-        worker_task_def.add_container(
-            "prefect-worker",
-            image=ecs.ContainerImage.from_registry("prefecthq/prefect:3-python3.12"),
-            command=[
-                "prefect",
-                "worker",
-                "start",
-                "--pool",
-                f"access-iq-{cfg.env_name}-pipeline",
-                "--type",
-                "ecs",
-            ],
-            logging=ecs.LogDrivers.aws_logs(
-                stream_prefix="prefect-worker",
-                log_group=log_groups["pipeline"],
-                mode=ecs.AwsLogDriverMode.NON_BLOCKING,
-                max_buffer_size=cdk.Size.mebibytes(4),
-            ),
-            environment={
-                "PREFECT_API_URL": "",  # set at runtime via ECS task overrides
-            },
-            secrets={
-                "PREFECT_API_KEY": ecs.Secret.from_secrets_manager(
-                    _sm.from_secret_name_v2(
-                        self,
-                        "WorkerPrefectApiKeySecret",
-                        f"access-iq/{cfg.env_name}/prefect-api-key",
-                    )
-                ),
-            },
-        )
-
-        task_defs["prefect-worker"] = worker_task_def
-
         # -- Section 5: CfnOutputs ----------
         CfnOutput(
             self,
@@ -356,4 +309,3 @@ class ComputeStack(Stack):
         self.cluster = cluster
         self.task_defs = task_defs
         self.pipeline_task_def = pipeline_task_def
-        self.worker_task_def = worker_task_def

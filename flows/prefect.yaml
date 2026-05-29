@@ -1,6 +1,5 @@
 # Prefect deployment config for Access-IQ pipeline.
 # Deploy with: prefect deploy --prefect-file flows/prefect.yaml
-# Work pool type: ecs (standard worker-based, NOT ecs:push -- free tier compatible)
 name: access-iq-flows
 prefect-version: "3.7.2"
 
