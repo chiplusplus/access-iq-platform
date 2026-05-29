@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest dbt tunnel tunnel-stop tunnel-env
+.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest pipeline dbt tunnel tunnel-stop tunnel-env
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -65,6 +65,9 @@ status:  ## Show current stack states
 
 ingest:  ## Run Bronze ingestion on ECS Fargate (3 parallel tasks)
 	./scripts/session.sh ingest
+
+pipeline:  ## Trigger full Prefect pipeline flow run (Bronze -> Silver -> GE -> Gold -> Export)
+	./scripts/session.sh pipeline
 
 dbt:  ## Run dbt command (e.g., make dbt CMD="run --select silver")
 	eval $$(./scripts/tunnel.sh env) && cd dbt && uv run dbt $(CMD) --profiles-dir .

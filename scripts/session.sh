@@ -80,7 +80,7 @@ cmd_up() {
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
-  step_start "1/8" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
+  step_start "1/9" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
   if [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
@@ -91,12 +91,12 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/8" "Read Trust outputs" "<5s"
+  step_start "2/9" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/8" "Deploy Platform stacks" "5-10min"
+  step_start "3/9" "Deploy Platform stacks" "5-10min"
 
   local CDK_CONTEXT_ARGS="-c env=$CDK_ENV -c trust_vpc_id=$TRUST_VPC"
 
@@ -114,7 +114,7 @@ cmd_up() {
 
   step_done
 
-  step_start "4/8" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
+  step_start "4/9" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
   local RS_WORKGROUP="access-iq-${CDK_ENV}"
   local RS_DB="dev"
@@ -173,7 +173,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/8" "Redeploy Trust with routes and peering SG rules" "~2 min"
+  step_start "5/9" "Redeploy Trust with routes and peering SG rules" "~2 min"
   echo "  Platform VPC:  $PLATFORM_VPC"
   echo "  Peering ID:    $PEERING_ID"
   (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
@@ -185,7 +185,7 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "6/8" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/9" "Seed Platform secrets from Trust" "<30s"
 
   local SECRET_PREFIX="access-iq/${CDK_ENV}"
 
@@ -349,7 +349,7 @@ EOF
   echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/8" "Build and push ingestion image to ECR" "1-3 min"
+  step_start "7/9" "Build and push ingestion image to ECR" "1-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -391,7 +391,7 @@ EOF
   fi
 
   # ── Step 8: Start tunnel, create Spectrum tables + partitions ──
-  step_start "8/8" "Create Spectrum external tables and register partitions" "30-60s"
+  step_start "8/9" "Create Spectrum external tables and register partitions" "30-60s"
 
   local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
   local TUNNEL_INSTANCE_ID
@@ -441,6 +441,86 @@ EOF
 
   step_done
 
+  # ── Step 9/9: Register Prefect work pool and resume schedule ──
+  step_start "9/9" "Register Prefect work pool and resume schedule" "<30s"
+  local prefect_key
+  prefect_key=$(aws secretsmanager get-secret-value \
+    --secret-id "access-iq/${CDK_ENV}/prefect-api-key" \
+    --query SecretString --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+  if [ -n "$prefect_key" ]; then
+    export PREFECT_API_KEY="$prefect_key"
+    export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
+    # Create/update work pool (idempotent, D-07)
+    prefect work-pool create "access-iq-${CDK_ENV}-pipeline" \
+      --type ecs:push --overwrite 2>/dev/null || true
+
+    # Resolve CDK stack outputs for work pool configuration
+    local stack_name="compute-access-iq-${CDK_ENV}"
+    local cluster_arn task_def_arn exec_role_arn task_role_arn image_uri
+    cluster_arn=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --query "Stacks[0].Outputs[?OutputKey=='ClusterArn'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    task_def_arn=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --query "Stacks[0].Outputs[?contains(OutputKey,'PipelineTaskDefArn')].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    exec_role_arn=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --query "Stacks[0].Outputs[?OutputKey=='ExecutionRoleArn'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    task_role_arn=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --query "Stacks[0].Outputs[?OutputKey=='TaskRoleArn'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    local ecr_uri
+    ecr_uri=$(aws cloudformation describe-stacks \
+      --stack-name "ecr-access-iq-${CDK_ENV}" \
+      --query "Stacks[0].Outputs[?OutputKey=='PipelineRepoUri'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    image_uri="${ecr_uri}:latest"
+
+    # Update work pool base job template with CDK outputs
+    python3 -c "
+import json, subprocess, sys
+pool_name = 'access-iq-${CDK_ENV}-pipeline'
+result = subprocess.run(['prefect', 'work-pool', 'inspect', pool_name], capture_output=True, text=True)
+if result.returncode != 0:
+    print(f'Could not inspect pool: {result.stderr}', file=sys.stderr)
+    sys.exit(0)
+template = json.loads(result.stdout).get('base_job_template', {})
+variables = template.get('variables', {}).get('properties', {})
+overrides = {
+    'cluster': '${cluster_arn}',
+    'task_definition_arn': '${task_def_arn}',
+    'execution_role_arn': '${exec_role_arn}',
+    'task_role_arn': '${task_role_arn}',
+    'image': '${image_uri}',
+    'cpu': '1024',
+    'memory': '2048',
+    'launch_type': 'FARGATE',
+}
+for k, v in overrides.items():
+    if k in variables:
+        variables[k]['default'] = v
+template.setdefault('variables', {})['properties'] = variables
+with open('/tmp/pool_template.json', 'w') as fh:
+    json.dump(template, fh)
+subprocess.run(['prefect', 'work-pool', 'update', pool_name, '--base-job-template', '/tmp/pool_template.json'], check=True)
+print(f'  Work pool {pool_name} configured with CDK outputs')
+" 2>/dev/null || printf "  \033[0;33mWork pool template update skipped (non-blocking)\033[0m\n"
+
+    # Deploy flow definition to Prefect Cloud
+    (cd "$PLATFORM_REPO" && prefect deploy --prefect-file flows/prefect.yaml --name dev 2>/dev/null || true)
+    # Resume cron schedule (D-08)
+    prefect deployment schedule resume 'daily-ingest/dev' 2>/dev/null || true
+    printf "  Prefect work pool registered and configured, schedule resumed\n"
+  else
+    printf "  \033[0;33mSkipped: prefect-api-key not found in Secrets Manager\033[0m\n"
+  fi
+  step_done
+
   session_summary
   echo ""
   echo "  ✓ All stacks deployed, secrets seeded, image pushed, ingestion complete."
@@ -452,11 +532,28 @@ EOF
 
 cmd_down() {
   echo ""
-  echo "  Destroy sequence: Platform → Trust (no cross-account dependencies)"
+  echo "  Destroy sequence: Prefect pause → Platform → Trust"
   echo "  Estimated total: 6-10 minutes"
   echo ""
 
   TRUST_VPC=$(trust_output VpcId 2>/dev/null || echo "vpc-placeholder")
+
+  # ── Step 1/3: Pause Prefect schedule ──
+  step_start "1/3" "Pause Prefect schedule" "<10s"
+  local prefect_key
+  prefect_key=$(aws secretsmanager get-secret-value \
+    --secret-id "access-iq/${CDK_ENV}/prefect-api-key" \
+    --query SecretString --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+  if [ -n "$prefect_key" ]; then
+    export PREFECT_API_KEY="$prefect_key"
+    export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
+    prefect deployment schedule pause 'daily-ingest/dev' 2>/dev/null || true
+    printf "  Schedule paused\n"
+  else
+    printf "  \033[0;33mSkipped: prefect-api-key not found\033[0m\n"
+  fi
+  step_done
 
   # Kill Redshift SSM tunnel if running
   local RS_TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
@@ -470,13 +567,13 @@ cmd_down() {
     rm -f "$RS_TUNNEL_PID_FILE"
   fi
 
-  step_start "1/2" "Destroy Platform stacks" "3-5 min"
+  step_start "2/3" "Destroy Platform stacks" "3-5 min"
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk destroy --all --force \
     -c "env=$CDK_ENV" \
     -c "trust_vpc_id=$TRUST_VPC")
   step_done
 
-  step_start "2/2" "Destroy Trust stack" "3-5 min"
+  step_start "3/3" "Destroy Trust stack" "3-5 min"
   if [ -f "$TRUST_REPO/.tunnel.pid" ]; then
     local tunnel_pid
     tunnel_pid="$(cat "$TRUST_REPO/.tunnel.pid" 2>/dev/null || true)"
@@ -1052,6 +1149,33 @@ cmd_cleanup_snapshots() {
   echo "  Cleanup complete. Kept $KEEP_COUNT most recent snapshots."
 }
 
+cmd_pipeline() {
+  printf "\n\033[1;35m══════════════════════════════════════════\033[0m\n"
+  printf "\033[1;35m  Prefect Pipeline: daily-ingest\033[0m\n"
+  printf "\033[1;35m══════════════════════════════════════════\033[0m\n"
+
+  step_start "1/2" "Resolve Prefect credentials" "<5s"
+  local prefect_key
+  prefect_key=$(aws secretsmanager get-secret-value \
+    --secret-id "access-iq/${CDK_ENV}/prefect-api-key" \
+    --query SecretString --output text \
+    --profile "$AWS_PROFILE" --region "$REGION")
+  export PREFECT_API_KEY="$prefect_key"
+  export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
+  step_done
+
+  step_start "2/2" "Trigger flow run" "<10s"
+  local run_date
+  run_date=$(date +%Y-%m-%d)
+  prefect deployment run 'daily-ingest/dev' \
+    --param "run_date=${run_date}" 2>&1 | tee /tmp/prefect_run.log
+  # Print Prefect UI URL (D-11)
+  grep -o 'https://app.prefect.cloud/[^ ]*' /tmp/prefect_run.log || true
+  step_done
+
+  session_summary
+}
+
 # ── Main ──────────────────────────────────────────────────────────────
 
 case "${1:-}" in
@@ -1059,9 +1183,10 @@ case "${1:-}" in
   down)              cmd_down ;;
   status)            cmd_status ;;
   ingest)            cmd_ingest ;;
+  pipeline)          cmd_pipeline ;;
   cleanup-snapshots) shift; cmd_cleanup_snapshots "$@" ;;
   *)
-    echo "Usage: $0 {up|down|status|ingest|cleanup-snapshots}"
+    echo "Usage: $0 {up|down|status|ingest|pipeline|cleanup-snapshots}"
     echo ""
     echo "  up [flags]            Deploy Trust + Platform, publish data, run ingestion (~25 min)"
     echo "                        --skip-generate: reuse existing data/staging/ instead of regenerating"
@@ -1069,6 +1194,7 @@ case "${1:-}" in
     echo "  down                  Destroy Platform + Trust stacks (~8 min)"
     echo "  status                Show current stack states"
     echo "  ingest                Run all 3 Bronze ingestion tasks on ECS (~5 min)"
+    echo "  pipeline              Trigger full Prefect pipeline flow run (~2 min to queue)"
     echo "  cleanup-snapshots [N] Delete old Redshift snapshots, keep N most recent (default 2)"
     exit 1
     ;;
