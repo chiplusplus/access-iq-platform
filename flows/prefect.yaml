@@ -1,5 +1,5 @@
-# Prefect deployment config for Access-IQ pipeline.
-# Deploy with: prefect deploy --prefect-file flows/prefect.yaml
+# Prefect deployment config for Access-IQ pipeline (self-hosted server).
+# Deploy with: PREFECT_API_URL=http://localhost:4200/api prefect deploy --prefect-file flows/prefect.yaml
 name: access-iq-flows
 prefect-version: "3.7.2"
 
@@ -17,10 +17,15 @@ deployments:
         cluster: "{{ $ECS_CLUSTER_ARN }}"
         task_role_arn: "{{ $ECS_TASK_ROLE_ARN }}"
         execution_role_arn: "{{ $ECS_EXECUTION_ROLE_ARN }}"
-        aws_credentials: "access-iq-dev-aws-creds"
+        network_configuration:
+          awsvpcConfiguration:
+            subnets: "{{ $PRIVATE_SUBNET_IDS }}"
+            securityGroups:
+              - "{{ $ECS_TASK_SG_ID }}"
+            assignPublicIp: "DISABLED"
     schedules:
       - cron: "0 2 * * *"
         timezone: "Europe/London"
-        active: false # paused by default (D-08); make up resumes
+        active: false # re-deployed each session (ephemeral DB)
     parameters:
       env: dev

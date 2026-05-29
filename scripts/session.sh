@@ -441,83 +441,93 @@ EOF
 
   step_done
 
-  # ── Step 9/9: Register Prefect work pool and resume schedule ──
-  step_start "9/9" "Register Prefect work pool and resume schedule" "<30s"
-  local prefect_key
-  prefect_key=$(aws secretsmanager get-secret-value \
-    --secret-id "access-iq/${CDK_ENV}/prefect-api-key" \
-    --query SecretString --output text \
-    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-  if [ -n "$prefect_key" ]; then
-    export PREFECT_API_KEY="$prefect_key"
-    export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
-    # Create/update work pool (idempotent, D-07)
-    prefect work-pool create "access-iq-${CDK_ENV}-pipeline" \
-      --type ecs:push --overwrite 2>/dev/null || true
+  # ── Step 9/9: Configure self-hosted Prefect (work pool + flow deploy) ──
+  step_start "9/9" "Configure self-hosted Prefect (work pool + flow deploy)" "30-60s"
 
-    # Resolve CDK stack outputs for work pool configuration
+  # Server and worker are ECS services started by CDK deploy (step 3/9).
+  # The server is in a private subnet -- use the Redshift tunnel instance as a jump host.
+  local PREFECT_SERVER_HOST="prefect-server.access-iq.local"
+  local PREFECT_API="http://${PREFECT_SERVER_HOST}:4200/api"
+
+  # Start a temporary SSM tunnel to reach the Prefect server from localhost
+  local PREFECT_TUNNEL_PID_FILE="$PLATFORM_REPO/.prefect-tunnel.pid"
+  aws ssm start-session \
+    --target "$TUNNEL_INSTANCE_ID" \
+    --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters "{\"host\":[\"${PREFECT_SERVER_HOST}\"],\"portNumber\":[\"4200\"],\"localPortNumber\":[\"4200\"]}" \
+    --profile "$AWS_PROFILE" --region "$REGION" &
+  local prefect_tunnel_pid=$!
+  echo "$prefect_tunnel_pid" > "$PREFECT_TUNNEL_PID_FILE"
+
+  # Wait for server health (30 × 5s = 150s)
+  local server_ready=false
+  for i in $(seq 1 30); do
+    if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
+      server_ready=true
+      break
+    fi
+    sleep 5
+  done
+
+  if [ "$server_ready" = true ]; then
+    echo "  Prefect server healthy"
+    export PREFECT_API_URL="http://localhost:4200/api"
+
+    # Resolve CDK stack outputs for flow deployment
     local stack_name="compute-access-iq-${CDK_ENV}"
-    local cluster_arn task_def_arn exec_role_arn task_role_arn image_uri
+    local cluster_arn task_role_arn exec_role_arn
     cluster_arn=$(aws cloudformation describe-stacks \
       --stack-name "$stack_name" \
       --query "Stacks[0].Outputs[?OutputKey=='ClusterArn'].OutputValue" \
       --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-    task_def_arn=$(aws cloudformation describe-stacks \
-      --stack-name "$stack_name" \
-      --query "Stacks[0].Outputs[?contains(OutputKey,'PipelineTaskDefArn')].OutputValue" \
-      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-    exec_role_arn=$(aws cloudformation describe-stacks \
-      --stack-name "$stack_name" \
-      --query "Stacks[0].Outputs[?OutputKey=='ExecutionRoleArn'].OutputValue" \
-      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-    task_role_arn=$(aws cloudformation describe-stacks \
-      --stack-name "$stack_name" \
-      --query "Stacks[0].Outputs[?OutputKey=='TaskRoleArn'].OutputValue" \
-      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    task_role_arn=$(platform_output ingestion-role EcsTaskRoleArn 2>/dev/null || echo "")
+    exec_role_arn=$(platform_output ingestion-role EcsExecutionRoleArn 2>/dev/null || echo "")
     local ecr_uri
     ecr_uri=$(aws cloudformation describe-stacks \
       --stack-name "ecr-access-iq-${CDK_ENV}" \
       --query "Stacks[0].Outputs[?OutputKey=='PipelineRepoUri'].OutputValue" \
       --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-    image_uri="${ecr_uri}:latest"
+    local PIPELINE_IMAGE_URI="${ecr_uri}:latest"
+    local ECS_CLUSTER_ARN="$cluster_arn"
+    local ECS_TASK_ROLE_ARN="$task_role_arn"
+    local ECS_EXECUTION_ROLE_ARN="$exec_role_arn"
+    local PLATFORM_VPC
+    PLATFORM_VPC=$(aws cloudformation describe-stacks \
+      --stack-name "network-access-iq-${CDK_ENV}" \
+      --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    local PRIVATE_SUBNET_IDS
+    PRIVATE_SUBNET_IDS=$(aws ec2 describe-subnets \
+      --filters "Name=vpc-id,Values=$PLATFORM_VPC" "Name=tag:aws-cdk:subnet-type,Values=Private" \
+      --query 'Subnets[*].SubnetId' --output text \
+      --profile "$AWS_PROFILE" --region "$REGION" | tr '\t' ',' 2>/dev/null || echo "")
+    local ECS_TASK_SG_ID
+    ECS_TASK_SG_ID=$(aws ec2 describe-security-groups \
+      --filters "Name=vpc-id,Values=$PLATFORM_VPC" "Name=group-name,Values=*ecs-task*" \
+      --query 'SecurityGroups[0].GroupId' --output text \
+      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
 
-    # Update work pool base job template with CDK outputs
-    python3 -c "
-import json, subprocess, sys
-pool_name = 'access-iq-${CDK_ENV}-pipeline'
-result = subprocess.run(['prefect', 'work-pool', 'inspect', pool_name], capture_output=True, text=True)
-if result.returncode != 0:
-    print(f'Could not inspect pool: {result.stderr}', file=sys.stderr)
-    sys.exit(0)
-template = json.loads(result.stdout).get('base_job_template', {})
-variables = template.get('variables', {}).get('properties', {})
-overrides = {
-    'cluster': '${cluster_arn}',
-    'task_definition_arn': '${task_def_arn}',
-    'execution_role_arn': '${exec_role_arn}',
-    'task_role_arn': '${task_role_arn}',
-    'image': '${image_uri}',
-    'cpu': '1024',
-    'memory': '2048',
-    'launch_type': 'FARGATE',
-}
-for k, v in overrides.items():
-    if k in variables:
-        variables[k]['default'] = v
-template.setdefault('variables', {})['properties'] = variables
-with open('/tmp/pool_template.json', 'w') as fh:
-    json.dump(template, fh)
-subprocess.run(['prefect', 'work-pool', 'update', pool_name, '--base-job-template', '/tmp/pool_template.json'], check=True)
-print(f'  Work pool {pool_name} configured with CDK outputs')
-" 2>/dev/null || printf "  \033[0;33mWork pool template update skipped (non-blocking)\033[0m\n"
+    # Create/update ecs work pool (idempotent)
+    prefect work-pool create "access-iq-${CDK_ENV}-pipeline" \
+      --type ecs --overwrite 2>/dev/null || true
 
-    # Deploy flow definition to Prefect Cloud
-    (cd "$PLATFORM_REPO" && prefect deploy --prefect-file flows/prefect.yaml --name dev 2>/dev/null || true)
-    # Resume cron schedule (D-08)
-    prefect deployment schedule resume 'daily-ingest/dev' 2>/dev/null || true
-    printf "  Prefect work pool registered and configured, schedule resumed\n"
+    # Deploy flow definition against self-hosted server
+    (cd "$PLATFORM_REPO" && \
+      PIPELINE_IMAGE_URI="$PIPELINE_IMAGE_URI" \
+      ECS_CLUSTER_ARN="$ECS_CLUSTER_ARN" \
+      ECS_TASK_ROLE_ARN="$ECS_TASK_ROLE_ARN" \
+      ECS_EXECUTION_ROLE_ARN="$ECS_EXECUTION_ROLE_ARN" \
+      PRIVATE_SUBNET_IDS="$PRIVATE_SUBNET_IDS" \
+      ECS_TASK_SG_ID="$ECS_TASK_SG_ID" \
+      prefect deploy --prefect-file flows/prefect.yaml --name dev 2>/dev/null || true)
+
+    printf "  Prefect work pool + flow deployed (self-hosted)\n"
+    printf "  Prefect UI: http://localhost:4200 (tunnel PID %s)\n" "$prefect_tunnel_pid"
   else
-    printf "  \033[0;33mSkipped: prefect-api-key not found in Secrets Manager\033[0m\n"
+    printf "  \033[0;33mPrefect server not healthy after 150s -- configure manually\033[0m\n"
+    # Kill the failed tunnel
+    kill "$prefect_tunnel_pid" 2>/dev/null || true
+    rm -f "$PREFECT_TUNNEL_PID_FILE"
   fi
   step_done
 
@@ -538,20 +548,19 @@ cmd_down() {
 
   TRUST_VPC=$(trust_output VpcId 2>/dev/null || echo "vpc-placeholder")
 
-  # ── Step 1/3: Pause Prefect schedule ──
-  step_start "1/3" "Pause Prefect schedule" "<10s"
-  local prefect_key
-  prefect_key=$(aws secretsmanager get-secret-value \
-    --secret-id "access-iq/${CDK_ENV}/prefect-api-key" \
-    --query SecretString --output text \
-    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-  if [ -n "$prefect_key" ]; then
-    export PREFECT_API_KEY="$prefect_key"
-    export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
-    prefect deployment schedule pause 'daily-ingest/dev' 2>/dev/null || true
-    printf "  Schedule paused\n"
+  # ── Step 1/3: Clean up Prefect tunnel ──
+  step_start "1/3" "Clean up Prefect tunnel" "<5s"
+  local PREFECT_TUNNEL_PID_FILE="$PLATFORM_REPO/.prefect-tunnel.pid"
+  if [ -f "$PREFECT_TUNNEL_PID_FILE" ]; then
+    local ptpid
+    ptpid="$(cat "$PREFECT_TUNNEL_PID_FILE" 2>/dev/null || true)"
+    if [[ "$ptpid" =~ ^[0-9]+$ ]] && kill -0 "$ptpid" 2>/dev/null; then
+      kill "$ptpid" 2>/dev/null || true
+      echo "  Killed Prefect tunnel (PID $ptpid)"
+    fi
+    rm -f "$PREFECT_TUNNEL_PID_FILE"
   else
-    printf "  \033[0;33mSkipped: prefect-api-key not found\033[0m\n"
+    echo "  No Prefect tunnel running"
   fi
   step_done
 
@@ -1154,14 +1163,25 @@ cmd_pipeline() {
   printf "\033[1;35m  Prefect Pipeline: daily-ingest\033[0m\n"
   printf "\033[1;35m══════════════════════════════════════════\033[0m\n"
 
-  step_start "1/2" "Resolve Prefect credentials" "<5s"
-  local prefect_key
-  prefect_key=$(aws secretsmanager get-secret-value \
-    --secret-id "access-iq/${CDK_ENV}/prefect-api-key" \
-    --query SecretString --output text \
-    --profile "$AWS_PROFILE" --region "$REGION")
-  export PREFECT_API_KEY="$prefect_key"
-  export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
+  step_start "1/2" "Connect to self-hosted Prefect server" "<10s"
+  # Check if tunnel already running (port 4200 open locally)
+  if ! nc -z localhost 4200 2>/dev/null; then
+    local TUNNEL_INSTANCE_ID
+    TUNNEL_INSTANCE_ID=$(platform_output warehouse TunnelInstanceId)
+    aws ssm start-session \
+      --target "$TUNNEL_INSTANCE_ID" \
+      --document-name AWS-StartPortForwardingSessionToRemoteHost \
+      --parameters '{"host":["prefect-server.access-iq.local"],"portNumber":["4200"],"localPortNumber":["4200"]}' \
+      --profile "$AWS_PROFILE" --region "$REGION" &
+    local tunnel_pid=$!
+    echo "$tunnel_pid" > "$PLATFORM_REPO/.prefect-tunnel.pid"
+    # Wait for tunnel to be ready
+    for i in $(seq 1 15); do
+      nc -z localhost 4200 2>/dev/null && break
+      sleep 2
+    done
+  fi
+  export PREFECT_API_URL="http://localhost:4200/api"
   step_done
 
   step_start "2/2" "Trigger flow run" "<10s"
@@ -1169,8 +1189,7 @@ cmd_pipeline() {
   run_date=$(date +%Y-%m-%d)
   prefect deployment run 'daily-ingest/dev' \
     --param "run_date=${run_date}" 2>&1 | tee /tmp/prefect_run.log
-  # Print Prefect UI URL (D-11)
-  grep -o 'https://app.prefect.cloud/[^ ]*' /tmp/prefect_run.log || true
+  printf "  Prefect UI: http://localhost:4200\n"
   step_done
 
   session_summary

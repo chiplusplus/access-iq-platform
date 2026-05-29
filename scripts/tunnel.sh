@@ -86,8 +86,25 @@ cmd_tunnel() {
     --profile "$AWS_PROFILE" --region "$REGION"
 }
 
+cmd_prefect() {
+  local instance_id
+  instance_id=$(stack_output TunnelInstanceId)
+
+  echo "Prefect UI tunnel: localhost:4200 -> prefect-server.access-iq.local:4200"
+  echo "Instance: ${instance_id}"
+  echo "Press Ctrl+C to stop."
+  echo ""
+
+  aws ssm start-session \
+    --target "$instance_id" \
+    --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters '{"host":["prefect-server.access-iq.local"],"portNumber":["4200"],"localPortNumber":["4200"]}' \
+    --profile "$AWS_PROFILE" --region "$REGION"
+}
+
 case "${1:-tunnel}" in
-  env)    cmd_env ;;
-  tunnel) cmd_tunnel ;;
-  *)      echo "Usage: $0 [tunnel|env]"; exit 1 ;;
+  env)     cmd_env ;;
+  tunnel)  cmd_tunnel ;;
+  prefect) cmd_prefect ;;
+  *)       echo "Usage: $0 [tunnel|env|prefect]"; exit 1 ;;
 esac
