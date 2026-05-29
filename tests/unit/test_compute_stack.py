@@ -38,6 +38,14 @@ SAFE_ENV_NAMES = {
     "ACCESS_IQ_POSTGRES_SOURCES",
     "ACCESS_IQ_SFTP_SOURCES",
     "ACCESS_IQ_TRUST_S3",
+    # Pipeline-only env vars (Phase 7)
+    "DBT_TARGET",
+    "DBT_PROFILES_DIR",
+    "DBT_PROJECT_DIR",
+    "REDSHIFT_LAMBDA_UDF_ROLE_ARN",
+    "HMAC_LAMBDA_NAME",
+    "ALERT_SNS_TOPIC_ARN",
+    "SPECTRUM_ROLE_ARN",
 }
 
 
@@ -83,6 +91,9 @@ class _DepsStack(Stack):
         self.log_groups = {
             src: logs.LogGroup(self, f"Lg{src}", log_group_name=f"/test/{src}") for src in SOURCES
         }
+        self.log_groups["pipeline"] = logs.LogGroup(
+            self, "LgPipeline", log_group_name="/test/pipeline"
+        )
 
 
 def _template() -> Template:
@@ -114,9 +125,10 @@ def test_one_ecs_cluster() -> None:
     tpl.resource_count_is("AWS::ECS::Cluster", 1)
 
 
-def test_three_task_definitions() -> None:
+def test_four_task_definitions() -> None:
+    """3 ingestion task defs + 1 pipeline task def = 4 total."""
     tpl = _template()
-    tpl.resource_count_is("AWS::ECS::TaskDefinition", 3)
+    tpl.resource_count_is("AWS::ECS::TaskDefinition", 4)
 
 
 def test_task_def_cpu_memory() -> None:
@@ -189,7 +201,7 @@ def test_secrets_wired_via_value_from() -> None:
 
 
 def test_source_config_env_vars_match_task() -> None:
-    """Each task definition gets only its own ACCESS_IQ_*_SOURCES / TRUST_S3 config blob."""
+    """Each ingestion task def gets only its own config blob; pipeline gets all three."""
     tpl = _template()
     task_defs = tpl.find_resources("AWS::ECS::TaskDefinition")
 
@@ -198,7 +210,8 @@ def test_source_config_env_vars_match_task() -> None:
         "ACCESS_IQ_SFTP_SOURCES",
         "ACCESS_IQ_TRUST_S3",
     }
-    expected: dict[str, str] = {
+    # Ingestion task defs: each gets exactly one config blob
+    ingestion_expected: dict[str, str] = {
         "ingest-postgres": "ACCESS_IQ_POSTGRES_SOURCES",
         "ingest-sftp": "ACCESS_IQ_SFTP_SOURCES",
         "ingest-trust-s3": "ACCESS_IQ_TRUST_S3",
@@ -211,10 +224,18 @@ def test_source_config_env_vars_match_task() -> None:
             if not cmd:
                 continue
             source = cmd[0]
+            if source == "pipeline":
+                # Pipeline task gets all three config blobs merged in
+                env_names = {e.get("Name") for e in container.get("Environment", [])}
+                for cfg_var in config_env_names:
+                    assert cfg_var in env_names, f"pipeline missing {cfg_var}"
+                continue
             env_names = {e.get("Name") for e in container.get("Environment", [])}
             config_vars = env_names & config_env_names
-            assert expected[source] in config_vars, f"{source} missing {expected[source]}"
-            unexpected = config_vars - {expected[source]}
+            assert ingestion_expected[source] in config_vars, (
+                f"{source} missing {ingestion_expected[source]}"
+            )
+            unexpected = config_vars - {ingestion_expected[source]}
             assert not unexpected, f"{source} has config for wrong source: {unexpected}"
 
 

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import aws_cdk as cdk
 from aws_cdk import CfnOutput, Stack
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecr as ecr
@@ -18,6 +19,10 @@ from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
 from access_iq_infra.settings import EnvConfig
+
+if TYPE_CHECKING:
+    from access_iq_infra.stacks.observability import ObservabilityStack
+    from access_iq_infra.stacks.warehouse import WarehouseStack
 
 INGESTION_SOURCES = ["ingest-postgres", "ingest-sftp", "ingest-trust-s3"]
 
@@ -38,6 +43,8 @@ class ComputeStack(Stack):
         ecs_task_role: iam.IRole,
         ecs_execution_role: iam.IRole,
         log_groups: Mapping[str, logs.ILogGroup],
+        warehouse_stack: WarehouseStack | None = None,
+        observability_stack: ObservabilityStack | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -200,6 +207,78 @@ class ComputeStack(Stack):
 
             task_defs[source] = task_def
 
+        # -- Section 4b: Pipeline Task Definition (Phase 7 — full orchestration flow) --
+        # Merges all ingestion secrets + Prefect API key. Environment includes
+        # Redshift, dbt, GE, and SNS config for the single-container pipeline.
+        pipeline_secrets: dict[str, ecs.Secret] = {
+            **ingestion_secrets,  # all 6 ingestion secrets (EHR_DSN, URGENT_CARE_DSN, SFTP_*)
+            "PREFECT_API_KEY": ecs.Secret.from_secrets_manager(
+                _sm.from_secret_name_v2(
+                    self,
+                    "PrefectApiKeySecret",
+                    f"access-iq/{cfg.env_name}/prefect-api-key",
+                )
+            ),
+            "REDSHIFT_DSN": ecs.Secret.from_secrets_manager(
+                _sm.from_secret_name_v2(
+                    self,
+                    "RedshiftDsnSecret",
+                    f"access-iq/{cfg.env_name}/redshift-dsn",
+                )
+            ),
+        }
+
+        # Merge ALL source env maps (postgres + sftp + trust-s3 runtime config JSON blobs)
+        pipeline_env: dict[str, str] = {
+            "ACCESS_IQ_ENV": cfg.env_name,
+            "ACCESS_IQ_AWS_REGION": cfg.region,
+            "ACCESS_IQ_PLATFORM_BUCKET": platform_bucket.bucket_name,
+            "ACCESS_IQ_LAKE_KMS_KEY_ARN": lake_key.key_arn,
+        }
+        for source_env in source_env_map.values():
+            pipeline_env.update(source_env)
+
+        # Additional env vars for dbt, GE, UNLOAD, and SNS alerting.
+        pipeline_env.update(
+            {
+                "DBT_TARGET": "prod",
+                "DBT_PROFILES_DIR": "/app/dbt",
+                "DBT_PROJECT_DIR": "/app/dbt",
+            }
+        )
+        if warehouse_stack is not None:
+            pipeline_env["REDSHIFT_LAMBDA_UDF_ROLE_ARN"] = warehouse_stack.lambda_udf_role.role_arn
+            pipeline_env["HMAC_LAMBDA_NAME"] = warehouse_stack.hmac_lambda.function_name
+            pipeline_env["SPECTRUM_ROLE_ARN"] = warehouse_stack.spectrum_role.role_arn
+        if observability_stack is not None:
+            pipeline_env["ALERT_SNS_TOPIC_ARN"] = observability_stack.sns_topic.topic_arn
+
+        pipeline_task_def = ecs.FargateTaskDefinition(
+            self,
+            "PipelineTaskDef",
+            family=f"{cfg.app_name}-{cfg.env_name}-pipeline",
+            task_role=ecs_task_role,
+            execution_role=ecs_execution_role,
+            cpu=1024,
+            memory_limit_mib=2048,
+        )
+
+        pipeline_task_def.add_container(
+            "pipeline",
+            image=ecs.ContainerImage.from_ecr_repository(repository, tag="latest"),
+            command=["pipeline"],
+            logging=ecs.LogDrivers.aws_logs(
+                stream_prefix="pipeline",
+                log_group=log_groups["pipeline"],
+                mode=ecs.AwsLogDriverMode.NON_BLOCKING,
+                max_buffer_size=cdk.Size.mebibytes(4),
+            ),
+            environment=pipeline_env,
+            secrets=pipeline_secrets,
+        )
+
+        task_defs["pipeline"] = pipeline_task_def
+
         # -- Section 5: CfnOutputs ----------
         CfnOutput(
             self,
@@ -229,3 +308,4 @@ class ComputeStack(Stack):
         # -- Section 6: Exposed props ----------
         self.cluster = cluster
         self.task_defs = task_defs
+        self.pipeline_task_def = pipeline_task_def
