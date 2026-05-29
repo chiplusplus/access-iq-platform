@@ -40,9 +40,10 @@ def _template(env_name: str = "dev") -> Template:
     return Template.from_stack(stack)
 
 
-def test_three_log_groups() -> None:
+def test_four_log_groups() -> None:
+    """3 ingestion log groups + 1 pipeline log group (Phase 7)."""
     tpl = _template()
-    tpl.resource_count_is("AWS::Logs::LogGroup", 3)
+    tpl.resource_count_is("AWS::Logs::LogGroup", 4)
 
 
 @pytest.mark.parametrize(
@@ -58,8 +59,9 @@ def test_log_group_retention(env_name: str, expected_days: int) -> None:
 
 
 def test_metric_filters_per_source() -> None:
+    """3 ingestion + 1 pipeline = 4 sources, 2 filters each = 8."""
     tpl = _template()
-    tpl.resource_count_is("AWS::Logs::MetricFilter", 6)
+    tpl.resource_count_is("AWS::Logs::MetricFilter", 8)
 
 
 def test_metric_filter_pattern() -> None:
@@ -74,8 +76,9 @@ def test_metric_filter_pattern() -> None:
 
 
 def test_alarms_per_source() -> None:
+    """3 ingestion + 1 pipeline = 4 alarms."""
     tpl = _template()
-    tpl.resource_count_is("AWS::CloudWatch::Alarm", 3)
+    tpl.resource_count_is("AWS::CloudWatch::Alarm", 4)
 
 
 def test_alarm_has_sns_action() -> None:
