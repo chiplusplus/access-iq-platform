@@ -293,6 +293,7 @@ class ComputeStack(Stack):
             family=f"{cfg.app_name}-{cfg.env_name}-prefect-server",
             cpu=512,
             memory_limit_mib=1024,
+            execution_role=ecs_execution_role,
         )
         server_task_def.add_container(
             "prefect-server",
