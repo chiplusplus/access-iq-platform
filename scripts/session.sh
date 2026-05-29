@@ -384,8 +384,15 @@ EOF
   if [ -n "${SPECTRUM_STMT_ID:-}" ]; then
     local saved_profile="${AWS_PROFILE:-CHI-Engineer-222308823356}"
     local stmt_status="SUBMITTED"
+    local wait_secs=0
+    local max_wait=120
     while [ "$stmt_status" != "FINISHED" ] && [ "$stmt_status" != "FAILED" ]; do
+      if [ "$wait_secs" -ge "$max_wait" ]; then
+        echo "  WARNING: Spectrum statement poll timed out after ${max_wait}s (status: $stmt_status)"
+        break
+      fi
       sleep 2
+      wait_secs=$((wait_secs + 2))
       stmt_status=$(aws redshift-data describe-statement --id "$SPECTRUM_STMT_ID" \
         --query 'Status' --output text \
         --profile "$saved_profile" --region "$REGION")
