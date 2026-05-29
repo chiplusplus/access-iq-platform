@@ -453,7 +453,7 @@ EOF
     export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
     # Create/update work pool (idempotent, D-07)
     prefect work-pool create "access-iq-${CDK_ENV}-pipeline" \
-      --type ecs:push --overwrite 2>/dev/null || true
+      --type ecs --overwrite 2>/dev/null || true
 
     # Resolve CDK stack outputs for work pool configuration
     local stack_name="compute-access-iq-${CDK_ENV}"
@@ -515,7 +515,46 @@ print(f'  Work pool {pool_name} configured with CDK outputs')
     (cd "$PLATFORM_REPO" && prefect deploy --prefect-file flows/prefect.yaml --name dev 2>/dev/null || true)
     # Resume cron schedule (D-08)
     prefect deployment schedule resume 'daily-ingest/dev' 2>/dev/null || true
-    printf "  Prefect work pool registered and configured, schedule resumed\n"
+
+    # Start Prefect worker as Fargate task (session-scoped)
+    local worker_task_def_arn
+    worker_task_def_arn=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --query "Stacks[0].Outputs[?contains(OutputKey,'prefectworkerTaskDefArn')].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+    if [ -n "$worker_task_def_arn" ] && [ "$worker_task_def_arn" != "None" ]; then
+      # Get VPC config from cluster (private subnets, ECS task SG)
+      local subnet_ids sg_id
+      subnet_ids=$(aws cloudformation describe-stacks \
+        --stack-name "network-access-iq-${CDK_ENV}" \
+        --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnetIds'].OutputValue" \
+        --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+      sg_id=$(aws cloudformation describe-stacks \
+        --stack-name "network-access-iq-${CDK_ENV}" \
+        --query "Stacks[0].Outputs[?OutputKey=='EcsTaskSgId'].OutputValue" \
+        --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+      local worker_task_arn
+      worker_task_arn=$(aws ecs run-task \
+        --cluster "access-iq-${CDK_ENV}" \
+        --task-definition "$worker_task_def_arn" \
+        --launch-type FARGATE \
+        --network-configuration "awsvpcConfiguration={subnets=[${subnet_ids}],securityGroups=[${sg_id}],assignPublicIp=DISABLED}" \
+        --overrides "{\"containerOverrides\":[{\"name\":\"prefect-worker\",\"environment\":[{\"name\":\"PREFECT_API_URL\",\"value\":\"${PREFECT_API_URL}\"}]}]}" \
+        --query 'tasks[0].taskArn' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+      if [ -n "$worker_task_arn" ] && [ "$worker_task_arn" != "None" ]; then
+        # Save worker task ARN for cmd_down to stop it
+        echo "$worker_task_arn" > "$PLATFORM_REPO/.prefect-worker.arn"
+        printf "  Prefect worker started: %s\n" "$worker_task_arn"
+      else
+        printf "  \033[0;33mWarning: Could not start Prefect worker task\033[0m\n"
+      fi
+    fi
+
+    printf "  Prefect work pool (ecs) registered, worker started, schedule resumed\n"
   else
     printf "  \033[0;33mSkipped: prefect-api-key not found in Secrets Manager\033[0m\n"
   fi
@@ -532,14 +571,14 @@ print(f'  Work pool {pool_name} configured with CDK outputs')
 
 cmd_down() {
   echo ""
-  echo "  Destroy sequence: Prefect pause → Platform → Trust"
+  echo "  Destroy sequence: Prefect worker stop + pause → Platform → Trust"
   echo "  Estimated total: 6-10 minutes"
   echo ""
 
   TRUST_VPC=$(trust_output VpcId 2>/dev/null || echo "vpc-placeholder")
 
-  # ── Step 1/3: Pause Prefect schedule ──
-  step_start "1/3" "Pause Prefect schedule" "<10s"
+  # ── Step 1/3: Stop Prefect worker and pause schedule ──
+  step_start "1/3" "Stop Prefect worker and pause schedule" "<10s"
   local prefect_key
   prefect_key=$(aws secretsmanager get-secret-value \
     --secret-id "access-iq/${CDK_ENV}/prefect-api-key" \
@@ -549,6 +588,23 @@ cmd_down() {
     export PREFECT_API_KEY="$prefect_key"
     export PREFECT_API_URL="${PREFECT_API_URL:-https://api.prefect.cloud/api/accounts/${PREFECT_ACCOUNT_ID}/workspaces/${PREFECT_WORKSPACE_ID}}"
     prefect deployment schedule pause 'daily-ingest/dev' 2>/dev/null || true
+
+    # Stop Prefect worker Fargate task
+    local worker_arn_file="$PLATFORM_REPO/.prefect-worker.arn"
+    if [ -f "$worker_arn_file" ]; then
+      local worker_arn
+      worker_arn=$(cat "$worker_arn_file")
+      if [ -n "$worker_arn" ]; then
+        aws ecs stop-task \
+          --cluster "access-iq-${CDK_ENV}" \
+          --task "$worker_arn" \
+          --reason "Session ended (make down)" \
+          --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || true
+        printf "  Worker task stopped: %s\n" "$worker_arn"
+      fi
+      rm -f "$worker_arn_file"
+    fi
+
     printf "  Schedule paused\n"
   else
     printf "  \033[0;33mSkipped: prefect-api-key not found\033[0m\n"

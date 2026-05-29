@@ -228,5 +228,6 @@ dbt/.user.yml
 
 # Session state
 .tunnel.pid
+.prefect-worker.arn
 
 .DS_Store
