@@ -36,6 +36,9 @@ on-run-start:
   - "GRANT SELECT ON ALL TABLES IN SCHEMA silver TO GROUP analysts"
   - "REVOKE USAGE ON SCHEMA silver_keys FROM GROUP analysts"
   - "REVOKE USAGE ON SCHEMA silver_quarantine FROM GROUP analysts"
+  - "CREATE SCHEMA IF NOT EXISTS gold"
+  - "GRANT USAGE ON SCHEMA gold TO GROUP analysts"
+  - "GRANT SELECT ON ALL TABLES IN SCHEMA gold TO GROUP analysts"
 
 models:
   access_iq:
@@ -52,6 +55,7 @@ models:
     gold:
       +schema: gold
       +materialized: table
+      +pre-hook: "{{ check_ge_gate() }}"
 
 seeds:
   access_iq:

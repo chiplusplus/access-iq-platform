@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test test-integration ci profile ready up down status ingest dbt tunnel tunnel-stop tunnel-env
+.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest dbt tunnel tunnel-stop tunnel-env
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -29,6 +29,9 @@ profile:  ## Run Bronze data profiling + generate data dictionary (requires make
 
 ready:  ## Run Bronze-to-Silver readiness gate (requires make up + make ingest)
 	uv run --package access-iq-ingestion --extra profiling python -m access_iq.profiling.readiness_gate
+
+dq-gate:  ## Run GE validation gate on Silver tables (requires make up + tunnel)
+	eval $$(./scripts/tunnel.sh env) && AWS_PROFILE=$${AWS_PROFILE:-CHI-Engineer-222308823356} uv run --package access-iq-flows python dbt/scripts/run_ge_gate.py
 
 # ── Infrastructure (CDK) ────────────────────────────────────────────
 # TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.

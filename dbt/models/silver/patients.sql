@@ -43,16 +43,19 @@ with_imd AS (
         imd.imd_label,
         imd.deprivation_level
     FROM deduped
-    LEFT JOIN {{ ref('lsoa_imd_lookup') }} lsoa_imd
+    LEFT JOIN {{ ref('seed_lsoa_imd_lookup') }} lsoa_imd
         ON lsoa_imd.lsoa_code = deduped.lsoa_code
-    LEFT JOIN {{ ref('dim_imd') }} imd
+    LEFT JOIN {{ ref('seed_imd') }} imd
         ON imd.imd_decile = lsoa_imd.imd_decile
 )
 
 SELECT
     {{ hmac_pseudonymise('nhs_pseudo_id') }}  AS patient_sk,
     age_band,
-    sex,
+    CASE
+        WHEN sex IN ('M', 'F', 'I', 'U') THEN sex
+        ELSE 'U'
+    END                                       AS sex,
     ethnicity_ons,
     _lsoa_imd_decile                          AS imd_decile,
     imd_label,
