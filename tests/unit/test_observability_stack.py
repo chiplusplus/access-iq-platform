@@ -59,9 +59,9 @@ def test_log_group_retention(env_name: str, expected_days: int) -> None:
 
 
 def test_metric_filters_per_source() -> None:
-    """3 ingestion + 1 pipeline + 2 prefect = 6 sources, 2 filters each = 12."""
+    """3 ingestion + 1 pipeline = 4 sources, 2 filters each = 8 (prefect excluded)."""
     tpl = _template()
-    tpl.resource_count_is("AWS::Logs::MetricFilter", 12)
+    tpl.resource_count_is("AWS::Logs::MetricFilter", 8)
 
 
 def test_metric_filter_pattern() -> None:
@@ -76,9 +76,9 @@ def test_metric_filter_pattern() -> None:
 
 
 def test_alarms_per_source() -> None:
-    """3 ingestion + 1 pipeline + 2 prefect = 6 alarms."""
+    """3 ingestion + 1 pipeline = 4 alarms (prefect excluded from metric filters)."""
     tpl = _template()
-    tpl.resource_count_is("AWS::CloudWatch::Alarm", 6)
+    tpl.resource_count_is("AWS::CloudWatch::Alarm", 4)
 
 
 def test_alarm_has_sns_action() -> None:
