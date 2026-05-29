@@ -42,12 +42,12 @@ class GERunResult:
 
 
 def build_suite_for_table(
-    context: gx.DataContext,
+    context: gx.DataContext,  # type: ignore[name-defined]
     datasource: object,
     table_name: str,
 ) -> tuple:
     """Create data asset, batch def, and expectation suite for a Silver table."""
-    data_asset = datasource.add_table_asset(
+    data_asset = datasource.add_table_asset(  # type: ignore[attr-defined]
         name=table_name,
         table_name=table_name,
         schema_name=SILVER_SCHEMA,
@@ -151,7 +151,7 @@ def write_results_to_s3(
     if kms_key:
         put_kwargs["ServerSideEncryption"] = "aws:kms"
         put_kwargs["SSEKMSKeyId"] = kms_key
-    s3_client.put_object(**put_kwargs)
+    s3_client.put_object(**put_kwargs)  # type: ignore[attr-defined]
     log.info("s3_results_published", bucket=bucket, key=key)
     return key
 

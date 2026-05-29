@@ -67,7 +67,7 @@ SILVER_TABLES = _mod.SILVER_TABLES
 RUN_ID = "abc12345-def6-7890-ghij-klmnopqrstuv"
 
 
-def _make_result(table: str, status: str = "PASSED") -> GERunResult:
+def _make_result(table: str, status: str = "PASSED"):
     return GERunResult(
         table_name=table,
         run_date="2026-05-28",
