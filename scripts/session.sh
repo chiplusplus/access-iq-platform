@@ -458,28 +458,57 @@ EOF
 
   # Server and worker are ECS services started by CDK deploy (step 3/9).
   # The server is in a private subnet -- use the Redshift tunnel instance as a jump host.
+  # Cloud Map DNS registration requires a passing health check (start_period=60s + interval=30s),
+  # so we wait for the ECS service to stabilise before attempting the tunnel.
   local PREFECT_SERVER_HOST="prefect-server.access-iq.local"
   local PREFECT_API="http://${PREFECT_SERVER_HOST}:4200/api"
-
-  # Start a temporary SSM tunnel to reach the Prefect server from localhost
   local PREFECT_TUNNEL_PID_FILE="$PLATFORM_REPO/.prefect-tunnel.pid"
-  aws ssm start-session \
-    --target "$TUNNEL_INSTANCE_ID" \
-    --document-name AWS-StartPortForwardingSessionToRemoteHost \
-    --parameters "{\"host\":[\"${PREFECT_SERVER_HOST}\"],\"portNumber\":[\"4200\"],\"localPortNumber\":[\"4200\"]}" \
-    --profile "$AWS_PROFILE" --region "$REGION" &
-  local prefect_tunnel_pid=$!
-  echo "$prefect_tunnel_pid" > "$PREFECT_TUNNEL_PID_FILE"
 
-  # Wait for server health (30 × 5s = 150s)
+  # Wait for Prefect server ECS service to reach RUNNING with healthy target
+  echo "  Waiting for Prefect server service to stabilise..."
+  local svc_name="access-iq-${CDK_ENV}-prefect-server"
+  local cluster_name="access-iq-${CDK_ENV}-ingestion"
+  aws ecs wait services-stable \
+    --cluster "$cluster_name" --services "$svc_name" \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null \
+    || echo "  WARNING: ecs wait timed out — attempting tunnel anyway"
+
+  # Start SSM tunnel with retry (Cloud Map DNS may take a few seconds after service stabilises)
   local server_ready=false
-  for i in $(seq 1 30); do
+  for attempt in 1 2 3; do
+    aws ssm start-session \
+      --target "$TUNNEL_INSTANCE_ID" \
+      --document-name AWS-StartPortForwardingSessionToRemoteHost \
+      --parameters "{\"host\":[\"${PREFECT_SERVER_HOST}\"],\"portNumber\":[\"4200\"],\"localPortNumber\":[\"4200\"]}" \
+      --profile "$AWS_PROFILE" --region "$REGION" &
+    local prefect_tunnel_pid=$!
+    echo "$prefect_tunnel_pid" > "$PREFECT_TUNNEL_PID_FILE"
+
+    # Give tunnel a moment to establish, then check health
+    sleep 5
     if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
       server_ready=true
       break
     fi
-    sleep 5
+
+    # Tunnel failed — kill it and retry after a wait
+    kill "$prefect_tunnel_pid" 2>/dev/null || true
+    if [ "$attempt" -lt 3 ]; then
+      echo "  Tunnel attempt $attempt failed, retrying in 15s..."
+      sleep 15
+    fi
   done
+
+  # If initial attempts failed, do a longer health wait (tunnel may be up but server slow)
+  if [ "$server_ready" = false ] && kill -0 "$prefect_tunnel_pid" 2>/dev/null; then
+    for i in $(seq 1 20); do
+      if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
+        server_ready=true
+        break
+      fi
+      sleep 5
+    done
+  fi
 
   if [ "$server_ready" = true ]; then
     echo "  Prefect server healthy"
