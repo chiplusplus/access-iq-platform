@@ -34,7 +34,8 @@ def run_dbt_silver() -> None:
         ]
     )
     if not result.success:
-        raise RuntimeError(f"dbt silver build failed: {result.exception}")
+        detail = result.exception or str(result.result) or "unknown error"
+        raise RuntimeError(f"dbt silver build failed: {detail}")
     log.info("dbt_silver_complete")
 
 
@@ -62,5 +63,6 @@ def run_dbt_gold() -> None:
         ]
     )
     if not result.success:
-        raise RuntimeError(f"dbt gold build failed: {result.exception}")
+        detail = result.exception or str(result.result) or "unknown error"
+        raise RuntimeError(f"dbt gold build failed: {detail}")
     log.info("dbt_gold_complete")
