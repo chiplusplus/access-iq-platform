@@ -98,10 +98,8 @@ cmd_up() {
 
   step_start "3/9" "Deploy Platform stacks" "5-10min"
 
-  local CDK_CONTEXT_ARGS="-c env=$CDK_ENV -c trust_vpc_id=$TRUST_VPC"
-
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
-    $CDK_CONTEXT_ARGS --require-approval never)
+    -c "env=${CDK_ENV}" -c "trust_vpc_id=${TRUST_VPC}" --require-approval never)
 
   # Export BRONZE_S3_PREFIX for dbt
   local PLATFORM_BUCKET
