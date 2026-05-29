@@ -147,7 +147,11 @@ def daily_ingest(run_date: str | None = None, env: str = "dev") -> None:
     pg_future = task_ingest_postgres.submit(run_date=effective_date, settings=settings)
     sftp_future = task_ingest_sftp.submit(run_date=effective_date, settings=settings)
     s3_future = task_ingest_trust_s3.submit(run_date=effective_date, settings=settings)
-    wait([pg_future, sftp_future, s3_future])  # raises if any failed
+    futures = [pg_future, sftp_future, s3_future]
+    wait(futures)
+    # Prefect 3.x wait() does not raise on task failure; .result() does
+    for future in futures:
+        future.result()
 
     log.info("bronze_ingestion_complete")
 
