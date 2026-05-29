@@ -344,8 +344,15 @@ URGENT_CARE_DSN=${URGENT_DSN}
 SFTP_HOST=${SFTP_ENDPOINT}
 SFTP_PORT=22
 SFTP_USER=${SFTP_USER_VAL}
-SFTP_PRIVATE_KEY=${SFTP_PRIVATE_KEY_VAL}
+SFTP_PRIVATE_KEY_PATH=${PLATFORM_REPO}/.secrets/sftp_key.pem
 EOF
+
+  # Write SFTP private key to a secured file (not inline in .env)
+  mkdir -p "$PLATFORM_REPO/.secrets"
+  chmod 700 "$PLATFORM_REPO/.secrets"
+  printf '%s\n' "$SFTP_PRIVATE_KEY_VAL" > "$PLATFORM_REPO/.secrets/sftp_key.pem"
+  chmod 600 "$PLATFORM_REPO/.secrets/sftp_key.pem"
+
   echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
 
   # ── Step 8: Build and push Docker image to ECR ──
