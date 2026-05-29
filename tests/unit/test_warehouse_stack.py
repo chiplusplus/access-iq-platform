@@ -169,19 +169,17 @@ def test_usage_limit_custom_resource_exists() -> None:
     assert len(resources) >= 1, "Expected at least one Custom::AWS resource (usage limit CR)"
 
 
-def test_namespace_has_final_snapshot() -> None:
+def test_namespace_dev_skips_final_snapshot() -> None:
+    """Dev namespaces skip final snapshot to avoid SnapshotAlreadyExistsFault."""
     tpl = _template()
     tpl.has_resource_properties(
         "AWS::RedshiftServerless::Namespace",
-        {"FinalSnapshotName": Match.string_like_regexp(r"access-iq-dev-final-.+")},
-    )
-
-
-def test_namespace_final_snapshot_has_retention() -> None:
-    tpl = _template()
-    tpl.has_resource_properties(
-        "AWS::RedshiftServerless::Namespace",
-        {"FinalSnapshotRetentionPeriod": 7},
+        Match.object_like(
+            {
+                "NamespaceName": "access-iq-dev",
+                "FinalSnapshotName": Match.absent(),
+            }
+        ),
     )
 
 

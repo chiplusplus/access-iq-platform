@@ -179,8 +179,8 @@ class TestGEResultsWrite:
         with patch("psycopg2.connect", return_value=mock_conn):
             write_results_to_redshift("postgresql://user:pass@host/db", results)
 
-        # CREATE SCHEMA + CREATE TABLE IF NOT EXISTS + one INSERT per table
-        assert mock_cursor.execute.call_count == 2 + len(SILVER_TABLES)
+        # CREATE SCHEMA + CREATE TABLE + DELETE today's rows + one INSERT per table
+        assert mock_cursor.execute.call_count == 3 + len(SILVER_TABLES)
 
     def test_creates_table_if_not_exists(self) -> None:
         """write_results_to_redshift issues CREATE TABLE IF NOT EXISTS."""
