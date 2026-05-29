@@ -161,7 +161,16 @@ class ObservabilityStack(Stack):
         # -- Section 3: Metric Filters + Alarms (D-12, REQ-OBS-01) ----------
         metric_namespace = f"AccessIQ/{cfg.env_name}"
 
-        for source, lg in log_groups.items():
+        # Scope metric filters to ingestion + pipeline log groups only.
+        # Prefect server/worker log groups produce structured logs with different
+        # schemas — applying ingestion metric filters to them causes false positives.
+        metric_filter_sources = {
+            source: lg
+            for source, lg in log_groups.items()
+            if source in (*INGESTION_SOURCES, "pipeline")
+        }
+
+        for source, lg in metric_filter_sources.items():
             safe_id = "".join(w.capitalize() for w in source.split("-"))
 
             mf_failed = logs.MetricFilter(
