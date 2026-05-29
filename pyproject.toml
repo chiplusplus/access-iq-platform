@@ -44,7 +44,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "infra"]
+pythonpath = ["src", "infra", "flows"]
 addopts = "--maxfail=1 -m 'not integration'"
 markers = [
     "integration: tests that run against live AWS infrastructure (requires deployed stacks)",
