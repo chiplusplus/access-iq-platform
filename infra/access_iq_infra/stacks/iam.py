@@ -271,3 +271,49 @@ class IngestionRoleStack(Stack):
             export_name=f"{cfg.app_name}-{cfg.env_name}-ecs-operator-role-arn",
             description="ARN of the ECS operator role for RunTask operations.",
         )
+
+        # ── Prefect Worker Task Role (Phase 7 -- self-hosted) ───────────────────
+        prefect_worker_role = iam.Role(
+            self,
+            "PrefectWorkerRole",
+            role_name=f"{cfg.app_name}-{cfg.env_name}-prefect-worker-role",
+            assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="EcsRunTask",
+                actions=[
+                    "ecs:RunTask",
+                    "ecs:StopTask",
+                    "ecs:DescribeTasks",
+                ],
+                resources=["*"],
+                conditions={
+                    "ArnEquals": {
+                        "ecs:cluster": f"arn:aws:ecs:{cfg.region}:{cfg.account_id}:cluster/{cfg.app_name}-{cfg.env_name}-ingestion"
+                    }
+                },
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="PassRole",
+                actions=["iam:PassRole"],
+                resources=[ecs_task_role.role_arn, ecs_execution_role.role_arn],
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="LogsWrite",
+                actions=["logs:CreateLogStream", "logs:PutLogEvents"],
+                resources=["*"],
+            )
+        )
+        self.prefect_worker_role = prefect_worker_role
+
+        CfnOutput(
+            self,
+            "PrefectWorkerRoleArn",
+            value=prefect_worker_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-prefect-worker-role-arn",
+        )

@@ -84,6 +84,17 @@ class ObservabilityStack(Stack):
         )
         log_groups["pipeline"] = pipeline_lg
 
+        # Prefect server + worker log groups (Phase 7 — self-hosted Prefect)
+        for extra in ("prefect-server", "prefect-worker"):
+            lg = logs.LogGroup(
+                self,
+                f"LogGroup-{extra}",
+                log_group_name=f"/access-iq/{cfg.env_name}/{extra}",
+                retention=retention,
+                removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
+            )
+            log_groups[extra] = lg
+
         self.log_groups = log_groups
 
         # -- Section 2: SNS Topics (D-10, REQ-OBS-01) ----------
