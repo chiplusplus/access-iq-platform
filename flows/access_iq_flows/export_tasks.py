@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date
 
 import psycopg2
@@ -11,16 +12,20 @@ from prefect import task
 
 log = structlog.get_logger(__name__)
 
-GOLD_TABLES = [
-    "fct_wait_times",
-    "fct_inequality",
-    "fct_urgent_care",
-    "fct_utilisation",
-    "dim_patient",
-    "dim_site",
-    "dim_imd",
-    "dim_date",
-]
+GOLD_TABLES: frozenset[str] = frozenset(
+    [
+        "fct_wait_times",
+        "fct_inequality",
+        "fct_urgent_care",
+        "fct_utilisation",
+        "dim_patient",
+        "dim_site",
+        "dim_imd",
+        "dim_date",
+    ]
+)
+
+_BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]$")
 
 
 def _validate_export_date(run_date: str | None) -> str:
@@ -42,6 +47,12 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
     bucket = os.environ["PLATFORM_BUCKET"]
     role_arn = os.environ["SPECTRUM_ROLE_ARN"]
 
+    # Validate inputs to prevent SQL injection via interpolated values (T-07-02)
+    if not _BUCKET_RE.match(bucket):
+        raise ValueError(f"Invalid bucket name format: {bucket!r}")
+    if not role_arn.startswith("arn:aws:iam::"):
+        raise ValueError(f"Invalid IAM role ARN format: {role_arn!r}")
+
     # Build a psycopg2-compatible DSN from REDSHIFT_DSN
     raw_dsn = os.environ["REDSHIFT_DSN"]
     dsn = raw_dsn.replace("postgresql+psycopg2://", "postgresql://").replace(
@@ -51,7 +62,10 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
     conn = psycopg2.connect(dsn, sslmode="prefer")
     try:
         with conn.cursor() as cur:
-            for table_name in GOLD_TABLES:
+            for table_name in sorted(GOLD_TABLES):
+                # Defense-in-depth: only tables in GOLD_TABLES allowlist reach here
+                if table_name not in GOLD_TABLES:
+                    raise ValueError(f"Table {table_name!r} not in GOLD_TABLES allowlist")
                 s3_prefix = (
                     f"s3://{bucket}/gold_export/table={table_name}/export_date={export_date}/"
                 )
