@@ -167,6 +167,23 @@ class NetworkStack(Stack):
             ec2.Port.tcp(443),
             "HTTPS - ECR, Secrets Manager, CloudWatch via endpoints or NAT",
         )
+        # Redshift Serverless — dbt Silver/Gold builds connect on port 5439
+        ecs_sg.add_egress_rule(
+            ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),
+            ec2.Port.tcp(5439),
+            "Redshift Serverless (dbt builds)",
+        )
+        # Prefect server API — ingress + egress within Platform VPC (Phase 7)
+        ecs_sg.add_ingress_rule(
+            ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),
+            ec2.Port.tcp(4200),
+            "Prefect server API from Platform VPC",
+        )
+        ecs_sg.add_egress_rule(
+            ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),
+            ec2.Port.tcp(4200),
+            "Prefect server API (worker + pipeline tasks)",
+        )
 
         # Endpoint SG — allows HTTPS ingress from Platform VPC; no outbound needed.
         endpoint_sg = ec2.SecurityGroup(
@@ -211,6 +228,8 @@ class NetworkStack(Stack):
                 security_groups=[endpoint_sg],
                 private_dns_enabled=True,
             )
+
+        CfnOutput(self, "VpcId", value=vpc.vpc_id, description="Platform VPC ID")
 
         # ── Section 9: Expose for Phase 3 ECS stack ──────────────────────────
         self.vpc = vpc

@@ -83,6 +83,20 @@ obs = ObservabilityStack(
     env=cdk_env,
 )
 
+# --- Phase 4: Warehouse ---
+
+warehouse = WarehouseStack(
+    app,
+    f"warehouse-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    vpc=network.vpc,
+    ecs_task_sg=network.ecs_task_sg,
+    lake_bucket=lake.lake_bucket,
+    lake_key=lake.lake_key,
+    catalog_database_name=catalog.database_name,
+    env=cdk_env,
+)
+
 ComputeStack(
     app,
     f"compute-{cfg.app_name}-{cfg.env_name}",
@@ -96,20 +110,9 @@ ComputeStack(
     ecs_task_role=iam_stack.ecs_task_role,
     ecs_execution_role=iam_stack.ecs_execution_role,
     log_groups=obs.log_groups,
-    env=cdk_env,
-)
-
-# --- Phase 4: Warehouse ---
-
-warehouse = WarehouseStack(
-    app,
-    f"warehouse-{cfg.app_name}-{cfg.env_name}",
-    cfg=cfg,
-    vpc=network.vpc,
-    ecs_task_sg=network.ecs_task_sg,
-    lake_bucket=lake.lake_bucket,
-    lake_key=lake.lake_key,
-    catalog_database_name=catalog.database_name,
+    warehouse_stack=warehouse,
+    observability_stack=obs,
+    prefect_worker_role=iam_stack.prefect_worker_role,
     env=cdk_env,
 )
 

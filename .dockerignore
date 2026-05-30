@@ -14,3 +14,5 @@ dist/
 .github/
 .env
 .env.*
+dbt/target/
+dbt/logs/

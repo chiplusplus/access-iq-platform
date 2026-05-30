@@ -13,6 +13,9 @@ conflicts = [[
     { package = "access-iq-infra" },
 ]]
 
+[tool.uv.sources]
+access-iq-ingestion = { workspace = true }
+
 [tool.uv.workspace]
 members = ["src/access_iq", "infra", "dbt", "flows", "dashboard"]
 
@@ -44,7 +47,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "infra"]
+pythonpath = ["src", "infra", "flows"]
 addopts = "--maxfail=1 -m 'not integration'"
 markers = [
     "integration: tests that run against live AWS infrastructure (requires deployed stacks)",

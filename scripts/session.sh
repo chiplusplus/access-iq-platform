@@ -66,22 +66,27 @@ platform_output() {
 cmd_up() {
   local skip_generate=""
   local skip_seed=false
+  local skip_infra=false
   for arg in "$@"; do
     case "$arg" in
       --skip-generate) skip_generate="--skip-generate" ;;
       --skip-seed) skip_seed=true ;;
+      --skip-infra) skip_infra=true ;;
     esac
   done
 
   echo ""
-  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest → dbt Spectrum"
+  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → dbt Spectrum → Prefect"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
+  [ "$skip_infra" = true ] && echo "  Skipping infrastructure deployments (reusing existing stacks)"
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
   step_start "1/8" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
-  if [ "$skip_seed" = true ]; then
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping Trust deploy (--skip-infra)"
+  elif [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
       --profile "$TRUST_PROFILE" --require-approval never)
@@ -98,10 +103,12 @@ cmd_up() {
 
   step_start "3/8" "Deploy Platform stacks" "5-10min"
 
-  local CDK_CONTEXT_ARGS="-c env=$CDK_ENV -c trust_vpc_id=$TRUST_VPC"
-
-  (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
-    $CDK_CONTEXT_ARGS --require-approval never)
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping Platform deploy (--skip-infra)"
+  else
+    (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
+      -c "env=${CDK_ENV}" -c "trust_vpc_id=${TRUST_VPC}" --require-approval never)
+  fi
 
   # Export BRONZE_S3_PREFIX for dbt
   local PLATFORM_BUCKET
@@ -116,49 +123,53 @@ cmd_up() {
 
   step_start "4/8" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
-  local RS_WORKGROUP="access-iq-${CDK_ENV}"
-  local RS_DB="dev"
-
-  # Wait for workgroup to be AVAILABLE (may take 30-60s after CDK deploy)
-  local rs_status="CREATING"
-  local wait_count=0
-  while [ "$rs_status" != "AVAILABLE" ] && [ "$wait_count" -lt 30 ]; do
-    rs_status=$(aws redshift-serverless get-workgroup \
-      --workgroup-name "$RS_WORKGROUP" \
-      --query 'workgroup.status' --output text \
-      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_FOUND")
-    if [ "$rs_status" != "AVAILABLE" ]; then
-      sleep 10
-      wait_count=$((wait_count + 1))
-      echo "    Waiting for workgroup... ($rs_status)"
-    fi
-  done
-
-  if [ "$rs_status" = "AVAILABLE" ]; then
-    local SPECTRUM_ROLE_ARN
-    SPECTRUM_ROLE_ARN=$(aws cloudformation describe-stacks \
-      --stack-name "warehouse-access-iq-${CDK_ENV}" \
-      --query "Stacks[0].Outputs[?OutputKey=='SpectrumRoleArn'].OutputValue" \
-      --output text --profile "$AWS_PROFILE" --region "$REGION")
-    local GLUE_DB="access-iq-${CDK_ENV}-bronze"
-
-    local RS_SECRET_ARN
-    RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
-      --namespace-name "$RS_WORKGROUP" \
-      --query 'namespace.adminPasswordSecretArn' \
-      --output text --profile "$AWS_PROFILE" --region "$REGION")
-
-    SPECTRUM_STMT_ID=""
-    SPECTRUM_STMT_ID=$(aws redshift-data execute-statement \
-      --workgroup-name "$RS_WORKGROUP" \
-      --database "$RS_DB" \
-      --secret-arn "$RS_SECRET_ARN" \
-      --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}'; GRANT USAGE ON SCHEMA bronze_external TO PUBLIC; GRANT SELECT ON ALL TABLES IN SCHEMA bronze_external TO PUBLIC;" \
-      --query 'Id' --output text \
-      --profile "$AWS_PROFILE" --region "$REGION")
-    echo "  Spectrum schema statement submitted (will verify at end)"
+  SPECTRUM_STMT_ID=""
+  if [ "$skip_seed" = true ]; then
+    echo "  Skipping Redshift pre-warm (--skip-seed)"
   else
-    echo "  WARNING: Redshift workgroup not available after 5 min -- skipping pre-warm"
+    local RS_WORKGROUP="access-iq-${CDK_ENV}"
+    local RS_DB="dev"
+
+    # Wait for workgroup to be AVAILABLE (may take 30-60s after CDK deploy)
+    local rs_status="CREATING"
+    local wait_count=0
+    while [ "$rs_status" != "AVAILABLE" ] && [ "$wait_count" -lt 30 ]; do
+      rs_status=$(aws redshift-serverless get-workgroup \
+        --workgroup-name "$RS_WORKGROUP" \
+        --query 'workgroup.status' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_FOUND")
+      if [ "$rs_status" != "AVAILABLE" ]; then
+        sleep 10
+        wait_count=$((wait_count + 1))
+        echo "    Waiting for workgroup... ($rs_status)"
+      fi
+    done
+
+    if [ "$rs_status" = "AVAILABLE" ]; then
+      local SPECTRUM_ROLE_ARN
+      SPECTRUM_ROLE_ARN=$(aws cloudformation describe-stacks \
+        --stack-name "warehouse-access-iq-${CDK_ENV}" \
+        --query "Stacks[0].Outputs[?OutputKey=='SpectrumRoleArn'].OutputValue" \
+        --output text --profile "$AWS_PROFILE" --region "$REGION")
+      local GLUE_DB="access-iq-${CDK_ENV}-bronze"
+
+      local RS_SECRET_ARN
+      RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+        --namespace-name "$RS_WORKGROUP" \
+        --query 'namespace.adminPasswordSecretArn' \
+        --output text --profile "$AWS_PROFILE" --region "$REGION")
+
+      SPECTRUM_STMT_ID=$(aws redshift-data execute-statement \
+        --workgroup-name "$RS_WORKGROUP" \
+        --database "$RS_DB" \
+        --secret-arn "$RS_SECRET_ARN" \
+        --sql "CREATE EXTERNAL SCHEMA IF NOT EXISTS bronze_external FROM DATA CATALOG DATABASE '${GLUE_DB}' IAM_ROLE '${SPECTRUM_ROLE_ARN}' REGION '${REGION}'; GRANT USAGE ON SCHEMA bronze_external TO PUBLIC; GRANT SELECT ON ALL TABLES IN SCHEMA bronze_external TO PUBLIC;" \
+        --query 'Id' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION")
+      echo "  Spectrum schema statement submitted (will verify at end)"
+    else
+      echo "  WARNING: Redshift workgroup not available after 5 min -- skipping pre-warm"
+    fi
   fi
 
   step_done
@@ -174,18 +185,28 @@ cmd_up() {
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
   step_start "5/8" "Redeploy Trust with routes and peering SG rules" "~2 min"
-  echo "  Platform VPC:  $PLATFORM_VPC"
-  echo "  Peering ID:    $PEERING_ID"
-  (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
-    -c "platformVpcId=$PLATFORM_VPC" \
-    -c "platformCidr=10.10.0.0/16" \
-    -c "platformAccountId=$(aws sts get-caller-identity --query Account --output text --profile "$AWS_PROFILE")" \
-    -c "peeringConnectionId=$PEERING_ID" \
-    --require-approval never)
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping Trust redeploy (--skip-infra)"
+  else
+    echo "  Platform VPC:  $PLATFORM_VPC"
+    echo "  Peering ID:    $PEERING_ID"
+    (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
+      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy \
+      -c "platformVpcId=$PLATFORM_VPC" \
+      -c "platformCidr=10.10.0.0/16" \
+      -c "platformAccountId=$(aws sts get-caller-identity --query Account --output text --profile "$AWS_PROFILE")" \
+      -c "peeringConnectionId=$PEERING_ID" \
+      --require-approval never)
+  fi
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
   step_start "6/8" "Seed Platform secrets from Trust" "<30s"
+
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping secret seeding (--skip-infra)"
+    step_done
+  else
 
   local SECRET_PREFIX="access-iq/${CDK_ENV}"
 
@@ -324,14 +345,49 @@ cmd_up() {
     seed_secret "${SECRET_PREFIX}/sftp-private-key"  "$SFTP_PRIVATE_KEY_VAL"
   fi
 
+  # Seed Redshift credentials for dbt (extracts from Redshift-managed admin secret)
+  local RS_WORKGROUP="access-iq-${CDK_ENV}"
+  local RS_ADMIN_SECRET_ARN
+  RS_ADMIN_SECRET_ARN=$(aws redshift-serverless get-namespace \
+    --namespace-name "$RS_WORKGROUP" \
+    --query 'namespace.adminPasswordSecretArn' \
+    --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null)
+
+  if [ -n "$RS_ADMIN_SECRET_ARN" ] && [ "$RS_ADMIN_SECRET_ARN" != "None" ]; then
+    local RS_ADMIN_JSON
+    RS_ADMIN_JSON=$(aws secretsmanager get-secret-value \
+      --secret-id "$RS_ADMIN_SECRET_ARN" \
+      --query SecretString --output text \
+      --profile "$AWS_PROFILE" --region "$REGION")
+    local RS_USER RS_PASS RS_HOST
+    RS_USER=$(echo "$RS_ADMIN_JSON" | jq -r '.username')
+    RS_PASS=$(echo "$RS_ADMIN_JSON" | jq -r '.password')
+    RS_HOST=$(aws redshift-serverless get-workgroup \
+      --workgroup-name "$RS_WORKGROUP" \
+      --query 'workgroup.endpoint.address' \
+      --output text --profile "$AWS_PROFILE" --region "$REGION")
+    local RS_DSN="postgresql://${RS_USER}:${RS_PASS}@${RS_HOST}:5439/dev"
+    seed_secret "${SECRET_PREFIX}/redshift-dsn"      "$RS_DSN"
+    seed_secret "${SECRET_PREFIX}/redshift-password"  "$RS_PASS"
+    echo "  ✓ Redshift DSN + password seeded"
+  else
+    echo "  WARNING: Redshift admin secret not found — skipping redshift-dsn/password seeding"
+  fi
+
+  fi  # skip_infra
+
   step_done
 
   # Write .env for local tools (profiling, readiness gate) that use pydantic Settings.
   # ECS tasks get these from Secrets Manager; locally we use .env (gitignored).
-  local TRUST_BUCKET
-  TRUST_BUCKET=$(trust_output ExternalBucketName 2>/dev/null || echo "northshire-trust-external-exports")
+  # Skipped with --skip-infra since .env already exists from initial run.
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping .env write (--skip-infra, reusing existing .env)"
+  else
+    local TRUST_BUCKET
+    TRUST_BUCKET=$(trust_output ExternalBucketName 2>/dev/null || echo "northshire-trust-external-exports")
 
-  cat > "$PLATFORM_REPO/.env" <<EOF
+    cat > "$PLATFORM_REPO/.env" <<EOF
 ACCESS_IQ_ENV=${CDK_ENV}
 ACCESS_IQ_AWS_REGION=${REGION}
 ACCESS_IQ_PLATFORM_BUCKET=${PLATFORM_BUCKET}
@@ -344,9 +400,18 @@ URGENT_CARE_DSN=${URGENT_DSN}
 SFTP_HOST=${SFTP_ENDPOINT}
 SFTP_PORT=22
 SFTP_USER=${SFTP_USER_VAL}
-SFTP_PRIVATE_KEY=${SFTP_PRIVATE_KEY_VAL}
+SFTP_PRIVATE_KEY_PATH=${PLATFORM_REPO}/.secrets/sftp_key.pem
+BRONZE_S3_PREFIX=s3://${PLATFORM_BUCKET}/bronze
 EOF
-  echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
+
+    # Write SFTP private key to a secured file (not inline in .env)
+    mkdir -p "$PLATFORM_REPO/.secrets"
+    chmod 700 "$PLATFORM_REPO/.secrets"
+    printf '%s\n' "$SFTP_PRIVATE_KEY_VAL" > "$PLATFORM_REPO/.secrets/sftp_key.pem"
+    chmod 600 "$PLATFORM_REPO/.secrets/sftp_key.pem"
+
+    echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
+  fi
 
   # ── Step 8: Build and push Docker image to ECR ──
   step_start "7/8" "Build and push ingestion image to ECR" "1-3 min"
@@ -361,24 +426,25 @@ EOF
       "$(echo "$ECR_URI" | cut -d/ -f1)" 2>/dev/null
 
   # Build and push
-  (cd "$PLATFORM_REPO" && docker build --platform linux/amd64 -t "${ECR_URI}:latest" .)
+  (cd "$PLATFORM_REPO" && docker build --platform linux/amd64 -f flows/Dockerfile -t "${ECR_URI}:latest" .)
   docker push "${ECR_URI}:latest"
   echo "  ✓ Pushed ${ECR_URI}:latest"
 
   step_done
 
-  # ── Step 7: Run Bronze ingestion (all 3 sources) ──
-  cmd_ingest
-
-  # cmd_ingest assumes an STS role and unsets AWS_PROFILE; restore it.
-  AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
-
-  # Verify Spectrum schema creation completed (submitted in step 4/7).
+  # Verify Spectrum schema creation completed (submitted in step 4/8).
   if [ -n "${SPECTRUM_STMT_ID:-}" ]; then
     local saved_profile="${AWS_PROFILE:-CHI-Engineer-222308823356}"
     local stmt_status="SUBMITTED"
+    local wait_secs=0
+    local max_wait=120
     while [ "$stmt_status" != "FINISHED" ] && [ "$stmt_status" != "FAILED" ]; do
+      if [ "$wait_secs" -ge "$max_wait" ]; then
+        echo "  WARNING: Spectrum statement poll timed out after ${max_wait}s (status: $stmt_status)"
+        break
+      fi
       sleep 2
+      wait_secs=$((wait_secs + 2))
       stmt_status=$(aws redshift-data describe-statement --id "$SPECTRUM_STMT_ID" \
         --query 'Status' --output text \
         --profile "$saved_profile" --region "$REGION")
@@ -390,8 +456,8 @@ EOF
     fi
   fi
 
-  # ── Step 8: Start tunnel, create Spectrum tables + partitions ──
-  step_start "8/8" "Create Spectrum external tables and register partitions" "30-60s"
+  # ── Step 8/8: Start tunnel + configure self-hosted Prefect ──
+  step_start "8/8" "Start tunnel + configure Prefect (work pool + flow deploy)" "30-60s"
 
   local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
   local TUNNEL_INSTANCE_ID
@@ -399,7 +465,7 @@ EOF
   local RS_ENDPOINT
   RS_ENDPOINT=$(platform_output warehouse WorkgroupEndpoint)
 
-  # Start SSM tunnel in background
+  # Start SSM tunnel in background (used by Prefect and manual dbt)
   aws ssm start-session \
     --target "$TUNNEL_INSTANCE_ID" \
     --document-name AWS-StartPortForwardingSessionToRemoteHost \
@@ -421,29 +487,197 @@ EOF
 
   if [ "$tunnel_ready" = true ]; then
     echo "  ✓ Tunnel connected"
-
-    # Load Redshift credentials
-    eval "$("$PLATFORM_REPO/scripts/tunnel.sh" env)"
-
-    # Create external tables via dbt-external-tables
-    (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation stage_external_sources --profiles-dir .) \
-      && echo "  ✓ Spectrum external tables created" \
-      || echo "  WARNING: stage_external_sources failed — run manually via make dbt"
-
-    # Register partitions
-    (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation add_spectrum_partitions --profiles-dir .) \
-      && echo "  ✓ Partitions registered" \
-      || echo "  WARNING: add_spectrum_partitions failed — run manually via make dbt"
   else
-    echo "  WARNING: Tunnel not ready after 30s — skipping dbt operations"
-    echo "  Run manually: make tunnel (terminal 1), make dbt CMD=\"run-operation stage_external_sources\" (terminal 2)"
+    echo "  WARNING: Tunnel not ready after 30s"
   fi
 
+  # Server and worker are ECS services started by CDK deploy (step 3/8).
+  # The server is in a private subnet -- use the Redshift tunnel instance as a jump host.
+  # Cloud Map DNS registration requires a passing health check (start_period=60s + interval=30s),
+  # so we wait for the ECS service to stabilise before attempting the tunnel.
+  local PREFECT_SERVER_HOST="prefect-server.access-iq.local"
+  local PREFECT_API="http://${PREFECT_SERVER_HOST}:4200/api"
+  local PREFECT_TUNNEL_PID_FILE="$PLATFORM_REPO/.prefect-tunnel.pid"
+
+  # Wait for Prefect server ECS service to reach RUNNING with healthy target
+  echo "  Waiting for Prefect server service to stabilise..."
+  local svc_name="access-iq-${CDK_ENV}-prefect-server"
+  local cluster_name="access-iq-${CDK_ENV}-ingestion"
+  aws ecs wait services-stable \
+    --cluster "$cluster_name" --services "$svc_name" \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null \
+    || echo "  WARNING: ecs wait timed out — attempting tunnel anyway"
+
+  # Start SSM tunnel with retry (Cloud Map DNS may take a few seconds after service stabilises)
+  local server_ready=false
+  for attempt in 1 2 3; do
+    aws ssm start-session \
+      --target "$TUNNEL_INSTANCE_ID" \
+      --document-name AWS-StartPortForwardingSessionToRemoteHost \
+      --parameters "{\"host\":[\"${PREFECT_SERVER_HOST}\"],\"portNumber\":[\"4200\"],\"localPortNumber\":[\"4200\"]}" \
+      --profile "$AWS_PROFILE" --region "$REGION" &
+    local prefect_tunnel_pid=$!
+    echo "$prefect_tunnel_pid" > "$PREFECT_TUNNEL_PID_FILE"
+
+    # Give tunnel a moment to establish, then check health
+    sleep 5
+    if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
+      server_ready=true
+      break
+    fi
+
+    # Tunnel failed — kill it and retry after a wait
+    kill "$prefect_tunnel_pid" 2>/dev/null || true
+    if [ "$attempt" -lt 3 ]; then
+      echo "  Tunnel attempt $attempt failed, retrying in 15s..."
+      sleep 15
+    fi
+  done
+
+  # If initial attempts failed, do a longer health wait (tunnel may be up but server slow)
+  if [ "$server_ready" = false ] && kill -0 "$prefect_tunnel_pid" 2>/dev/null; then
+    for i in $(seq 1 20); do
+      if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
+        server_ready=true
+        break
+      fi
+      sleep 5
+    done
+  fi
+
+  if [ "$server_ready" = true ]; then
+    echo "  Prefect server healthy"
+    export PREFECT_API_URL="http://localhost:4200/api"
+
+    # Resolve CDK stack outputs for flow deployment
+    local stack_name="compute-access-iq-${CDK_ENV}"
+    local cluster_arn task_role_arn exec_role_arn
+    cluster_arn=$(aws cloudformation describe-stacks \
+      --stack-name "$stack_name" \
+      --query "Stacks[0].Outputs[?OutputKey=='ClusterArn'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    task_role_arn=$(platform_output ingestion-role EcsTaskRoleArn 2>/dev/null || echo "")
+    exec_role_arn=$(platform_output ingestion-role EcsExecutionRoleArn 2>/dev/null || echo "")
+    local ecr_uri
+    ecr_uri=$(aws cloudformation describe-stacks \
+      --stack-name "ecr-access-iq-${CDK_ENV}" \
+      --query "Stacks[0].Outputs[?OutputKey=='IngestionRepoUri'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    local PIPELINE_IMAGE_URI="${ecr_uri}:latest"
+    local PIPELINE_TASK_DEF_ARN
+    PIPELINE_TASK_DEF_ARN=$(aws ecs describe-task-definition \
+      --task-definition "access-iq-${CDK_ENV}-pipeline" \
+      --query 'taskDefinition.taskDefinitionArn' \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    local ECS_CLUSTER_ARN="$cluster_arn"
+    local ECS_TASK_ROLE_ARN="$task_role_arn"
+    local ECS_EXECUTION_ROLE_ARN="$exec_role_arn"
+    local PLATFORM_VPC
+    PLATFORM_VPC=$(aws cloudformation describe-stacks \
+      --stack-name "network-access-iq-${CDK_ENV}" \
+      --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    local PRIVATE_SUBNET_IDS
+    PRIVATE_SUBNET_IDS=$(aws ec2 describe-subnets \
+      --filters "Name=vpc-id,Values=$PLATFORM_VPC" "Name=tag:aws-cdk:subnet-type,Values=Private" \
+      --query 'Subnets[*].SubnetId' --output json \
+      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "[]")
+    local ECS_TASK_SG_ID
+    ECS_TASK_SG_ID=$(aws ec2 describe-security-groups \
+      --filters "Name=vpc-id,Values=$PLATFORM_VPC" "Name=group-name,Values=*ecs-task*" \
+      --query 'SecurityGroups[0].GroupId' --output text \
+      --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+
+    if [ "$PRIVATE_SUBNET_IDS" = "[]" ] || [ -z "$PRIVATE_SUBNET_IDS" ]; then
+      echo "  ERROR: No private subnets found for VPC $PLATFORM_VPC — cannot deploy Prefect flow"
+      return 1
+    fi
+
+    # Generate deployment YAML with resolved network values (Prefect templates
+    # can't handle JSON arrays, so we bake in the actual values).
+    local DEPLOY_YAML="$PLATFORM_REPO/.prefect-deploy.yaml"
+    local SUBNET_YAML
+    SUBNET_YAML=$(echo "$PRIVATE_SUBNET_IDS" | jq -r '.[] | "              - \"" + . + "\""' )
+
+    cat > "$DEPLOY_YAML" <<EOYAML
+name: access-iq-flows
+prefect-version: "3.7.2"
+
+deployments:
+  - name: dev
+    flow_name: daily-ingest
+    entrypoint: flows/access_iq_flows/daily_ingest.py:daily_ingest
+    pull:
+      - prefect.deployments.steps.set_working_directory:
+          directory: /app
+    work_pool:
+      name: access-iq-${CDK_ENV}-pipeline
+      work_queue_name: default
+      job_variables:
+        task_definition_arn: "${PIPELINE_TASK_DEF_ARN}"
+        image: "${PIPELINE_IMAGE_URI}"
+        cluster: "${ECS_CLUSTER_ARN}"
+        vpc_id: "${PLATFORM_VPC}"
+        task_start_timeout_seconds: 300
+        task_watch_poll_interval: 5
+        network_configuration:
+          subnets:
+${SUBNET_YAML}
+          securityGroups:
+              - "${ECS_TASK_SG_ID}"
+          assignPublicIp: "DISABLED"
+    schedules:
+      - cron: "0 * * * *"
+        timezone: "Europe/London"
+        active: true
+    parameters:
+      env: ${CDK_ENV}
+EOYAML
+
+    # Create/update ecs work pool (idempotent)
+    "$PLATFORM_REPO/.venv/bin/prefect" work-pool create "access-iq-${CDK_ENV}-pipeline" \
+      --type ecs --overwrite 2>/dev/null || true
+
+    # Fix work pool template defaults (prefect-aws templates them to 0/None)
+    "$PLATFORM_REPO/.venv/bin/python" -c "
+import json, httpx
+client = httpx.Client(base_url='$PREFECT_API_URL')
+pools = client.post('/work_pools/filter', json={}).json()
+pool = [p for p in pools if p['name'] == 'access-iq-${CDK_ENV}-pipeline'][0]
+tmpl = pool['base_job_template']
+props = tmpl['variables']['properties']
+props['task_start_timeout_seconds'] = {'title':'Task Start Timeout Seconds','default':300,'type':'integer'}
+props['task_watch_poll_interval'] = {'title':'Task Watch Poll Interval','default':5,'type':'number'}
+props['configure_cloudwatch_logs']['default'] = True
+props['cloudwatch_logs_options']['default'] = {
+    'awslogs-group': '/access-iq/${CDK_ENV}/pipeline',
+    'awslogs-region': '${REGION}',
+    'awslogs-stream-prefix': 'flow-run',
+}
+client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
+" 2>/dev/null || true
+
+    # Deploy flow definition against self-hosted server
+    (cd "$PLATFORM_REPO" && \
+      "$PLATFORM_REPO/.venv/bin/prefect" deploy --prefect-file "$DEPLOY_YAML" --name dev --no-prompt \
+        || true)
+
+    rm -f "$DEPLOY_YAML"
+
+    printf "  Prefect work pool + flow deployed (self-hosted)\n"
+    printf "  Prefect UI: http://localhost:4200 (tunnel PID %s)\n" "$prefect_tunnel_pid"
+  else
+    printf "  \033[0;33mPrefect server not healthy after 150s -- configure manually\033[0m\n"
+    # Kill the failed tunnel
+    kill "$prefect_tunnel_pid" 2>/dev/null || true
+    rm -f "$PREFECT_TUNNEL_PID_FILE"
+  fi
   step_done
 
   session_summary
   echo ""
-  echo "  ✓ All stacks deployed, secrets seeded, image pushed, ingestion complete."
+  echo "  ✓ All stacks deployed, secrets seeded, image pushed."
+  echo "  ✓ Run 'make pipeline' to trigger ingestion via Prefect."
   echo "  ✓ SSM tunnel running on localhost:5439 (PID $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'unknown'))"
   echo "    Run dbt commands: make dbt CMD=\"...\""
   echo "    Stop tunnel: make down (or kill $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'PID'))"
@@ -452,11 +686,27 @@ EOF
 
 cmd_down() {
   echo ""
-  echo "  Destroy sequence: Platform → Trust (no cross-account dependencies)"
+  echo "  Destroy sequence: Prefect pause → Platform → Trust"
   echo "  Estimated total: 6-10 minutes"
   echo ""
 
   TRUST_VPC=$(trust_output VpcId 2>/dev/null || echo "vpc-placeholder")
+
+  # ── Step 1/3: Clean up Prefect tunnel ──
+  step_start "1/3" "Clean up Prefect tunnel" "<5s"
+  local PREFECT_TUNNEL_PID_FILE="$PLATFORM_REPO/.prefect-tunnel.pid"
+  if [ -f "$PREFECT_TUNNEL_PID_FILE" ]; then
+    local ptpid
+    ptpid="$(cat "$PREFECT_TUNNEL_PID_FILE" 2>/dev/null || true)"
+    if [[ "$ptpid" =~ ^[0-9]+$ ]] && kill -0 "$ptpid" 2>/dev/null; then
+      kill "$ptpid" 2>/dev/null || true
+      echo "  Killed Prefect tunnel (PID $ptpid)"
+    fi
+    rm -f "$PREFECT_TUNNEL_PID_FILE"
+  else
+    echo "  No Prefect tunnel running"
+  fi
+  step_done
 
   # Kill Redshift SSM tunnel if running
   local RS_TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
@@ -470,13 +720,13 @@ cmd_down() {
     rm -f "$RS_TUNNEL_PID_FILE"
   fi
 
-  step_start "1/2" "Destroy Platform stacks" "3-5 min"
+  step_start "2/3" "Destroy Platform stacks" "3-5 min"
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk destroy --all --force \
     -c "env=$CDK_ENV" \
     -c "trust_vpc_id=$TRUST_VPC")
   step_done
 
-  step_start "2/2" "Destroy Trust stack" "3-5 min"
+  step_start "3/3" "Destroy Trust stack" "3-5 min"
   if [ -f "$TRUST_REPO/.tunnel.pid" ]; then
     local tunnel_pid
     tunnel_pid="$(cat "$TRUST_REPO/.tunnel.pid" 2>/dev/null || true)"
@@ -1052,6 +1302,43 @@ cmd_cleanup_snapshots() {
   echo "  Cleanup complete. Kept $KEEP_COUNT most recent snapshots."
 }
 
+cmd_pipeline() {
+  printf "\n\033[1;35m══════════════════════════════════════════\033[0m\n"
+  printf "\033[1;35m  Prefect Pipeline: daily-ingest\033[0m\n"
+  printf "\033[1;35m══════════════════════════════════════════\033[0m\n"
+
+  step_start "1/2" "Connect to self-hosted Prefect server" "<10s"
+  # Check if tunnel already running (port 4200 open locally)
+  if ! nc -z localhost 4200 2>/dev/null; then
+    local TUNNEL_INSTANCE_ID
+    TUNNEL_INSTANCE_ID=$(platform_output warehouse TunnelInstanceId)
+    aws ssm start-session \
+      --target "$TUNNEL_INSTANCE_ID" \
+      --document-name AWS-StartPortForwardingSessionToRemoteHost \
+      --parameters '{"host":["prefect-server.access-iq.local"],"portNumber":["4200"],"localPortNumber":["4200"]}' \
+      --profile "$AWS_PROFILE" --region "$REGION" &
+    local tunnel_pid=$!
+    echo "$tunnel_pid" > "$PLATFORM_REPO/.prefect-tunnel.pid"
+    # Wait for tunnel to be ready
+    for i in $(seq 1 15); do
+      nc -z localhost 4200 2>/dev/null && break
+      sleep 2
+    done
+  fi
+  export PREFECT_API_URL="http://localhost:4200/api"
+  step_done
+
+  step_start "2/2" "Trigger flow run" "<10s"
+  local run_date
+  run_date=$(date +%Y-%m-%d)
+  "$PLATFORM_REPO/.venv/bin/prefect" deployment run 'daily-ingest/dev' \
+    --param "run_date=${run_date}" 2>&1 | tee /tmp/prefect_run.log
+  printf "  Prefect UI: http://localhost:4200\n"
+  step_done
+
+  session_summary
+}
+
 # ── Main ──────────────────────────────────────────────────────────────
 
 case "${1:-}" in
@@ -1059,9 +1346,10 @@ case "${1:-}" in
   down)              cmd_down ;;
   status)            cmd_status ;;
   ingest)            cmd_ingest ;;
+  pipeline)          cmd_pipeline ;;
   cleanup-snapshots) shift; cmd_cleanup_snapshots "$@" ;;
   *)
-    echo "Usage: $0 {up|down|status|ingest|cleanup-snapshots}"
+    echo "Usage: $0 {up|down|status|ingest|pipeline|cleanup-snapshots}"
     echo ""
     echo "  up [flags]            Deploy Trust + Platform, publish data, run ingestion (~25 min)"
     echo "                        --skip-generate: reuse existing data/staging/ instead of regenerating"
@@ -1069,6 +1357,7 @@ case "${1:-}" in
     echo "  down                  Destroy Platform + Trust stacks (~8 min)"
     echo "  status                Show current stack states"
     echo "  ingest                Run all 3 Bronze ingestion tasks on ECS (~5 min)"
+    echo "  pipeline              Trigger full Prefect pipeline flow run (~2 min to queue)"
     echo "  cleanup-snapshots [N] Delete old Redshift snapshots, keep N most recent (default 2)"
     exit 1
     ;;

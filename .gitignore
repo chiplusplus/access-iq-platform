@@ -138,6 +138,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+.secrets/
 .venv
 .dbt-venv
 env/
@@ -230,3 +231,4 @@ dbt/.user.yml
 .tunnel.pid
 
 .DS_Store
+.prefect-deploy.yaml

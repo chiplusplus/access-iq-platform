@@ -131,16 +131,27 @@ class IngestionRoleStack(Stack):
                     resources=[
                         f"arn:aws:s3:::{platform_bucket.bucket_name}/_manifests/*",
                         f"arn:aws:s3:::{platform_bucket.bucket_name}/bronze/*",
+                        f"arn:aws:s3:::{platform_bucket.bucket_name}/_dq/*",
                     ],
                 ),
                 iam.PolicyStatement(
                     actions=["s3:ListBucket"],
                     resources=[f"arn:aws:s3:::{platform_bucket.bucket_name}"],
-                    conditions={"StringLike": {"s3:prefix": ["bronze/*", "_manifests/*"]}},
+                    conditions={"StringLike": {"s3:prefix": ["bronze/*", "_manifests/*", "_dq/*"]}},
                 ),
             ],
         )
         ecs_task_role.attach_inline_policy(ecs_task_policy)
+
+        # SNS: allow pipeline on_failure hook to publish alerts (Phase 7)
+        ecs_task_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=["sns:Publish"],
+                resources=[
+                    f"arn:aws:sns:{cfg.region}:{cfg.account_id}:{cfg.app_name}-{cfg.env_name}-ingestion-alerts",
+                ],
+            )
+        )
 
         # KMS: use grant_encrypt_decrypt (updates both role policy AND key resource policy)
         lake_key.grant_encrypt_decrypt(ecs_task_role)
@@ -155,6 +166,13 @@ class IngestionRoleStack(Stack):
             )
 
         self.ecs_task_role = ecs_task_role
+
+        CfnOutput(
+            self,
+            "EcsTaskRoleArn",
+            value=ecs_task_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-ecs-task-role-arn",
+        )
 
         # ── ECS Execution Role (D-13) ───────────────────────────────────
         ecs_execution_role = iam.Role(
@@ -180,6 +198,13 @@ class IngestionRoleStack(Stack):
         )
 
         self.ecs_execution_role = ecs_execution_role
+
+        CfnOutput(
+            self,
+            "EcsExecutionRoleArn",
+            value=ecs_execution_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-ecs-execution-role-arn",
+        )
 
         # ── ECS Operator Role (control-plane) ──────────────────────────────
         # Separated from ingestion_role (data-plane) so a leaked data
@@ -260,4 +285,76 @@ class IngestionRoleStack(Stack):
             value=ecs_operator_role.role_arn,
             export_name=f"{cfg.app_name}-{cfg.env_name}-ecs-operator-role-arn",
             description="ARN of the ECS operator role for RunTask operations.",
+        )
+
+        # ── Prefect Worker Task Role (Phase 7 -- self-hosted) ───────────────────
+        prefect_worker_role = iam.Role(
+            self,
+            "PrefectWorkerRole",
+            role_name=f"{cfg.app_name}-{cfg.env_name}-prefect-worker-role",
+            assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="EcsRunTask",
+                actions=[
+                    "ecs:RunTask",
+                    "ecs:StopTask",
+                    "ecs:DescribeTasks",
+                    "ecs:TagResource",
+                ],
+                resources=["*"],
+                conditions={
+                    "ArnEquals": {
+                        "ecs:cluster": f"arn:aws:ecs:{cfg.region}:{cfg.account_id}:cluster/{cfg.app_name}-{cfg.env_name}-ingestion"
+                    }
+                },
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="EcsTaskDefinition",
+                actions=[
+                    "ecs:RegisterTaskDefinition",
+                    "ecs:DeregisterTaskDefinition",
+                    "ecs:DescribeTaskDefinition",
+                ],
+                resources=["*"],
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="Ec2Describe",
+                actions=[
+                    "ec2:DescribeVpcs",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeSecurityGroups",
+                ],
+                resources=["*"],
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="PassRole",
+                actions=["iam:PassRole"],
+                resources=[ecs_task_role.role_arn, ecs_execution_role.role_arn],
+            )
+        )
+        prefect_worker_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                sid="LogsWrite",
+                actions=["logs:CreateLogStream", "logs:PutLogEvents"],
+                resources=[
+                    f"arn:aws:logs:{cfg.region}:{cfg.account_id}:log-group:/access-iq/{cfg.env_name}/*",
+                    f"arn:aws:logs:{cfg.region}:{cfg.account_id}:log-group:/access-iq/{cfg.env_name}/*:log-stream:*",
+                ],
+            )
+        )
+        self.prefect_worker_role = prefect_worker_role
+
+        CfnOutput(
+            self,
+            "PrefectWorkerRoleArn",
+            value=prefect_worker_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-prefect-worker-role-arn",
         )

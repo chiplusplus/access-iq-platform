@@ -185,6 +185,42 @@ def test_endpoint_sg_ingress_443() -> None:
     )
 
 
+def test_prefect_port_4200_ingress_rule() -> None:
+    """ECS SG has ingress on port 4200 from Platform CIDR for Prefect server API."""
+    tpl = _template()
+    sgs = tpl.find_resources("AWS::EC2::SecurityGroup")
+    found = False
+    for _logical_id, resource in sgs.items():
+        props = resource.get("Properties", {})
+        ingress_rules = props.get("SecurityGroupIngress", [])
+        for rule in ingress_rules:
+            if (
+                rule.get("CidrIp") == "10.10.0.0/16"
+                and rule.get("FromPort") == 4200
+                and rule.get("ToPort") == 4200
+            ):
+                found = True
+    assert found, "Expected ECS SG ingress rule for port 4200 from platform CIDR 10.10.0.0/16"
+
+
+def test_prefect_port_4200_egress_rule() -> None:
+    """ECS SG has egress on port 4200 to Platform CIDR for Prefect worker -> server."""
+    tpl = _template()
+    sgs = tpl.find_resources("AWS::EC2::SecurityGroup")
+    found = False
+    for _logical_id, resource in sgs.items():
+        props = resource.get("Properties", {})
+        egress_rules = props.get("SecurityGroupEgress", [])
+        for rule in egress_rules:
+            if (
+                rule.get("CidrIp") == "10.10.0.0/16"
+                and rule.get("FromPort") == 4200
+                and rule.get("ToPort") == 4200
+            ):
+                found = True
+    assert found, "Expected ECS SG egress rule for port 4200 to platform CIDR 10.10.0.0/16"
+
+
 def test_synth_succeeds_without_trust_vpc_id() -> None:
     app = App(context={})
     stack = NetworkStack(app, "Test", cfg=_cfg())

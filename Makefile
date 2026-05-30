@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest dbt tunnel tunnel-stop tunnel-env
+.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest pipeline dbt tunnel tunnel-stop tunnel-env
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -54,8 +54,8 @@ infra-destroy:  ## Destroy CDK stacks
 	cd infra && uv run cdk destroy --all --force $(CDK_CONTEXT)
 
 # ── Session orchestration ───────────────────────────────────────────
-up:  ## Deploy Trust + Platform stacks (SKIP_GENERATE=1 reuse data, SKIP_SEED=1 infra only)
-	./scripts/session.sh up $(if $(SKIP_GENERATE),--skip-generate) $(if $(SKIP_SEED),--skip-seed)
+up:  ## Deploy Trust + Platform stacks (SKIP_GENERATE=1 reuse data, SKIP_SEED=1 infra only, SKIP_INFRA=1 reuse stacks)
+	./scripts/session.sh up $(if $(SKIP_GENERATE),--skip-generate) $(if $(SKIP_SEED),--skip-seed) $(if $(SKIP_INFRA),--skip-infra)
 
 down:  ## Destroy all stacks
 	./scripts/session.sh down
@@ -65,6 +65,9 @@ status:  ## Show current stack states
 
 ingest:  ## Run Bronze ingestion on ECS Fargate (3 parallel tasks)
 	./scripts/session.sh ingest
+
+pipeline:  ## Trigger full Prefect pipeline flow run (Bronze -> Silver -> GE -> Gold -> Export)
+	./scripts/session.sh pipeline
 
 dbt:  ## Run dbt command (e.g., make dbt CMD="run --select silver")
 	eval $$(./scripts/tunnel.sh env) && cd dbt && uv run dbt $(CMD) --profiles-dir .

@@ -55,10 +55,10 @@ def _template() -> Template:
     return Template.from_stack(stack)
 
 
-def test_four_iam_roles_exist() -> None:
-    """IngestionRoleStack should create exactly 4 IAM roles."""
+def test_five_iam_roles_exist() -> None:
+    """IngestionRoleStack should create exactly 5 IAM roles."""
     tpl = _template()
-    tpl.resource_count_is("AWS::IAM::Role", 4)
+    tpl.resource_count_is("AWS::IAM::Role", 5)
 
 
 def test_ecs_task_role_trust_policy() -> None:
@@ -263,6 +263,27 @@ def test_operator_role_has_pass_role_permission() -> None:
             }
         ),
     )
+
+
+def test_ecs_task_role_has_sns_publish() -> None:
+    """ECS task role has sns:Publish for pipeline on_failure alerting (Phase 7)."""
+    tpl = _template()
+    policies = tpl.find_resources("AWS::IAM::Policy")
+    found = False
+    for _lid, policy in policies.items():
+        statements = policy.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+        for stmt in statements:
+            actions = stmt.get("Action", [])
+            if isinstance(actions, str):
+                actions = [actions]
+            if "sns:Publish" in actions:
+                resource_str = str(stmt.get("Resource", ""))
+                assert "ingestion-alerts" in resource_str, (
+                    "sns:Publish should be scoped to ingestion-alerts topic"
+                )
+                found = True
+                break
+    assert found, "ECS task role missing sns:Publish permission"
 
 
 def test_sso_role_unchanged() -> None:

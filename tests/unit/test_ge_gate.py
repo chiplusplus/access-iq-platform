@@ -6,8 +6,8 @@ Validates:
 - run_ge_gate.py writes results to _dq_results table
 - run_ge_gate.py handles missing REDSHIFT_DSN gracefully
 
-Note: great_expectations and psycopg2 are not installed in the dev venv (they live in
-the flows subpackage, installed only in Phase 7). All GE + psycopg2 imports are
+Note: great_expectations and redshift_connector are not installed in the dev venv (they live in
+the flows subpackage, installed only in Phase 7). All GE + redshift_connector imports are
 patched at sys.modules level before the script module is loaded.
 """
 
@@ -38,11 +38,11 @@ _GX_STUB.expectations = types.SimpleNamespace(  # type: ignore[attr-defined]
 )
 _GX_STUB.Checkpoint = MagicMock()  # type: ignore[attr-defined]
 
-_PSYCOPG2_STUB = types.ModuleType("psycopg2")
-_PSYCOPG2_STUB.connect = MagicMock()  # type: ignore[attr-defined]
+_REDSHIFT_CONNECTOR_STUB = types.ModuleType("redshift_connector")
+_REDSHIFT_CONNECTOR_STUB.connect = MagicMock()  # type: ignore[attr-defined]
 
 sys.modules.setdefault("great_expectations", _GX_STUB)
-sys.modules.setdefault("psycopg2", _PSYCOPG2_STUB)
+sys.modules.setdefault("redshift_connector", _REDSHIFT_CONNECTOR_STUB)
 
 # ---------------------------------------------------------------------------
 # Load the script module
@@ -176,8 +176,8 @@ class TestGEResultsWrite:
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch("psycopg2.connect", return_value=mock_conn):
-            write_results_to_redshift("postgresql://user:pass@host/db", results)
+        with patch("redshift_connector.connect", return_value=mock_conn):
+            write_results_to_redshift(results)
 
         # CREATE SCHEMA + CREATE TABLE + DELETE today's rows + one INSERT per table
         assert mock_cursor.execute.call_count == 3 + len(SILVER_TABLES)
@@ -191,8 +191,8 @@ class TestGEResultsWrite:
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch("psycopg2.connect", return_value=mock_conn):
-            write_results_to_redshift("postgresql://user:pass@host/db", results)
+        with patch("redshift_connector.connect", return_value=mock_conn):
+            write_results_to_redshift(results)
 
         schema_call_sql: str = mock_cursor.execute.call_args_list[0][0][0]
         assert "CREATE SCHEMA IF NOT EXISTS" in schema_call_sql

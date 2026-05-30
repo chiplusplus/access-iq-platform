@@ -1,0 +1,28 @@
+# Prefect deployment config for Access-IQ pipeline (self-hosted server).
+# Deploy with: PREFECT_API_URL=http://localhost:4200/api prefect deploy --prefect-file flows/prefect.yaml
+name: access-iq-flows
+prefect-version: "3.7.2"
+
+deployments:
+  - name: dev
+    flow_name: daily-ingest
+    entrypoint: flows/access_iq_flows/daily_ingest.py:daily_ingest
+    pull:
+      - prefect.deployments.steps.set_working_directory:
+          directory: /app
+    work_pool:
+      name: access-iq-dev-pipeline
+      work_queue_name: default
+      job_variables:
+        image: "{{ $PIPELINE_IMAGE_URI }}"
+        cpu: 1024
+        memory: 2048
+        cluster: "{{ $ECS_CLUSTER_ARN }}"
+        task_role_arn: "{{ $ECS_TASK_ROLE_ARN }}"
+        execution_role_arn: "{{ $ECS_EXECUTION_ROLE_ARN }}"
+    schedules:
+      - cron: "0 * * * *"
+        timezone: "Europe/London"
+        active: true # temporarily hourly for schedule verification
+    parameters:
+      env: dev

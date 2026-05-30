@@ -97,7 +97,16 @@ class WarehouseStack(Stack):
             description="Spectrum: S3 read on lake + Glue Catalog read/partition management",
         )
         lake_bucket.grant_read(spectrum_role)
-        lake_key.grant_decrypt(spectrum_role)
+        # Gold export: UNLOAD writes Parquet to gold_export/ prefix (Phase 7, D-05)
+        lake_bucket.grant_write(spectrum_role, "gold_export/*")
+        # UNLOAD also requires s3:GetBucketAcl on the bucket itself
+        spectrum_role.add_to_principal_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetBucketAcl"],
+                resources=[lake_bucket.bucket_arn],
+            )
+        )
+        lake_key.grant_encrypt_decrypt(spectrum_role)
         spectrum_role.add_to_principal_policy(
             iam.PolicyStatement(
                 actions=[
@@ -295,6 +304,11 @@ class WarehouseStack(Stack):
                 redshift_sg,
                 ec2.Port.tcp(5439),
                 "Forward to Redshift",
+            )
+            tunnel_sg.add_egress_rule(
+                ecs_task_sg,
+                ec2.Port.tcp(4200),
+                "Forward to Prefect server",
             )
             redshift_sg.add_ingress_rule(
                 tunnel_sg,

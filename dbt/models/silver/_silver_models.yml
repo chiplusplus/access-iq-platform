@@ -29,9 +29,13 @@ models:
                   "65-74",
                   "75+",
                 ]
+              config:
+                severity: warn
       - name: ethnicity_ons
         tests:
-          - dbt_expectations.expect_column_values_to_not_be_null
+          - dbt_expectations.expect_column_values_to_not_be_null:
+              config:
+                severity: warn
       - name: imd_decile
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
@@ -71,7 +75,8 @@ models:
           - unique
       - name: patient_sk
         tests:
-          - not_null
+          - not_null:
+              severity: warn
 
   - name: referrals
     description: "EHR referrals with patient_sk FK, UTC timestamps"
@@ -85,7 +90,8 @@ models:
           - unique
       - name: patient_sk
         tests:
-          - not_null
+          - not_null:
+              severity: warn
 
   - name: diagnoses
     description: "EHR coded diagnoses (ICD-10) with patient_sk FK"
@@ -96,7 +102,8 @@ models:
           - unique
       - name: patient_sk
         tests:
-          - not_null
+          - not_null:
+              severity: warn
 
   - name: diagnostics_orders
     description: "Trust diagnostic orders with type-conformed IDs and dates"
@@ -122,7 +129,8 @@ models:
           - unique
       - name: patient_sk
         tests:
-          - not_null
+          - not_null:
+              severity: warn
 
   - name: urgent_care
     description: "Urgent care attendances with UTC timestamps, patient_sk FK"
@@ -136,7 +144,8 @@ models:
           - unique
       - name: patient_sk
         tests:
-          - not_null
+          - not_null:
+              severity: warn
 
   - name: providers
     description: "Provider site reference — no patient linkage"

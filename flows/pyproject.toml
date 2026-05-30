@@ -11,6 +11,11 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "boto3>=1.28",
     "structlog>=23.1",
+    "prefect>=3.7,<4.0",
+    "prefect-aws>=0.7,<1.0",
+    "pyarrow>=14.0",
+    "access-iq-ingestion",
+    "dbt-redshift==1.10.1",
 ]
 
 [build-system]
