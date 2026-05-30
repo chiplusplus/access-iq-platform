@@ -13,7 +13,7 @@ lint:  ## Lint code with ruff
 	ruff check .
 
 type:  ## Type-check with mypy
-	mypy .
+	mypy
 
 test:  ## Run unit tests with coverage
 	pytest --cov=access_iq
