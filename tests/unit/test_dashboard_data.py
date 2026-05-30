@@ -130,8 +130,8 @@ class TestGoldTables:
     """Tests for GOLD_TABLES constant."""
 
     def test_gold_tables_count(self) -> None:
-        """GOLD_TABLES contains exactly 8 tables."""
-        assert len(GOLD_TABLES) == 8
+        """GOLD_TABLES contains all 10 Gold models."""
+        assert len(GOLD_TABLES) == 10
 
     def test_gold_tables_contains_facts(self) -> None:
         """All four fact tables are in GOLD_TABLES."""

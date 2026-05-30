@@ -18,6 +18,8 @@ GOLD_TABLES: frozenset[str] = frozenset(
         "fct_utilisation",
         "dim_patient",
         "dim_site",
+        "dim_specialty",
+        "dim_ethnicity",
         "dim_imd",
         "dim_date",
     ]
