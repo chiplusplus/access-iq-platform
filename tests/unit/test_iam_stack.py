@@ -331,6 +331,22 @@ class TestDashboardReaderUser:
                         break
         assert found, "Dashboard reader policy missing s3:ListBucket with gold_export/* condition"
 
+    def test_dashboard_reader_kms_decrypt(self) -> None:
+        """Dashboard reader has kms:Decrypt on the lake key for encrypted Gold Parquet."""
+        tpl = _template()
+        policies = tpl.find_resources("AWS::IAM::Policy")
+        found = False
+        for _lid, policy in policies.items():
+            stmts = policy.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+            for stmt in stmts:
+                actions = stmt.get("Action", [])
+                if isinstance(actions, str):
+                    actions = [actions]
+                if "kms:Decrypt" in actions:
+                    found = True
+                    break
+        assert found, "Dashboard reader missing kms:Decrypt grant on lake key"
+
     def test_dashboard_reader_access_key_exists(self) -> None:
         """Dashboard reader IAM access key resource exists."""
         tpl = _template()

@@ -389,6 +389,8 @@ class IngestionRoleStack(Stack):
         )
         dashboard_policy.attach_to_user(dashboard_user)
 
+        lake_key.grant_decrypt(dashboard_user)
+
         # Access key for Streamlit Community Cloud secrets
         access_key = iam.AccessKey(self, "DashboardReaderKey", user=dashboard_user)
 
