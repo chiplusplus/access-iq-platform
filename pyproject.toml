@@ -38,7 +38,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "infra"]
+src = ["src", "infra", "dashboard"]
 fix = true
 
 [tool.ruff.lint]
@@ -47,7 +47,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "infra", "flows"]
+pythonpath = ["src", "infra", "flows", "dashboard"]
 addopts = "--maxfail=1 -m 'not integration'"
 markers = [
     "integration: tests that run against live AWS infrastructure (requires deployed stacks)",
@@ -65,6 +65,10 @@ exclude = "infra/cdk.out/.*"
 
 [[tool.mypy.overrides]]
 module = "data_profiling.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["dashboard.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
