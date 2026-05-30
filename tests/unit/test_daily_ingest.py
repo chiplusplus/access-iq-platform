@@ -39,10 +39,10 @@ sys.modules.setdefault("dbt", _DBT)
 sys.modules.setdefault("dbt.cli", _DBT_CLI)
 sys.modules.setdefault("dbt.cli.main", _DBT_CLI_MAIN)
 
-# Stub psycopg2
-_PSYCOPG2 = types.ModuleType("psycopg2")
-_PSYCOPG2.connect = MagicMock()
-sys.modules.setdefault("psycopg2", _PSYCOPG2)
+# Stub redshift_connector
+_REDSHIFT_CONNECTOR = types.ModuleType("redshift_connector")
+_REDSHIFT_CONNECTOR.connect = MagicMock()
+sys.modules.setdefault("redshift_connector", _REDSHIFT_CONNECTOR)
 
 # ---------------------------------------------------------------------------
 # Now import flow module (prefect stubs are in place)
@@ -90,6 +90,9 @@ class TestDailyIngestChain:
             call_order.append("submit_trust_s3")
             return s3_future
 
+        def mock_dbt_spectrum():
+            call_order.append("dbt_spectrum")
+
         def mock_dbt_silver():
             call_order.append("dbt_silver")
 
@@ -106,6 +109,7 @@ class TestDailyIngestChain:
             patch("access_iq_flows.daily_ingest.task_ingest_postgres") as mock_pg,
             patch("access_iq_flows.daily_ingest.task_ingest_sftp") as mock_sftp,
             patch("access_iq_flows.daily_ingest.task_ingest_trust_s3") as mock_s3,
+            patch("access_iq_flows.daily_ingest.run_dbt_spectrum", side_effect=mock_dbt_spectrum),
             patch("access_iq_flows.daily_ingest.run_dbt_silver", side_effect=mock_dbt_silver),
             patch("access_iq_flows.daily_ingest.run_ge_gate", side_effect=mock_ge_gate),
             patch("access_iq_flows.daily_ingest.run_dbt_gold", side_effect=mock_dbt_gold),
@@ -126,7 +130,8 @@ class TestDailyIngestChain:
         assert "submit_trust_s3" in call_order
 
         # Sequential steps follow ingestion
-        assert call_order.index("dbt_silver") > call_order.index("submit_postgres")
+        assert call_order.index("dbt_spectrum") > call_order.index("submit_postgres")
+        assert call_order.index("dbt_silver") > call_order.index("dbt_spectrum")
         assert call_order.index("ge_gate") > call_order.index("dbt_silver")
         assert call_order.index("dbt_gold") > call_order.index("ge_gate")
         assert call_order.index("export_gold") > call_order.index("dbt_gold")
@@ -142,6 +147,7 @@ class TestDailyIngestChain:
             patch("access_iq_flows.daily_ingest.task_ingest_postgres") as mock_pg,
             patch("access_iq_flows.daily_ingest.task_ingest_sftp") as mock_sftp,
             patch("access_iq_flows.daily_ingest.task_ingest_trust_s3") as mock_s3,
+            patch("access_iq_flows.daily_ingest.run_dbt_spectrum"),
             patch("access_iq_flows.daily_ingest.run_dbt_silver"),
             patch("access_iq_flows.daily_ingest.run_ge_gate"),
             patch("access_iq_flows.daily_ingest.run_dbt_gold"),

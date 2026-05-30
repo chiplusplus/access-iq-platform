@@ -51,10 +51,9 @@ def run_ge_gate() -> None:
             "Check Silver tables exist and GE suites are configured."
         )
 
-    dsn = os.environ["REDSHIFT_DSN"]
-    bucket = os.environ["PLATFORM_BUCKET"]
+    bucket = os.environ.get("ACCESS_IQ_PLATFORM_BUCKET") or os.environ["PLATFORM_BUCKET"]
 
-    mod.write_results_to_redshift(dsn, results)
+    mod.write_results_to_redshift(results)
 
     s3_client = boto3.client(
         "s3",

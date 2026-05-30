@@ -167,6 +167,12 @@ class NetworkStack(Stack):
             ec2.Port.tcp(443),
             "HTTPS - ECR, Secrets Manager, CloudWatch via endpoints or NAT",
         )
+        # Redshift Serverless — dbt Silver/Gold builds connect on port 5439
+        ecs_sg.add_egress_rule(
+            ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),
+            ec2.Port.tcp(5439),
+            "Redshift Serverless (dbt builds)",
+        )
         # Prefect server API — ingress + egress within Platform VPC (Phase 7)
         ecs_sg.add_ingress_rule(
             ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),

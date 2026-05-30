@@ -106,7 +106,7 @@ class WarehouseStack(Stack):
                 resources=[lake_bucket.bucket_arn],
             )
         )
-        lake_key.grant_decrypt(spectrum_role)
+        lake_key.grant_encrypt_decrypt(spectrum_role)
         spectrum_role.add_to_principal_policy(
             iam.PolicyStatement(
                 actions=[

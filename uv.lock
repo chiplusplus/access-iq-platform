@@ -49,6 +49,7 @@ source = { editable = "flows" }
 dependencies = [
     { name = "access-iq-ingestion", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
+    { name = "dbt-redshift", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "great-expectations", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "prefect", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "prefect-aws", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
@@ -64,6 +65,7 @@ dependencies = [
 requires-dist = [
     { name = "access-iq-ingestion", editable = "src/access_iq" },
     { name = "boto3", specifier = ">=1.28" },
+    { name = "dbt-redshift", specifier = "==1.10.1" },
     { name = "great-expectations", specifier = ">=1.17,<2.0" },
     { name = "prefect", specifier = ">=3.7,<4.0" },
     { name = "prefect-aws", specifier = ">=0.7,<1.0" },

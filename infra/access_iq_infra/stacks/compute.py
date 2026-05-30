@@ -221,6 +221,13 @@ class ComputeStack(Stack):
                     f"access-iq/{cfg.env_name}/redshift-dsn",
                 )
             ),
+            "REDSHIFT_PASSWORD": ecs.Secret.from_secrets_manager(
+                _sm.from_secret_name_v2(
+                    self,
+                    "RedshiftPasswordSecret",
+                    f"access-iq/{cfg.env_name}/redshift-password",
+                )
+            ),
         }
 
         # Merge ALL source env maps (postgres + sftp + trust-s3 runtime config JSON blobs)
@@ -239,6 +246,7 @@ class ComputeStack(Stack):
                 "DBT_TARGET": "prod",
                 "DBT_PROFILES_DIR": "/app/dbt",
                 "DBT_PROJECT_DIR": "/app/dbt",
+                "BRONZE_S3_PREFIX": f"s3://{platform_bucket.bucket_name}/bronze",
                 "PREFECT_API_URL": "http://prefect-server.access-iq.local:4200/api",
             }
         )
@@ -246,6 +254,10 @@ class ComputeStack(Stack):
             pipeline_env["REDSHIFT_LAMBDA_UDF_ROLE_ARN"] = warehouse_stack.lambda_udf_role.role_arn
             pipeline_env["HMAC_LAMBDA_NAME"] = warehouse_stack.hmac_lambda.function_name
             pipeline_env["SPECTRUM_ROLE_ARN"] = warehouse_stack.spectrum_role.role_arn
+            pipeline_env["REDSHIFT_HOST"] = (
+                warehouse_stack.workgroup.attr_workgroup_endpoint_address
+            )
+            pipeline_env["REDSHIFT_USER"] = "admin"
         if observability_stack is not None:
             pipeline_env["ALERT_SNS_TOPIC_ARN"] = observability_stack.sns_topic.topic_arn
 

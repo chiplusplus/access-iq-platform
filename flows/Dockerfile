@@ -10,11 +10,15 @@ COPY src/access_iq/ ./src/access_iq/
 # Copy flows package
 COPY flows/ ./flows/
 
-# Single venv: ingestion + flows (prefect, prefect-aws)
+# Copy dbt project
+COPY dbt/ ./dbt/
+
+# Single venv: ingestion + flows + dbt (prefect, prefect-aws, dbt-redshift)
 RUN uv venv .venv && \
     uv pip install --python .venv/bin/python \
         ./src/access_iq/ \
-        ./flows/
+        ./flows/ \
+        ./dbt/
 
 # Add venv to PATH so `prefect` and `python` resolve without full path
 ENV PATH="/app/.venv/bin:$PATH"

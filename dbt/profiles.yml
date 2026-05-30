@@ -13,15 +13,13 @@ access_iq:
       threads: 4
     prod:
       type: redshift
-      method: iam
+      method: database
       host: "{{ env_var('REDSHIFT_HOST', 'localhost') }}"
       port: 5439
-      user: "{{ env_var('REDSHIFT_USER', 'dbt_prod') }}"
+      user: "{{ env_var('REDSHIFT_USER', 'admin') }}"
+      password: "{{ env_var('REDSHIFT_PASSWORD', '') }}"
       dbname: dev
       schema: bronze_external
-      region: eu-west-2
-      autocreate: true
-      db_groups: []
       threads: 4
     ci:
       # Database method with dummy credentials for CI parse/compile (no live connection needed)

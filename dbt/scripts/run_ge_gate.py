@@ -8,7 +8,7 @@ Results written to:
   - S3 _dq/<run_id>/ge_results.json (for REQ-DQ-02 observability)
 
 Usage:
-  REDSHIFT_DSN=postgresql+psycopg2://... PLATFORM_BUCKET=... python dbt/scripts/run_ge_gate.py
+  REDSHIFT_HOST=... REDSHIFT_USER=... PLATFORM_BUCKET=... python dbt/scripts/run_ge_gate.py
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from datetime import date
 
 import boto3
 import great_expectations as gx
-import psycopg2
+import redshift_connector
 import structlog
 
 log = structlog.get_logger(__name__)
@@ -90,16 +90,20 @@ def build_suite_for_table(
 
 
 def write_results_to_redshift(
-    dsn: str,
     results: list[GERunResult],
 ) -> None:
     """Write GE run results to gold._dq_results table."""
-    # Parse DSN for psycopg2 (strip sqlalchemy prefix if present)
-    conn_str = dsn.replace("redshift+psycopg2://", "postgresql://").replace(
-        "postgresql+psycopg2://", "postgresql://"
-    )
+    host = os.environ.get("REDSHIFT_HOST", "localhost")
+    port = int(os.environ.get("REDSHIFT_PORT", "5439"))
+    user = os.environ.get("REDSHIFT_USER", "admin")
+    password = os.environ.get("REDSHIFT_PASSWORD", "")
+    dbname = os.environ.get("REDSHIFT_DBNAME", "dev")
+    sslmode = os.environ.get("REDSHIFT_SSLMODE", "prefer")
+    use_ssl = sslmode in ("require", "verify-ca", "verify-full", "prefer")
 
-    conn = psycopg2.connect(conn_str, sslmode="prefer")
+    conn = redshift_connector.connect(
+        host=host, port=port, user=user, password=password, database=dbname, ssl=use_ssl
+    )
     try:
         with conn.cursor() as cur:
             cur.execute("CREATE SCHEMA IF NOT EXISTS gold")
@@ -147,7 +151,7 @@ def write_results_to_s3(
         Body=body.encode("utf-8"),
         ContentType="application/json",
     )
-    kms_key = os.environ.get("LAKE_KMS_KEY_ARN", "")
+    kms_key = os.environ.get("ACCESS_IQ_LAKE_KMS_KEY_ARN") or os.environ.get("LAKE_KMS_KEY_ARN", "")
     if kms_key:
         put_kwargs["ServerSideEncryption"] = "aws:kms"
         put_kwargs["SSEKMSKeyId"] = kms_key
@@ -158,20 +162,27 @@ def write_results_to_s3(
 
 def _build_dsn() -> str:
     """Build SQLAlchemy DSN from individual env vars set by tunnel.sh."""
-    if dsn := os.environ.get("REDSHIFT_DSN"):
-        return dsn.replace("postgresql+psycopg2://", "redshift+psycopg2://")
+    from sqlalchemy import URL
+
     host = os.environ.get("REDSHIFT_HOST", "localhost")
-    port = os.environ.get("REDSHIFT_PORT", "5439")
+    port = int(os.environ.get("REDSHIFT_PORT", "5439"))
     user = os.environ.get("REDSHIFT_USER", "admin")
     password = os.environ.get("REDSHIFT_PASSWORD", "")
     dbname = os.environ.get("REDSHIFT_DBNAME", "dev")
-    sslmode = os.environ.get("REDSHIFT_SSLMODE", "prefer")
-    return f"redshift+psycopg2://{user}:{password}@{host}:{port}/{dbname}?sslmode={sslmode}"
+
+    return URL.create(
+        drivername="redshift+redshift_connector",
+        username=user,
+        password=password,
+        host=host,
+        port=port,
+        database=dbname,
+    ).render_as_string(hide_password=False)
 
 
 def _resolve_bucket() -> str:
     """Resolve S3 bucket from PLATFORM_BUCKET or BRONZE_S3_PREFIX."""
-    if bucket := os.environ.get("PLATFORM_BUCKET"):
+    if bucket := os.environ.get("ACCESS_IQ_PLATFORM_BUCKET") or os.environ.get("PLATFORM_BUCKET"):
         return bucket
     prefix = os.environ.get("BRONZE_S3_PREFIX", "")
     if prefix.startswith("s3://"):
@@ -279,13 +290,12 @@ def publish_cloudwatch_metrics(results: list[GERunResult], failures: list[GERunR
 
 def main() -> None:
     """Run GE gate: validate Silver tables, write results, exit with status."""
-    dsn = _build_dsn()
     bucket = _resolve_bucket()
 
     results = run_ge_validation()
 
     # Write to Redshift _dq_results
-    write_results_to_redshift(dsn, results)
+    write_results_to_redshift(results)
     log.info("redshift_results_written", count=len(results))
 
     # Publish to S3

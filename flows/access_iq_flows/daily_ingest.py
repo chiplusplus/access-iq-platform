@@ -1,4 +1,4 @@
-"""Daily ingestion pipeline flow — Bronze -> Silver -> GE -> Gold -> Export.
+"""Daily ingestion pipeline flow — Bronze -> Spectrum -> Silver -> GE -> Gold -> Export.
 
 Single ECS task runs the entire flow (D-01). Each step is a @task for
 Prefect UI visibility (D-02). Ingestion called as Python imports (D-03).
@@ -22,7 +22,7 @@ from access_iq.ingestion.trust_s3 import (
 )
 from access_iq.logging_config import configure_logging
 from access_iq_flows.alerts import sns_on_failure
-from access_iq_flows.dbt_tasks import run_dbt_gold, run_dbt_silver
+from access_iq_flows.dbt_tasks import run_dbt_gold, run_dbt_silver, run_dbt_spectrum
 from access_iq_flows.export_tasks import export_gold_to_s3
 from access_iq_flows.ge_tasks import run_ge_gate
 
@@ -126,7 +126,7 @@ def task_ingest_trust_s3(run_date: str, settings: Settings) -> dict:
     retries=0,
 )
 def daily_ingest(run_date: str | None = None, env: str = "dev") -> None:
-    """End-to-end pipeline: Bronze ingest -> dbt Silver -> GE gate -> dbt Gold -> Gold export.
+    """End-to-end pipeline: Bronze ingest -> Spectrum -> dbt Silver -> GE gate -> dbt Gold -> Gold export.
 
     All steps run in a single ECS task (D-01). Each step is a @task for
     Prefect UI visibility (D-02).
@@ -159,16 +159,19 @@ def daily_ingest(run_date: str | None = None, env: str = "dev") -> None:
 
     log.info("bronze_ingestion_complete")
 
-    # Step 2: dbt Silver build
+    # Step 2: Refresh Spectrum external tables + partitions
+    run_dbt_spectrum()
+
+    # Step 3: dbt Silver build
     run_dbt_silver()
 
-    # Step 3: GE validation gate (blocks Gold on failure)
+    # Step 4: GE validation gate (blocks Gold on failure)
     run_ge_gate()
 
-    # Step 4: dbt Gold build
+    # Step 5: dbt Gold build
     run_dbt_gold()
 
-    # Step 5: Gold Parquet export to S3 (D-05, D-06)
+    # Step 6: Gold Parquet export to S3 (D-05, D-06)
     export_gold_to_s3(run_date=effective_date)
 
     log.info("pipeline_complete", run_date=effective_date)

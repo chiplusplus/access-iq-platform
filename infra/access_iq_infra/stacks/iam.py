@@ -131,12 +131,13 @@ class IngestionRoleStack(Stack):
                     resources=[
                         f"arn:aws:s3:::{platform_bucket.bucket_name}/_manifests/*",
                         f"arn:aws:s3:::{platform_bucket.bucket_name}/bronze/*",
+                        f"arn:aws:s3:::{platform_bucket.bucket_name}/_dq/*",
                     ],
                 ),
                 iam.PolicyStatement(
                     actions=["s3:ListBucket"],
                     resources=[f"arn:aws:s3:::{platform_bucket.bucket_name}"],
-                    conditions={"StringLike": {"s3:prefix": ["bronze/*", "_manifests/*"]}},
+                    conditions={"StringLike": {"s3:prefix": ["bronze/*", "_manifests/*", "_dq/*"]}},
                 ),
             ],
         )

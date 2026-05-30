@@ -76,14 +76,14 @@ cmd_up() {
   done
 
   echo ""
-  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Ingest → dbt Spectrum"
+  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → dbt Spectrum → Prefect"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
   [ "$skip_infra" = true ] && echo "  Skipping infrastructure deployments (reusing existing stacks)"
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
-  step_start "1/9" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
+  step_start "1/8" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust deploy (--skip-infra)"
   elif [ "$skip_seed" = true ]; then
@@ -96,12 +96,12 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/9" "Read Trust outputs" "<5s"
+  step_start "2/8" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/9" "Deploy Platform stacks" "5-10min"
+  step_start "3/8" "Deploy Platform stacks" "5-10min"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Platform deploy (--skip-infra)"
@@ -121,7 +121,7 @@ cmd_up() {
 
   step_done
 
-  step_start "4/9" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
+  step_start "4/8" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
   SPECTRUM_STMT_ID=""
   if [ "$skip_seed" = true ]; then
@@ -184,7 +184,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/9" "Redeploy Trust with routes and peering SG rules" "~2 min"
+  step_start "5/8" "Redeploy Trust with routes and peering SG rules" "~2 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust redeploy (--skip-infra)"
   else
@@ -201,7 +201,12 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "6/9" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/8" "Seed Platform secrets from Trust" "<30s"
+
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping secret seeding (--skip-infra)"
+    step_done
+  else
 
   local SECRET_PREFIX="access-iq/${CDK_ENV}"
 
@@ -340,14 +345,49 @@ cmd_up() {
     seed_secret "${SECRET_PREFIX}/sftp-private-key"  "$SFTP_PRIVATE_KEY_VAL"
   fi
 
+  # Seed Redshift credentials for dbt (extracts from Redshift-managed admin secret)
+  local RS_WORKGROUP="access-iq-${CDK_ENV}"
+  local RS_ADMIN_SECRET_ARN
+  RS_ADMIN_SECRET_ARN=$(aws redshift-serverless get-namespace \
+    --namespace-name "$RS_WORKGROUP" \
+    --query 'namespace.adminPasswordSecretArn' \
+    --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null)
+
+  if [ -n "$RS_ADMIN_SECRET_ARN" ] && [ "$RS_ADMIN_SECRET_ARN" != "None" ]; then
+    local RS_ADMIN_JSON
+    RS_ADMIN_JSON=$(aws secretsmanager get-secret-value \
+      --secret-id "$RS_ADMIN_SECRET_ARN" \
+      --query SecretString --output text \
+      --profile "$AWS_PROFILE" --region "$REGION")
+    local RS_USER RS_PASS RS_HOST
+    RS_USER=$(echo "$RS_ADMIN_JSON" | jq -r '.username')
+    RS_PASS=$(echo "$RS_ADMIN_JSON" | jq -r '.password')
+    RS_HOST=$(aws redshift-serverless get-workgroup \
+      --workgroup-name "$RS_WORKGROUP" \
+      --query 'workgroup.endpoint.address' \
+      --output text --profile "$AWS_PROFILE" --region "$REGION")
+    local RS_DSN="postgresql://${RS_USER}:${RS_PASS}@${RS_HOST}:5439/dev"
+    seed_secret "${SECRET_PREFIX}/redshift-dsn"      "$RS_DSN"
+    seed_secret "${SECRET_PREFIX}/redshift-password"  "$RS_PASS"
+    echo "  ✓ Redshift DSN + password seeded"
+  else
+    echo "  WARNING: Redshift admin secret not found — skipping redshift-dsn/password seeding"
+  fi
+
+  fi  # skip_infra
+
   step_done
 
   # Write .env for local tools (profiling, readiness gate) that use pydantic Settings.
   # ECS tasks get these from Secrets Manager; locally we use .env (gitignored).
-  local TRUST_BUCKET
-  TRUST_BUCKET=$(trust_output ExternalBucketName 2>/dev/null || echo "northshire-trust-external-exports")
+  # Skipped with --skip-infra since .env already exists from initial run.
+  if [ "$skip_infra" = true ]; then
+    echo "  Skipping .env write (--skip-infra, reusing existing .env)"
+  else
+    local TRUST_BUCKET
+    TRUST_BUCKET=$(trust_output ExternalBucketName 2>/dev/null || echo "northshire-trust-external-exports")
 
-  cat > "$PLATFORM_REPO/.env" <<EOF
+    cat > "$PLATFORM_REPO/.env" <<EOF
 ACCESS_IQ_ENV=${CDK_ENV}
 ACCESS_IQ_AWS_REGION=${REGION}
 ACCESS_IQ_PLATFORM_BUCKET=${PLATFORM_BUCKET}
@@ -361,18 +401,20 @@ SFTP_HOST=${SFTP_ENDPOINT}
 SFTP_PORT=22
 SFTP_USER=${SFTP_USER_VAL}
 SFTP_PRIVATE_KEY_PATH=${PLATFORM_REPO}/.secrets/sftp_key.pem
+BRONZE_S3_PREFIX=s3://${PLATFORM_BUCKET}/bronze
 EOF
 
-  # Write SFTP private key to a secured file (not inline in .env)
-  mkdir -p "$PLATFORM_REPO/.secrets"
-  chmod 700 "$PLATFORM_REPO/.secrets"
-  printf '%s\n' "$SFTP_PRIVATE_KEY_VAL" > "$PLATFORM_REPO/.secrets/sftp_key.pem"
-  chmod 600 "$PLATFORM_REPO/.secrets/sftp_key.pem"
+    # Write SFTP private key to a secured file (not inline in .env)
+    mkdir -p "$PLATFORM_REPO/.secrets"
+    chmod 700 "$PLATFORM_REPO/.secrets"
+    printf '%s\n' "$SFTP_PRIVATE_KEY_VAL" > "$PLATFORM_REPO/.secrets/sftp_key.pem"
+    chmod 600 "$PLATFORM_REPO/.secrets/sftp_key.pem"
 
-  echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
+    echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
+  fi
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/9" "Build and push ingestion image to ECR" "1-3 min"
+  step_start "7/8" "Build and push ingestion image to ECR" "1-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -390,17 +432,7 @@ EOF
 
   step_done
 
-  # ── Step 7: Run Bronze ingestion (all 3 sources) ──
-  if [ "$skip_seed" = true ]; then
-    echo "  Skipping Bronze ingestion (--skip-seed)"
-  else
-    cmd_ingest
-  fi
-
-  # cmd_ingest assumes an STS role and unsets AWS_PROFILE; restore it.
-  AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
-
-  # Verify Spectrum schema creation completed (submitted in step 4/7).
+  # Verify Spectrum schema creation completed (submitted in step 4/8).
   if [ -n "${SPECTRUM_STMT_ID:-}" ]; then
     local saved_profile="${AWS_PROFILE:-CHI-Engineer-222308823356}"
     local stmt_status="SUBMITTED"
@@ -424,8 +456,8 @@ EOF
     fi
   fi
 
-  # ── Step 8: Start tunnel, create Spectrum tables + partitions ──
-  step_start "8/9" "Create Spectrum external tables and register partitions" "30-60s"
+  # ── Step 8/8: Start tunnel + configure self-hosted Prefect ──
+  step_start "8/8" "Start tunnel + configure Prefect (work pool + flow deploy)" "30-60s"
 
   local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
   local TUNNEL_INSTANCE_ID
@@ -433,7 +465,7 @@ EOF
   local RS_ENDPOINT
   RS_ENDPOINT=$(platform_output warehouse WorkgroupEndpoint)
 
-  # Start SSM tunnel in background
+  # Start SSM tunnel in background (used by Prefect and manual dbt)
   aws ssm start-session \
     --target "$TUNNEL_INSTANCE_ID" \
     --document-name AWS-StartPortForwardingSessionToRemoteHost \
@@ -455,34 +487,11 @@ EOF
 
   if [ "$tunnel_ready" = true ]; then
     echo "  ✓ Tunnel connected"
-
-    if [ "$skip_seed" = true ]; then
-      echo "  Skipping Spectrum tables + partitions (--skip-seed)"
-    else
-      # Load Redshift credentials
-      eval "$("$PLATFORM_REPO/scripts/tunnel.sh" env)"
-
-      # Create external tables via dbt-external-tables
-      (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation stage_external_sources --profiles-dir .) \
-        && echo "  ✓ Spectrum external tables created" \
-        || echo "  WARNING: stage_external_sources failed — run manually via make dbt"
-
-      # Register partitions
-      (cd "$PLATFORM_REPO/dbt" && uv run dbt run-operation add_spectrum_partitions --profiles-dir .) \
-        && echo "  ✓ Partitions registered" \
-        || echo "  WARNING: add_spectrum_partitions failed — run manually via make dbt"
-    fi
   else
-    echo "  WARNING: Tunnel not ready after 30s — skipping dbt operations"
-    echo "  Run manually: make tunnel (terminal 1), make dbt CMD=\"run-operation stage_external_sources\" (terminal 2)"
+    echo "  WARNING: Tunnel not ready after 30s"
   fi
 
-  step_done
-
-  # ── Step 9/9: Configure self-hosted Prefect (work pool + flow deploy) ──
-  step_start "9/9" "Configure self-hosted Prefect (work pool + flow deploy)" "30-60s"
-
-  # Server and worker are ECS services started by CDK deploy (step 3/9).
+  # Server and worker are ECS services started by CDK deploy (step 3/8).
   # The server is in a private subnet -- use the Redshift tunnel instance as a jump host.
   # Cloud Map DNS registration requires a passing health check (start_period=60s + interval=30s),
   # so we wait for the ECS service to stabilise before attempting the tunnel.
@@ -667,7 +676,8 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
 
   session_summary
   echo ""
-  echo "  ✓ All stacks deployed, secrets seeded, image pushed, ingestion complete."
+  echo "  ✓ All stacks deployed, secrets seeded, image pushed."
+  echo "  ✓ Run 'make pipeline' to trigger ingestion via Prefect."
   echo "  ✓ SSM tunnel running on localhost:5439 (PID $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'unknown'))"
   echo "    Run dbt commands: make dbt CMD=\"...\""
   echo "    Stop tunnel: make down (or kill $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'PID'))"
