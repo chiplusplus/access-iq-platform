@@ -34,9 +34,9 @@ def get_data_source() -> str:
     if os.environ.get("DATA_SOURCE", "").lower() == "local":
         return "local"
     try:
-        if not st.secrets.get("AWS_ACCESS_KEY_ID"):
+        if not st.secrets["AWS_ACCESS_KEY_ID"]:
             return "local"
-    except Exception:
+    except (KeyError, Exception):
         log.warning("secrets_unavailable", exc_info=True)
         return "local"
     return "s3"
