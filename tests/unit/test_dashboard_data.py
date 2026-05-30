@@ -50,7 +50,7 @@ class TestGetDataSource:
         """Returns 's3' when st.secrets has AWS_ACCESS_KEY_ID."""
         monkeypatch.delenv("DATA_SOURCE", raising=False)
         mock_secrets = MagicMock()
-        mock_secrets.get.return_value = "AKIAEXAMPLE"
+        mock_secrets.__getitem__ = MagicMock(return_value="AKIAEXAMPLE")
         with patch("dashboard.lib.s3.st") as mock_st:
             mock_st.secrets = mock_secrets
             assert get_data_source() == "s3"
@@ -59,7 +59,7 @@ class TestGetDataSource:
         """Returns 'local' when st.secrets has no AWS key."""
         monkeypatch.delenv("DATA_SOURCE", raising=False)
         mock_secrets = MagicMock()
-        mock_secrets.get.return_value = ""
+        mock_secrets.__getitem__ = MagicMock(side_effect=KeyError("AWS_ACCESS_KEY_ID"))
         with patch("dashboard.lib.s3.st") as mock_st:
             mock_st.secrets = mock_secrets
             assert get_data_source() == "local"
