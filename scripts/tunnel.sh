@@ -102,9 +102,80 @@ cmd_prefect() {
     --profile "$AWS_PROFILE" --region "$REGION"
 }
 
+cmd_reconnect() {
+  local script_dir
+  script_dir="$(cd "$(dirname "$0")" && pwd)"
+  local repo_dir="$(dirname "$script_dir")"
+  local tunnel_pid_file="$repo_dir/.tunnel.pid"
+  local prefect_pid_file="$repo_dir/.prefect-tunnel.pid"
+
+  local instance_id
+  instance_id=$(stack_output TunnelInstanceId)
+  local rs_endpoint
+  rs_endpoint=$(stack_output WorkgroupEndpoint)
+
+  # Kill stale tunnels
+  for pidfile in "$tunnel_pid_file" "$prefect_pid_file"; do
+    if [ -f "$pidfile" ]; then
+      local old_pid
+      old_pid=$(cat "$pidfile")
+      kill "$old_pid" 2>/dev/null || true
+      rm -f "$pidfile"
+    fi
+  done
+
+  # Redshift tunnel
+  echo "Starting Redshift tunnel: localhost:${LOCAL_PORT} -> ${rs_endpoint}:5439"
+  aws ssm start-session \
+    --target "$instance_id" \
+    --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters "{\"host\":[\"${rs_endpoint}\"],\"portNumber\":[\"5439\"],\"localPortNumber\":[\"${LOCAL_PORT}\"]}" \
+    --profile "$AWS_PROFILE" --region "$REGION" &
+  echo $! > "$tunnel_pid_file"
+
+  # Wait for Redshift tunnel
+  for i in $(seq 1 15); do
+    if nc -z localhost "${LOCAL_PORT}" 2>/dev/null; then
+      echo "  ✓ Redshift tunnel connected (PID $(cat "$tunnel_pid_file"))"
+      break
+    fi
+    sleep 2
+  done
+
+  # Prefect tunnel
+  echo "Starting Prefect tunnel: localhost:4200 -> prefect-server.access-iq.local:4200"
+  aws ssm start-session \
+    --target "$instance_id" \
+    --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters '{"host":["prefect-server.access-iq.local"],"portNumber":["4200"],"localPortNumber":["4200"]}' \
+    --profile "$AWS_PROFILE" --region "$REGION" &
+  echo $! > "$prefect_pid_file"
+
+  # Wait for Prefect tunnel
+  local prefect_ready=false
+  for i in $(seq 1 20); do
+    if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
+      prefect_ready=true
+      break
+    fi
+    sleep 3
+  done
+
+  if [ "$prefect_ready" = true ]; then
+    echo "  ✓ Prefect tunnel connected (PID $(cat "$prefect_pid_file"))"
+    echo ""
+    echo "Prefect UI: http://localhost:4200"
+    echo "Run: export PREFECT_API_URL=http://localhost:4200/api"
+  else
+    echo "  ⚠ Prefect server not responding — tunnel may still be connecting"
+    echo "  Check: curl http://localhost:4200/api/health"
+  fi
+}
+
 case "${1:-tunnel}" in
-  env)     cmd_env ;;
-  tunnel)  cmd_tunnel ;;
-  prefect) cmd_prefect ;;
-  *)       echo "Usage: $0 [tunnel|env|prefect]"; exit 1 ;;
+  env)        cmd_env ;;
+  tunnel)     cmd_tunnel ;;
+  prefect)    cmd_prefect ;;
+  reconnect)  cmd_reconnect ;;
+  *)          echo "Usage: $0 [tunnel|env|prefect|reconnect]"; exit 1 ;;
 esac

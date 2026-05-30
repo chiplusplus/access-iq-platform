@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from aws_cdk import CfnOutput, Stack
+from aws_cdk import CfnOutput, SecretValue, Stack
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
 from aws_cdk import aws_secretsmanager as secretsmanager
@@ -358,3 +358,65 @@ class IngestionRoleStack(Stack):
             value=prefect_worker_role.role_arn,
             export_name=f"{cfg.app_name}-{cfg.env_name}-prefect-worker-role-arn",
         )
+
+        # ---------- Dashboard reader (D-17, Phase 8) ----------
+        dashboard_user = iam.User(
+            self,
+            "DashboardReaderUser",
+            user_name=f"{cfg.app_name}-{cfg.env_name}-dashboard-reader",
+        )
+
+        dashboard_policy = iam.Policy(
+            self,
+            "DashboardReaderPolicy",
+            statements=[
+                iam.PolicyStatement(
+                    actions=["s3:GetObject"],
+                    resources=[
+                        f"arn:aws:s3:::{platform_bucket.bucket_name}/gold_export/*",
+                    ],
+                ),
+                iam.PolicyStatement(
+                    actions=["s3:ListBucket"],
+                    resources=[
+                        f"arn:aws:s3:::{platform_bucket.bucket_name}",
+                    ],
+                    conditions={
+                        "StringLike": {"s3:prefix": ["gold_export/*"]},
+                    },
+                ),
+            ],
+        )
+        dashboard_policy.attach_to_user(dashboard_user)
+
+        lake_key.grant_decrypt(dashboard_user)
+
+        # Access key for Streamlit Community Cloud secrets
+        access_key = iam.AccessKey(self, "DashboardReaderKey", user=dashboard_user)
+
+        # Store access key ID in Secrets Manager
+        secretsmanager.Secret(
+            self,
+            "DashboardReaderSecret",
+            secret_name=f"{cfg.app_name}/{cfg.env_name}/dashboard-reader",
+            secret_string_value=SecretValue.unsafe_plain_text(
+                '{"access_key_id":"' + access_key.access_key_id + '"}'
+            ),
+            description="Dashboard reader IAM user access key ID"
+            " (secret key in CloudFormation output)",
+        )
+
+        CfnOutput(
+            self,
+            "DashboardReaderAccessKeyId",
+            value=access_key.access_key_id,
+            description="Dashboard reader IAM user access key ID",
+        )
+        CfnOutput(
+            self,
+            "DashboardReaderSecretKey",
+            value=access_key.secret_access_key.unsafe_unwrap(),
+            description="Dashboard reader IAM user secret access key (rotate after first use)",
+        )
+
+        self.dashboard_user = dashboard_user

@@ -1,4 +1,4 @@
-.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest pipeline dbt tunnel tunnel-stop tunnel-env
+.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest pipeline dbt rs-tunnel tunnel-stop tunnel-env reconnect dashboard
 
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup:  ## Create venv, install deps, install pre-commit hooks
@@ -13,7 +13,7 @@ lint:  ## Lint code with ruff
 	ruff check .
 
 type:  ## Type-check with mypy
-	mypy .
+	mypy
 
 test:  ## Run unit tests with coverage
 	pytest --cov=access_iq
@@ -73,7 +73,7 @@ dbt:  ## Run dbt command (e.g., make dbt CMD="run --select silver")
 	eval $$(./scripts/tunnel.sh env) && cd dbt && uv run dbt $(CMD) --profiles-dir .
 
 # ── Redshift tunnel ────────────────────────────────────────────────
-tunnel:  ## Start SSM port-forwarding tunnel to Redshift (localhost:5439, foreground)
+rs-tunnel:  ## Start SSM port-forwarding tunnel to Redshift only (localhost:5439, foreground)
 	./scripts/tunnel.sh
 
 tunnel-stop:  ## Kill background SSM tunnel started by make up
@@ -91,3 +91,9 @@ tunnel-stop:  ## Kill background SSM tunnel started by make up
 
 tunnel-env:  ## Print export commands for dbt Redshift credentials
 	@./scripts/tunnel.sh env
+
+dashboard:  ## Run Streamlit dashboard locally (reads from S3 if secrets.toml is configured)
+	cd dashboard && streamlit run app.py
+
+reconnect:  ## Re-establish SSM tunnels to Redshift + Prefect after session timeout
+	./scripts/tunnel.sh reconnect

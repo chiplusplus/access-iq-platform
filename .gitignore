@@ -15,6 +15,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!dashboard/lib/
 lib64/
 parts/
 sdist/
@@ -232,3 +233,11 @@ dbt/.user.yml
 
 .DS_Store
 .prefect-deploy.yaml
+.prefect-tunnel.pid
+
+# Streamlit secrets (D-17)
+.streamlit/secrets.toml
+
+# Dashboard local data (D-18) — sample gold committed for SCC local-mode fallback
+# data/gold/
+dashboard/.streamlit/secrets.toml
