@@ -16,6 +16,7 @@ from lib.data import (
     query_inequality_kpis,
     register_tables,
 )
+from lib.s3 import get_bucket
 
 # Map display labels to fct_inequality stratifier column values (T-08-01 allowlist)
 STRATIFIER_MAP: dict[str, str] = {
@@ -30,7 +31,7 @@ def _run() -> None:
     # --- Title + freshness badge ---
     st.title("Inequality")
     export_date = st.session_state.get("export_date")
-    bucket = st.session_state.get("bucket", "")
+    bucket = st.session_state.get("bucket") or get_bucket()
     st.caption(data_freshness_text(export_date))
 
     # --- Register tables (D-02) ---

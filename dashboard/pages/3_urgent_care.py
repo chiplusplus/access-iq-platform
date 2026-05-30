@@ -20,6 +20,7 @@ from lib.data import (
     query_urgent_care_kpis,
     register_tables,
 )
+from lib.s3 import get_bucket
 
 # Day ordering for heatmap (Mon-Sun)
 _DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -56,7 +57,7 @@ def _run() -> None:
     # --- Title + freshness badge ---
     st.title("Urgent Care")
     export_date = st.session_state.get("export_date")
-    bucket = st.session_state.get("bucket", "")
+    bucket = st.session_state.get("bucket") or get_bucket()
     st.caption(data_freshness_text(export_date))
 
     # --- Register tables (D-02 lazy-load) ---

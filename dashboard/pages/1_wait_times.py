@@ -14,13 +14,14 @@ from lib.data import (
     query_wait_trend,
     register_tables,
 )
+from lib.s3 import get_bucket
 
 
 def _run() -> None:
     # --- Title + freshness badge ---
     st.title("Wait Times")
     export_date = st.session_state.get("export_date")
-    bucket = st.session_state.get("bucket", "")
+    bucket = st.session_state.get("bucket") or get_bucket()
     st.caption(data_freshness_text(export_date))
 
     # --- Register tables (D-02 lazy-load) ---
