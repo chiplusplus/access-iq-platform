@@ -627,9 +627,9 @@ ${SUBNET_YAML}
               - "${ECS_TASK_SG_ID}"
           assignPublicIp: "DISABLED"
     schedules:
-      - cron: "0 2 * * *"
+      - cron: "0 * * * *"
         timezone: "Europe/London"
-        active: false
+        active: true
     parameters:
       env: ${CDK_ENV}
 EOYAML

@@ -21,8 +21,8 @@ deployments:
         task_role_arn: "{{ $ECS_TASK_ROLE_ARN }}"
         execution_role_arn: "{{ $ECS_EXECUTION_ROLE_ARN }}"
     schedules:
-      - cron: "0 2 * * *"
+      - cron: "0 * * * *"
         timezone: "Europe/London"
-        active: false # re-deployed each session (ephemeral DB)
+        active: true # temporarily hourly for schedule verification
     parameters:
       env: dev
