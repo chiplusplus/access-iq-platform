@@ -1,0 +1,35 @@
+graph LR
+    subgraph Trust["Trust Account (Northshire Hospital Sim)"]
+        RDS[(RDS Postgres<br/>EHR + Urgent Care)]
+        SFTP[Transfer Family<br/>SFTP Appointments]
+        TS3[Trust S3<br/>Diagnostics + Providers]
+    end
+
+    subgraph Platform["Platform Account (access-iq)"]
+        subgraph Compute["ECS Fargate"]
+            ING[3x Ingestion Tasks]
+            PFS[Prefect Server]
+            PFW[Prefect Worker]
+        end
+        S3L[(S3 Data Lake<br/>Bronze / Silver / Gold)]
+        KMS[KMS CMK<br/>Encryption]
+        RS[(Redshift Serverless<br/>Spectrum + dbt)]
+        CW[CloudWatch<br/>Logs + Alarms + Dashboard]
+        SNS[SNS<br/>Alert Topics]
+    end
+
+    ST[Streamlit<br/>Community Cloud]
+
+    RDS -->|VPC Peering| ING
+    SFTP -->|VPC Peering| ING
+    TS3 -->|Cross-account S3| ING
+    ING -->|Bronze Parquet| S3L
+    S3L -->|Spectrum| RS
+    RS -->|dbt Silver+Gold| RS
+    PFS -->|orchestrates| PFW
+    PFW -->|triggers| ING
+    PFW -->|dbt run| RS
+    RS -->|Gold export| S3L
+    S3L -->|Parquet read| ST
+    CW -->|alarm| SNS
+    KMS -.->|encrypts| S3L
