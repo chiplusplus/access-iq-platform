@@ -238,5 +238,5 @@ dbt/.user.yml
 # Streamlit secrets (D-17)
 .streamlit/secrets.toml
 
-# Dashboard local data (D-18)
-data/gold/
+# Dashboard local data (D-18) — sample gold committed for SCC local-mode fallback
+# data/gold/

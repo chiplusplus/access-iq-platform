@@ -10,6 +10,9 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_LOCAL_GOLD = _REPO_ROOT / "data" / "gold"
+
 GOLD_TABLES: frozenset[str] = frozenset(
     [
         "fct_wait_times",
@@ -77,7 +80,7 @@ def list_export_dates(bucket: str, table: str = "fct_wait_times") -> list[str]:
     return sorted(dates, reverse=True)
 
 
-def list_local_export_dates(base_dir: str = "./data/gold") -> list[str]:
+def list_local_export_dates(base_dir: str = "") -> list[str]:
     """Discover available export dates from local filesystem (D-04 local fallback).
 
     Scans for subdirectories matching export_date=YYYY-MM-DD pattern under
@@ -85,7 +88,7 @@ def list_local_export_dates(base_dir: str = "./data/gold") -> list[str]:
     If no export_date partitions exist, returns empty list -- pages handle
     empty by reading *.parquet directly without date partitioning.
     """
-    base = Path(base_dir)
+    base = Path(base_dir) if base_dir else _LOCAL_GOLD
     dates: set[str] = set()
     if not base.exists():
         log.warning("local_gold_dir_missing", path=str(base))
@@ -109,7 +112,8 @@ def parquet_path(table: str, export_date: str | None, bucket: str = "") -> str:
     if table not in GOLD_TABLES:
         raise ValueError(f"Table {table!r} not in GOLD_TABLES allowlist")
     if get_data_source() == "local":
+        gold = str(_LOCAL_GOLD)
         if export_date:
-            return f"./data/gold/{table}/export_date={export_date}/*.parquet"
-        return f"./data/gold/{table}/**/*.parquet"
+            return f"{gold}/{table}/export_date={export_date}/*.parquet"
+        return f"{gold}/{table}/**/*.parquet"
     return f"s3://{bucket}/gold_export/table={table}/export_date={export_date}/*.parquet"

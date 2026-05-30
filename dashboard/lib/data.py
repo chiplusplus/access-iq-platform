@@ -61,7 +61,7 @@ def data_freshness_text(export_date: str | None) -> str:
     now_utc = datetime.now(UTC).strftime("%H:%M")
     if get_data_source() == "local":
         label = f"export_date {export_date}" if export_date else "all files"
-        return f"Data: local ./data/gold/ ({label})  |  [WARNING] Not connected to S3"
+        return f"Data: sample Gold export ({label})  |  Source: local Parquet"
     return f"Data: export_date {export_date}  |  Loaded: {now_utc} UTC  |  Source: S3 gold_export/"
 
 

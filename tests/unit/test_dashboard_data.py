@@ -82,13 +82,13 @@ class TestParquetPath:
         """Local mode with export_date returns partitioned path."""
         monkeypatch.setenv("DATA_SOURCE", "local")
         result = parquet_path("fct_wait_times", "2026-05-30")
-        assert result == "./data/gold/fct_wait_times/export_date=2026-05-30/*.parquet"
+        assert result.endswith("/data/gold/fct_wait_times/export_date=2026-05-30/*.parquet")
 
     def test_local_path_format_no_date(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Local mode with None export_date reads all parquet."""
         monkeypatch.setenv("DATA_SOURCE", "local")
         result = parquet_path("fct_wait_times", None)
-        assert result == "./data/gold/fct_wait_times/**/*.parquet"
+        assert result.endswith("/data/gold/fct_wait_times/**/*.parquet")
 
     def test_invalid_table_raises(self) -> None:
         """Unknown table name raises ValueError."""
