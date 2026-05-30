@@ -42,7 +42,7 @@ def get_data_source() -> str:
 def get_bucket() -> str:
     """Return bucket name from st.secrets or env var."""
     try:
-        return st.secrets.get("PLATFORM_BUCKET", "")
+        return str(st.secrets.get("PLATFORM_BUCKET", ""))
     except Exception:
         log.warning("bucket_secret_unavailable", exc_info=True)
         return os.environ.get("PLATFORM_BUCKET", "")

@@ -16,7 +16,7 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 
 
-def _passthrough_decorator(*args, **kw):  # type: ignore[no-untyped-def]
+def _passthrough_decorator(*args: object, **kw: object):  # noqa: ANN401
     """Stub decorator that handles both @decorator and @decorator(...) forms."""
     if args and callable(args[0]):
         return args[0]
@@ -92,7 +92,7 @@ if _existing_st is not None:
     # Ensure session_state has expected keys
     if not getattr(_existing_st, "session_state", None):
         _existing_st.session_state = _ST.session_state  # type: ignore[attr-defined]
-    _ST = _existing_st  # type: ignore[assignment]
+    _ST = _existing_st
 else:
     sys.modules["streamlit"] = _ST
 
@@ -131,7 +131,7 @@ sys.modules.setdefault("duckdb", _DUCKDB)
 from dashboard.lib import data as _data_mod  # noqa: E402
 
 # Patch get_connection to return mock conn (avoids httpfs load)
-_data_mod.get_connection = lambda: _mock_conn
+_data_mod.get_connection = lambda: _mock_conn  # type: ignore[assignment]
 # Patch register_tables to no-op (avoids parquet file reads)
 _data_mod.register_tables = lambda *a, **k: None
 

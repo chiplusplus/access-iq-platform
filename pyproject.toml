@@ -61,7 +61,7 @@ warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
-exclude = "infra/cdk.out/.*"
+exclude = "(infra/cdk\\.out/.*|dashboard/)"
 
 [[tool.mypy.overrides]]
 module = "data_profiling.*"

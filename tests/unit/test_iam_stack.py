@@ -1,4 +1,4 @@
-"""CDK assertion tests for IngestionRoleStack -- SSO + ECS task + execution roles."""
+"""CDK assertion tests for IngestionRoleStack -- SSO + ECS task + execution + dashboard roles."""
 
 from __future__ import annotations
 
@@ -284,6 +284,57 @@ def test_ecs_task_role_has_sns_publish() -> None:
                 found = True
                 break
     assert found, "ECS task role missing sns:Publish permission"
+
+
+class TestDashboardReaderUser:
+    """Tests for dashboard reader IAM user (D-17, Phase 8)."""
+
+    def test_dashboard_reader_user_exists(self) -> None:
+        """Dashboard reader IAM user exists with correct name."""
+        tpl = _template()
+        tpl.has_resource_properties(
+            "AWS::IAM::User",
+            Match.object_like({"UserName": Match.string_like_regexp(".*dashboard-reader$")}),
+        )
+
+    def test_dashboard_reader_get_object_policy(self) -> None:
+        """Dashboard reader has s3:GetObject scoped to gold_export/* prefix."""
+        tpl = _template()
+        policies = tpl.find_resources("AWS::IAM::Policy")
+        found = False
+        for _lid, policy in policies.items():
+            stmts = policy.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+            for stmt in stmts:
+                action = stmt.get("Action", "")
+                if action == "s3:GetObject":
+                    resources = stmt.get("Resource", [])
+                    resource_str = str(resources)
+                    if "gold_export/*" in resource_str:
+                        found = True
+                        break
+        assert found, "Dashboard reader policy missing s3:GetObject on gold_export/*"
+
+    def test_dashboard_reader_list_bucket_policy(self) -> None:
+        """Dashboard reader has s3:ListBucket with gold_export/* prefix condition."""
+        tpl = _template()
+        policies = tpl.find_resources("AWS::IAM::Policy")
+        found = False
+        for _lid, policy in policies.items():
+            stmts = policy.get("Properties", {}).get("PolicyDocument", {}).get("Statement", [])
+            for stmt in stmts:
+                action = stmt.get("Action", "")
+                cond = stmt.get("Condition", {})
+                if action == "s3:ListBucket" and "StringLike" in cond:
+                    prefix_cond = cond["StringLike"].get("s3:prefix", [])
+                    if prefix_cond == ["gold_export/*"]:
+                        found = True
+                        break
+        assert found, "Dashboard reader policy missing s3:ListBucket with gold_export/* condition"
+
+    def test_dashboard_reader_access_key_exists(self) -> None:
+        """Dashboard reader IAM access key resource exists."""
+        tpl = _template()
+        tpl.resource_count_is("AWS::IAM::AccessKey", 1)
 
 
 def test_sso_role_unchanged() -> None:

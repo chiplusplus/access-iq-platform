@@ -13,7 +13,7 @@ import pytest
 _ST = types.ModuleType("streamlit")
 
 
-def _passthrough_decorator(*args, **kw):  # type: ignore[no-untyped-def]
+def _passthrough_decorator(*args: object, **kw: object):  # noqa: ANN401
     """Stub decorator that handles both @decorator and @decorator(...) forms."""
     if args and callable(args[0]):
         return args[0]
