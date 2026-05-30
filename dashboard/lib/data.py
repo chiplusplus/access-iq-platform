@@ -8,7 +8,8 @@ import duckdb
 import pandas as pd
 import streamlit as st
 import structlog
-from dashboard.lib.s3 import get_data_source, parquet_path
+
+from lib.s3 import get_data_source, parquet_path
 
 log = structlog.get_logger(__name__)
 
@@ -17,12 +18,20 @@ log = structlog.get_logger(__name__)
 def get_connection() -> duckdb.DuckDBPyConnection:
     """Single shared DuckDB connection. S3 creds from st.secrets (D-01)."""
     conn = duckdb.connect(database=":memory:")
-    conn.execute("LOAD httpfs;")
 
     if get_data_source() == "s3":
-        key_id = st.secrets.get("AWS_ACCESS_KEY_ID", "")
-        secret = st.secrets.get("AWS_SECRET_ACCESS_KEY", "")
-        region = st.secrets.get("AWS_REGION", "eu-west-2")
+        conn.execute("INSTALL httpfs; LOAD httpfs;")
+        import os
+
+        def _secret(key: str, default: str = "") -> str:
+            try:
+                return str(st.secrets[key])
+            except (KeyError, Exception):
+                return os.environ.get(key, default)
+
+        key_id = _secret("AWS_ACCESS_KEY_ID")
+        secret = _secret("AWS_SECRET_ACCESS_KEY")
+        region = _secret("AWS_REGION", "eu-west-2")
         if key_id:
             conn.execute(f"""
                 CREATE OR REPLACE SECRET s3_cred (
@@ -297,14 +306,14 @@ def query_uc_busiest_hours(export_date: str, providers: tuple[str, ...]) -> pd.D
     return conn.execute(
         f"""
         SELECT
-            DAYNAME(uc.arrival_datetime) AS day_of_week,
-            EXTRACT(HOUR FROM uc.arrival_datetime) AS hour_of_day,
+            DAYNAME(CAST(uc.arrival_datetime AS TIMESTAMP)) AS day_of_week,
+            EXTRACT(HOUR FROM CAST(uc.arrival_datetime AS TIMESTAMP)) AS hour_of_day,
             COUNT(*) AS attendance_count
         FROM fct_urgent_care uc
         LEFT JOIN dim_site ds ON ds.site_sk = uc.site_sk
         WHERE {where}
-        GROUP BY DAYNAME(uc.arrival_datetime), EXTRACT(HOUR FROM uc.arrival_datetime)
-        ORDER BY EXTRACT(DOW FROM uc.arrival_datetime), hour_of_day
+        GROUP BY DAYNAME(CAST(uc.arrival_datetime AS TIMESTAMP)), EXTRACT(HOUR FROM CAST(uc.arrival_datetime AS TIMESTAMP))
+        ORDER BY day_of_week, hour_of_day
     """,
         params,
     ).df()

@@ -42,9 +42,9 @@ def get_data_source() -> str:
 def get_bucket() -> str:
     """Return bucket name from st.secrets or env var."""
     try:
-        return str(st.secrets.get("PLATFORM_BUCKET", ""))
-    except Exception:
-        log.warning("bucket_secret_unavailable", exc_info=True)
+        val = st.secrets["PLATFORM_BUCKET"]
+        return str(val)
+    except (KeyError, Exception):
         return os.environ.get("PLATFORM_BUCKET", "")
 
 
@@ -52,14 +52,15 @@ def list_export_dates(bucket: str, table: str = "fct_wait_times") -> list[str]:
     """List available export_date partition values from S3 prefix structure (D-04)."""
     import boto3
 
-    try:
-        key_id = st.secrets.get("AWS_ACCESS_KEY_ID", "")
-        secret = st.secrets.get("AWS_SECRET_ACCESS_KEY", "")
-        region = st.secrets.get("AWS_REGION", "eu-west-2")
-    except Exception:
-        key_id = os.environ.get("AWS_ACCESS_KEY_ID", "")
-        secret = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
-        region = os.environ.get("AWS_REGION", "eu-west-2")
+    def _secret(key: str, default: str = "") -> str:
+        try:
+            return str(st.secrets[key])
+        except (KeyError, Exception):
+            return os.environ.get(key, default)
+
+    key_id = _secret("AWS_ACCESS_KEY_ID")
+    secret = _secret("AWS_SECRET_ACCESS_KEY")
+    region = _secret("AWS_REGION", "eu-west-2")
 
     s3 = boto3.client(
         "s3",
@@ -110,5 +111,5 @@ def parquet_path(table: str, export_date: str | None, bucket: str = "") -> str:
     if get_data_source() == "local":
         if export_date:
             return f"./data/gold/{table}/export_date={export_date}/*.parquet"
-        return f"./data/gold/{table}/*.parquet"
+        return f"./data/gold/{table}/**/*.parquet"
     return f"s3://{bucket}/gold_export/table={table}/export_date={export_date}/*.parquet"

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import streamlit as st
-from dashboard.lib.charts import grouped_bar, line_trend
-from dashboard.lib.data import (
+
+from lib.charts import grouped_bar, line_trend
+from lib.data import (
     data_freshness_text,
     get_connection,
     query_wait_by_provider,
@@ -47,16 +48,22 @@ def _run() -> None:
         st.warning("No data available")
         return
 
-    min_month = bounds_df["min_month"].iloc[0]
-    max_month = bounds_df["max_month"].iloc[0]
+    min_month = str(bounds_df["min_month"].iloc[0])
+    max_month = str(bounds_df["max_month"].iloc[0])
 
     date_range = None
     if min_month != max_month:
-        date_range = st.sidebar.slider(
+        all_months = sorted(
+            conn.execute(
+                "SELECT DISTINCT referral_month FROM fct_wait_times ORDER BY referral_month"
+            )
+            .df()["referral_month"]
+            .tolist()
+        )
+        date_range = st.sidebar.select_slider(
             "Referral month range",
-            min_value=min_month,
-            max_value=max_month,
-            value=(min_month, max_month),
+            options=all_months,
+            value=(all_months[0], all_months[-1]),
         )
 
     # Convert to tuples for cached query functions

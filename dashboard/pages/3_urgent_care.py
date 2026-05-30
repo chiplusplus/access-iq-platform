@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import streamlit as st
-from dashboard.lib.charts import (
+
+from lib.charts import (
     grouped_bar,
     heatmap_chart,
     line_trend,
     stacked_bar,
 )
-from dashboard.lib.data import (
+from lib.data import (
     data_freshness_text,
     get_connection,
     query_uc_breach_trend,

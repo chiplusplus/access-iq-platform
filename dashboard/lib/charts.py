@@ -131,20 +131,41 @@ def heatmap_chart(
 
     # Pivot data for heatmap format
     pivot = df.pivot_table(index=y_col, columns=x_col, values=z_col, aggfunc="sum")
+
+    # Enforce Mon→Sun row order when y-axis contains day names
+    _day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    if set(pivot.index) & set(_day_order):
+        ordered = [d for d in _day_order if d in pivot.index]
+        pivot = pivot.reindex(ordered)
+
+    # Sort numeric columns (e.g. hour_of_day 0-23)
+    numeric_cols = sorted(pivot.columns, key=lambda c: (isinstance(c, str), c))
+    pivot = pivot[numeric_cols]
+
+    x_labels = [str(c) for c in pivot.columns]
     fig = go.Figure(
         go.Heatmap(
             z=pivot.values,
-            x=[str(c) for c in pivot.columns],
+            x=x_labels,
             y=[str(r) for r in pivot.index],
             colorscale=colorscale,
         )
     )
-    fig.update_layout(
+
+    layout_kwargs: dict = dict(
         title=title,
         xaxis_title=xaxis_title,
         yaxis_title=yaxis_title,
         margin=_MARGINS,
     )
+    # 2-hour tick intervals for hour-of-day axes
+    if x_labels and x_labels[0].isdigit():
+        layout_kwargs["xaxis"] = dict(
+            tickmode="array",
+            tickvals=[str(h) for h in range(0, 24, 2)],
+            ticktext=[f"{h:02d}:00" for h in range(0, 24, 2)],
+        )
+    fig.update_layout(**layout_kwargs)
     return fig
 
 

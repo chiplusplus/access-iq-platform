@@ -88,7 +88,7 @@ class TestParquetPath:
         """Local mode with None export_date reads all parquet."""
         monkeypatch.setenv("DATA_SOURCE", "local")
         result = parquet_path("fct_wait_times", None)
-        assert result == "./data/gold/fct_wait_times/*.parquet"
+        assert result == "./data/gold/fct_wait_times/**/*.parquet"
 
     def test_invalid_table_raises(self) -> None:
         """Unknown table name raises ValueError."""
