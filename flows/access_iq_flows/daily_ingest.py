@@ -64,7 +64,7 @@ def task_ingest_sftp(run_date: str, settings: Settings) -> dict:
             username=os.environ.get(src.user_env, ""),
             private_key=os.environ.get(src.private_key_env or "", None) or None,
             remote_dir=src.remote_dir,
-            source_name=src.source_name,
+            source_name=src.source_name or name,
             platform_bucket=settings.platform_bucket,
             ingest_date=ingest_date,
             env=settings.env,
@@ -145,7 +145,7 @@ def daily_ingest(run_date: str | None = None, env: str = "dev") -> None:
     log.info("pipeline_start", run_date=effective_date, env=env)
 
     # Settings reads ACCESS_IQ_* env vars (injected by ECS task definition)
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 
     # Step 1: Concurrent Bronze ingestion (D-03)
     pg_future = task_ingest_postgres.submit(run_date=effective_date, settings=settings)

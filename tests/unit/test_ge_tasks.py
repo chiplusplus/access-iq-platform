@@ -9,8 +9,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Stub prefect before importing flow modules
-_PREFECT = types.ModuleType("prefect")
-_PREFECT.task = lambda **kw: (lambda f: f)
+_PREFECT = sys.modules.get("prefect") or types.ModuleType("prefect")
+_PREFECT.flow = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
+_PREFECT.task = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
 sys.modules.setdefault("prefect", _PREFECT)
 
 # Stub boto3 so it doesn't need real AWS credentials

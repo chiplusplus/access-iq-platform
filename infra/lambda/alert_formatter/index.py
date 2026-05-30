@@ -19,12 +19,16 @@ def handler(event: dict, context: object) -> None:
     for record in event.get("Records", []):
         raw = record.get("Sns", {}).get("Message", "{}")
         try:
-            alarm = json.loads(raw)
+            payload = json.loads(raw)
         except json.JSONDecodeError:
-            alarm = {}
+            payload = {}
 
-        summary = _format_alarm(alarm, logs_client)
-        subject = _format_subject(alarm)
+        if payload.get("source") == "prefect":
+            summary = _format_prefect(payload)
+            subject = _format_prefect_subject(payload)
+        else:
+            summary = _format_alarm(payload, logs_client)
+            subject = _format_subject(payload)
 
         sns_client.publish(
             TopicArn=delivery_arn,
@@ -34,6 +38,40 @@ def handler(event: dict, context: object) -> None:
 
         if webhook_url:
             _post_slack(webhook_url, subject, summary)
+
+
+def _format_prefect(payload: dict) -> str:
+    flow = payload.get("flow_name", "unknown")
+    env = payload.get("env", "unknown")
+    state = payload.get("state", "Unknown")
+    state_msg = payload.get("state_message", "")
+    timestamp = payload.get("timestamp", "unknown")
+    time_short = timestamp[:19].replace("T", " ") if timestamp else "unknown"
+    ui_link = payload.get("ui_link", "")
+
+    lines = [
+        "Type:   PIPELINE FAILURE (Prefect flow)",
+        f"Flow:   {flow}",
+        f"Env:    {env}",
+        f"Time:   {time_short} UTC",
+        f"State:  {state}",
+    ]
+    if state_msg:
+        lines.append(f"Detail: {state_msg}")
+    lines.append("")
+    lines.append("Next steps:")
+    if ui_link:
+        lines.append(f"  1. Flow run: {ui_link}")
+    lines.append(f"  {'2' if ui_link else '1'}. Check logs: /access-iq/{env}/{flow}")
+    lines.append(f"  {'3' if ui_link else '2'}. Dashboard: access-iq-{env}-ingestion")
+
+    return "\n".join(lines)
+
+
+def _format_prefect_subject(payload: dict) -> str:
+    flow = payload.get("flow_name", "unknown")
+    env = payload.get("env", "?")
+    return f"[ALERT] {flow} pipeline failed ({env})"
 
 
 def _format_alarm(alarm: dict, logs_client: object) -> str:

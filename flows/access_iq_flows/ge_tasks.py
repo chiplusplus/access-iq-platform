@@ -27,6 +27,8 @@ def _load_ge_gate_module():
     for script_path in _SCRIPT_PATHS:
         if script_path.exists():
             spec = importlib.util.spec_from_file_location("run_ge_gate", script_path)
+            if spec is None or spec.loader is None:
+                continue
             mod = importlib.util.module_from_spec(spec)
             sys.modules["run_ge_gate"] = mod
             spec.loader.exec_module(mod)

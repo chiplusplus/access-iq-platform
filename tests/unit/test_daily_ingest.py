@@ -13,8 +13,8 @@ import pytest
 # ---------------------------------------------------------------------------
 
 _PREFECT = types.ModuleType("prefect")
-_PREFECT.flow = lambda **kw: (lambda f: f)
-_PREFECT.task = lambda **kw: (lambda f: f)
+_PREFECT.flow = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
+_PREFECT.task = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
 sys.modules.setdefault("prefect", _PREFECT)
 
 
@@ -26,22 +26,22 @@ def _wait_stub(futures):
 
 
 _PREFECT_FUTURES = types.ModuleType("prefect.futures")
-_PREFECT_FUTURES.wait = _wait_stub
+_PREFECT_FUTURES.wait = _wait_stub  # type: ignore[attr-defined]
 sys.modules["prefect.futures"] = _PREFECT_FUTURES
 
 # Stub dbt.cli.main to avoid dbt installation requirement
 _DBT = types.ModuleType("dbt")
 _DBT_CLI = types.ModuleType("dbt.cli")
 _DBT_CLI_MAIN = types.ModuleType("dbt.cli.main")
-_DBT_CLI_MAIN.dbtRunner = MagicMock()
-_DBT_CLI_MAIN.dbtRunnerResult = MagicMock()
+_DBT_CLI_MAIN.dbtRunner = MagicMock()  # type: ignore[attr-defined]
+_DBT_CLI_MAIN.dbtRunnerResult = MagicMock()  # type: ignore[attr-defined]
 sys.modules.setdefault("dbt", _DBT)
 sys.modules.setdefault("dbt.cli", _DBT_CLI)
 sys.modules.setdefault("dbt.cli.main", _DBT_CLI_MAIN)
 
 # Stub redshift_connector
 _REDSHIFT_CONNECTOR = types.ModuleType("redshift_connector")
-_REDSHIFT_CONNECTOR.connect = MagicMock()
+_REDSHIFT_CONNECTOR.connect = MagicMock()  # type: ignore[attr-defined]
 sys.modules.setdefault("redshift_connector", _REDSHIFT_CONNECTOR)
 
 # ---------------------------------------------------------------------------

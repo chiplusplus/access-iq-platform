@@ -10,8 +10,8 @@ import pytest
 
 # Stub prefect before importing flow modules
 _PREFECT = types.ModuleType("prefect")
-_PREFECT.flow = lambda **kw: (lambda f: f)
-_PREFECT.task = lambda **kw: (lambda f: f)
+_PREFECT.flow = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
+_PREFECT.task = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
 sys.modules.setdefault("prefect", _PREFECT)
 
 # Stub dbt.cli.main so dbt package is not required in main venv
@@ -24,8 +24,8 @@ class _MockDbtRunnerResult:
         self.exception = exception
 
 
-_DBT_CLI_MAIN.dbtRunner = MagicMock  # replaced per-test via patch
-_DBT_CLI_MAIN.dbtRunnerResult = _MockDbtRunnerResult
+_DBT_CLI_MAIN.dbtRunner = MagicMock  # type: ignore[attr-defined]
+_DBT_CLI_MAIN.dbtRunnerResult = _MockDbtRunnerResult  # type: ignore[attr-defined]
 
 # Register dbt namespace modules so the import inside the function works
 _DBT = types.ModuleType("dbt")

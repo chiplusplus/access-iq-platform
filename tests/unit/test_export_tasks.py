@@ -11,13 +11,13 @@ import pytest
 
 # Stub prefect before importing flow modules
 _PREFECT = types.ModuleType("prefect")
-_PREFECT.flow = lambda **kw: (lambda f: f)
-_PREFECT.task = lambda **kw: (lambda f: f)
+_PREFECT.flow = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
+_PREFECT.task = lambda **kw: (lambda f: f)  # type: ignore[attr-defined]
 sys.modules.setdefault("prefect", _PREFECT)
 
 # Stub redshift_connector so import succeeds without the package installed in main venv
 _REDSHIFT_CONNECTOR = types.ModuleType("redshift_connector")
-_REDSHIFT_CONNECTOR.connect = MagicMock()
+_REDSHIFT_CONNECTOR.connect = MagicMock()  # type: ignore[attr-defined]
 sys.modules.setdefault("redshift_connector", _REDSHIFT_CONNECTOR)
 
 from access_iq_flows.export_tasks import (  # noqa: E402

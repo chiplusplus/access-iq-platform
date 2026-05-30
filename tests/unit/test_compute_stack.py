@@ -46,6 +46,7 @@ SAFE_ENV_NAMES = {
     "HMAC_LAMBDA_NAME",
     "ALERT_SNS_TOPIC_ARN",
     "SPECTRUM_ROLE_ARN",
+    "BRONZE_S3_PREFIX",
     "PREFECT_API_URL",
     # Prefect server container env vars
     "PREFECT_SERVER_API_HOST",
