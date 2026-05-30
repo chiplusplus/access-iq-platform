@@ -135,12 +135,20 @@ def heatmap_chart(
     # Enforce Mon→Sun row order when y-axis contains day names
     _day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     if set(pivot.index) & set(_day_order):
-        ordered = [d for d in _day_order if d in pivot.index]
+        ordered = [d for d in reversed(_day_order) if d in pivot.index]
         pivot = pivot.reindex(ordered)
 
     # Sort numeric columns (e.g. hour_of_day 0-23)
     numeric_cols = sorted(pivot.columns, key=lambda c: (isinstance(c, str), c))
     pivot = pivot[numeric_cols]
+
+    # Format hour columns as HH:00 strings so tooltips read correctly
+    is_hour_axis = all(
+        isinstance(c, (int, float)) or (isinstance(c, str) and c.isdigit()) for c in pivot.columns
+    )
+    if is_hour_axis:
+        hour_map = {c: f"{int(c):02d}:00" for c in pivot.columns}
+        pivot = pivot.rename(columns=hour_map)
 
     x_labels = [str(c) for c in pivot.columns]
     fig = go.Figure(
@@ -149,6 +157,7 @@ def heatmap_chart(
             x=x_labels,
             y=[str(r) for r in pivot.index],
             colorscale=colorscale,
+            hovertemplate="%{y} %{x}: %{z}<extra></extra>",
         )
     )
 
@@ -159,11 +168,10 @@ def heatmap_chart(
         margin=_MARGINS,
     )
     # 2-hour tick intervals for hour-of-day axes
-    if x_labels and x_labels[0].isdigit():
+    if is_hour_axis:
         layout_kwargs["xaxis"] = dict(
             tickmode="array",
-            tickvals=[str(h) for h in range(0, 24, 2)],
-            ticktext=[f"{h:02d}:00" for h in range(0, 24, 2)],
+            tickvals=[f"{h:02d}:00" for h in range(0, 24, 2)],
         )
     fig.update_layout(**layout_kwargs)
     return fig

@@ -87,11 +87,26 @@ def _run() -> None:
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric(label="18-Week Breach Rate", value=f"{breach_rate:.1f}%", delta_color="inverse")
+        st.metric(
+            label="18-Week Breach Rate",
+            value=f"{breach_rate:.1f}%",
+            delta_color="inverse",
+            help="Percentage of patients waiting longer than 18 weeks from referral to treatment (RTT). The NHS target is no more than 8% breaching (i.e. 92% treated within 18 weeks).",
+        )
     with c2:
-        st.metric(label="Median Wait (Days)", value=f"{median_wait:.0f}", delta_color="inverse")
+        st.metric(
+            label="Median Wait (Days)",
+            value=f"{median_wait:.0f}",
+            delta_color="inverse",
+            help="The middle value (P50) of all waiting times in days. Half of patients wait less than this, half wait more.",
+        )
     with c3:
-        st.metric(label="52-Week+ Waiters", value=f"{waiters_52wk:,}", delta_color="inverse")
+        st.metric(
+            label="52-Week+ Waiters",
+            value=f"{waiters_52wk:,}",
+            delta_color="inverse",
+            help="Number of patients who have been waiting over 52 weeks (1 year) for treatment. NHS England tracks this as a critical long-wait metric.",
+        )
 
     # --- Divider ---
     st.divider()

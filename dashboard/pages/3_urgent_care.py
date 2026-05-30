@@ -110,18 +110,21 @@ def _run() -> None:
             label="4-Hour Breach Rate",
             value=f"{breach_rate_4h:.1f}%",
             delta_color="inverse",
+            help="Percentage of A&E attendances where the patient waited more than 4 hours from arrival to admission, transfer, or discharge. NHS operational standard is 95% within 4 hours.",
         )
     with c2:
         st.metric(
             label="12-Hour Breaches",
             value=f"{breach_count_12h:,}",
             delta_color="inverse",
+            help="Total number of patients spending more than 12 hours in A&E from arrival to departure. These are reportable critical incidents under NHS England guidance.",
         )
     with c3:
         st.metric(
             label="Admission Conversion Rate",
             value=f"{admission_rate:.1f}%",
             delta_color="normal",
+            help="Percentage of A&E attendances that resulted in hospital admission. Higher rates may indicate more acute presentations or limited community alternatives.",
         )
 
     # --- Divider ---

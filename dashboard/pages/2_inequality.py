@@ -50,8 +50,9 @@ def _run() -> None:
 
     c1, c2, c3 = st.columns(3)
     with c1:
+        sii_help = "Slope Index of Inequality — measures the absolute difference in health outcomes between the most and least deprived groups. Only available when stratified by IMD Decile."
         if selected_stratifier != "IMD Decile":
-            st.metric(label="SII (Slope Index)", value="N/A")
+            st.metric(label="SII (Slope Index)", value="N/A", help=sii_help)
             st.markdown(
                 '<span style="color:#768692; font-size:12px;">'
                 "N/A — SII requires IMD decile stratifier</span>",
@@ -64,6 +65,7 @@ def _run() -> None:
                 label="SII (Slope Index)",
                 value=f"{sii:.2f}",
                 delta_color="inverse",
+                help="Slope Index of Inequality — measures the absolute difference in health outcomes between the most and least deprived groups. A positive value means more deprived areas have worse outcomes.",
             )
     with c2:
         imd_gap = kpi_df["imd_gap"].iloc[0] if not kpi_df.empty else 0
@@ -72,10 +74,15 @@ def _run() -> None:
             label="IMD Gap (Decile 1 vs 10)",
             value=f"{imd_gap:.1f} days",
             delta_color="inverse",
+            help="Difference in median wait times between IMD Decile 1 (most deprived) and Decile 10 (least deprived). A large gap signals unequal access to care.",
         )
     with c3:
         suppressed_count = int(kpi_df["suppressed_count"].iloc[0]) if not kpi_df.empty else 0
-        st.metric(label="Suppressed Cells", value=f"{suppressed_count}")
+        st.metric(
+            label="Suppressed Cells",
+            value=f"{suppressed_count}",
+            help="Number of data cells suppressed due to small population counts (< 5 patients). Suppression protects patient confidentiality per NHS statistical disclosure rules.",
+        )
 
     # --- Divider ---
     st.divider()
