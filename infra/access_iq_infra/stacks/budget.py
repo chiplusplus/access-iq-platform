@@ -41,10 +41,15 @@ class BudgetStack(Stack):
         *,
         cfg: EnvConfig,
         ephemeral_stack_names: list[str],
+        target_account_id: str | None = None,
+        target_region: str | None = None,
+        topic_name_suffix: str = "budget-alarm",
         **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        teardown_account = target_account_id or cfg.account_id
+        teardown_region = target_region or cfg.region
         is_prod = cfg.env_name == "prod"
         ceiling_amount = 20 if is_prod else 10
 
@@ -52,7 +57,7 @@ class BudgetStack(Stack):
         topic = sns.Topic(
             self,
             "BudgetAlarmTopic",
-            topic_name=f"{cfg.app_name}-{cfg.env_name}-budget-alarm",
+            topic_name=f"{cfg.app_name}-{cfg.env_name}-{topic_name_suffix}",
         )
 
         # Restrict publishers to AWS Budgets service only (T-09-02)
@@ -105,7 +110,7 @@ class BudgetStack(Stack):
             timeout=Duration.minutes(5),
             environment={
                 "EPHEMERAL_STACKS": ",".join(ephemeral_stack_names),
-                "STACK_REGION": cfg.region,
+                "STACK_REGION": teardown_region,
             },
         )
 
@@ -114,7 +119,7 @@ class BudgetStack(Stack):
             iam.PolicyStatement(
                 actions=["cloudformation:DeleteStack"],
                 resources=[
-                    f"arn:aws:cloudformation:{cfg.region}:{cfg.account_id}:stack/{name}/*"
+                    f"arn:aws:cloudformation:{teardown_region}:{teardown_account}:stack/{name}/*"
                     for name in ephemeral_stack_names
                 ],
             )

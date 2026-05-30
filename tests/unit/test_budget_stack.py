@@ -116,3 +116,45 @@ def test_dev_ceiling_is_ten() -> None:
             },
         },
     )
+
+
+def _trust_template(env_name: str = "dev") -> Template:
+    app = App()
+    cfg = _cfg(env_name)
+    stack = BudgetStack(
+        app,
+        f"budget-trust-test-{env_name}",
+        cfg=cfg,
+        ephemeral_stack_names=["NorthshireTrustStack"],
+        target_account_id="999999999999",
+        target_region="eu-west-2",
+        topic_name_suffix="trust-budget-alarm",
+        env=Environment(account="999999999999", region="us-east-1"),
+    )
+    return Template.from_stack(stack)
+
+
+def test_trust_budget_stack_synth_clean() -> None:
+    """Trust BudgetStack synthesises with expected resource counts."""
+    template = _trust_template()
+    template.resource_count_is("AWS::Budgets::Budget", 1)
+    template.resource_count_is("AWS::SNS::Topic", 1)
+    template.resource_count_is("AWS::Lambda::Function", 1)
+
+
+def test_trust_teardown_targets_trust_account() -> None:
+    """Trust Lambda IAM policy scopes to Trust account stack ARNs."""
+    template = _trust_template()
+    template.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": [
+                    {
+                        "Action": "cloudformation:DeleteStack",
+                        "Resource": "arn:aws:cloudformation:eu-west-2:999999999999:stack/NorthshireTrustStack/*",
+                    }
+                ],
+            },
+        },
+    )

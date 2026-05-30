@@ -108,6 +108,14 @@ cmd_up() {
   else
     (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
       -c "env=${CDK_ENV}" -c "trust_vpc_id=${TRUST_VPC}" --require-approval never)
+
+    # Deploy Trust account budget stack with Trust credentials (separate step
+    # because the stack targets the Trust account and needs $TRUST_PROFILE).
+    echo "  Deploying Trust budget stack..."
+    (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
+      "budget-trust-access-iq-${CDK_ENV}" \
+      -c "env=${CDK_ENV}" -c "include_trust_budget=true" --require-approval never) \
+      || echo "  WARNING: Trust budget stack deploy failed (non-blocking)"
   fi
 
   # Export BRONZE_S3_PREFIX for dbt
@@ -720,13 +728,20 @@ cmd_down() {
     rm -f "$RS_TUNNEL_PID_FILE"
   fi
 
-  step_start "2/3" "Destroy Platform stacks" "3-5 min"
+  step_start "2/4" "Destroy Platform stacks" "3-5 min"
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk destroy --all --force \
     -c "env=$CDK_ENV" \
     -c "trust_vpc_id=$TRUST_VPC")
   step_done
 
-  step_start "3/3" "Destroy Trust stack" "3-5 min"
+  step_start "3/4" "Destroy Trust budget stack" "<1 min"
+  (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk destroy \
+    "budget-trust-access-iq-${CDK_ENV}" --force \
+    -c "env=$CDK_ENV" -c "include_trust_budget=true") 2>/dev/null \
+    || echo "  Trust budget stack not deployed or already destroyed"
+  step_done
+
+  step_start "4/4" "Destroy Trust stack" "3-5 min"
   if [ -f "$TRUST_REPO/.tunnel.pid" ]; then
     local tunnel_pid
     tunnel_pid="$(cat "$TRUST_REPO/.tunnel.pid" 2>/dev/null || true)"
