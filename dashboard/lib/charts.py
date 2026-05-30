@@ -143,12 +143,17 @@ def heatmap_chart(
     pivot = pivot[numeric_cols]
 
     # Format hour columns as HH:00 strings so tooltips read correctly
+    # Only apply when values fall within 0-23 range (actual hours, not IMD deciles etc.)
     is_hour_axis = all(
         isinstance(c, (int, float)) or (isinstance(c, str) and c.isdigit()) for c in pivot.columns
     )
     if is_hour_axis:
-        hour_map = {c: f"{int(c):02d}:00" for c in pivot.columns}
-        pivot = pivot.rename(columns=hour_map)
+        int_vals = [int(c) for c in pivot.columns]
+        if all(0 <= v <= 23 for v in int_vals) and max(int_vals) > 10:
+            hour_map = {c: f"{int(c):02d}:00" for c in pivot.columns}
+            pivot = pivot.rename(columns=hour_map)
+        else:
+            is_hour_axis = False
 
     x_labels = [str(c) for c in pivot.columns]
     fig = go.Figure(
@@ -183,6 +188,7 @@ def deviation_bar(
     deviation_col: str,
     title: str,
     xaxis_title: str = "Deviation from Trust Average (days)",
+    yaxis_title: str = "",
 ) -> go.Figure:
     """Horizontal diverging bar. Green for positive, red for negative. Zero baseline."""
     colors = [NHS_GREEN if v >= 0 else NHS_RED for v in df[deviation_col]]
@@ -198,7 +204,7 @@ def deviation_bar(
     fig.update_layout(
         title=title,
         xaxis_title=xaxis_title,
-        yaxis_title=stratum_col,
+        yaxis_title=yaxis_title or stratum_col,
         margin=_MARGINS,
     )
     return fig

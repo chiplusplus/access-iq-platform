@@ -148,15 +148,18 @@ def query_wait_trend(
     return conn.execute(
         f"""
         SELECT
-            fw.referral_month,
+            CASE WHEN TRY_CAST(fw.referral_month AS DATE) IS NOT NULL
+                 THEN STRFTIME(fw.referral_month::DATE, '%Y-%m')
+                 ELSE fw.referral_month::VARCHAR
+            END AS referral_month,
             MEDIAN(fw.wait_days) AS p50_wait,
             QUANTILE_CONT(fw.wait_days, 0.9) AS p90_wait
         FROM fct_wait_times fw
         LEFT JOIN dim_site ds ON ds.site_sk = fw.site_sk
         LEFT JOIN dim_specialty dsp ON dsp.specialty_sk = fw.specialty_sk
         WHERE {where}
-        GROUP BY fw.referral_month
-        ORDER BY fw.referral_month
+        GROUP BY 1
+        ORDER BY 1
     """,
         params,
     ).df()
@@ -172,8 +175,14 @@ def query_wait_month_bounds(export_date: str) -> pd.DataFrame:
     conn = get_connection()
     return conn.execute("""
         SELECT
-            MIN(referral_month) AS min_month,
-            MAX(referral_month) AS max_month
+            CASE WHEN TRY_CAST(MIN(referral_month) AS DATE) IS NOT NULL
+                 THEN STRFTIME(MIN(referral_month)::DATE, '%Y-%m')
+                 ELSE MIN(referral_month)::VARCHAR
+            END AS min_month,
+            CASE WHEN TRY_CAST(MAX(referral_month) AS DATE) IS NOT NULL
+                 THEN STRFTIME(MAX(referral_month)::DATE, '%Y-%m')
+                 ELSE MAX(referral_month)::VARCHAR
+            END AS max_month
         FROM fct_wait_times
     """).df()
 

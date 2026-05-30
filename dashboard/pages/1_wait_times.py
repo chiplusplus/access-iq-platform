@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import streamlit as st
 
 from lib.charts import grouped_bar, line_trend
@@ -29,9 +31,12 @@ def _run() -> None:
     register_tables(conn, bucket, export_date, ["fct_wait_times", "dim_site", "dim_specialty"])
 
     # --- Sidebar filters (D-07) ---
-    # Provider multiselect
+    # Provider multiselect — only providers with actual wait times data
     providers_df = conn.execute(
-        "SELECT DISTINCT provider_name FROM dim_site ORDER BY provider_name"
+        "SELECT DISTINCT ds.provider_name "
+        "FROM fct_wait_times fw "
+        "JOIN dim_site ds ON ds.site_sk = fw.site_sk "
+        "ORDER BY ds.provider_name"
     ).df()
     all_providers = providers_df["provider_name"].tolist()
     providers: list[str] = st.sidebar.multiselect("Provider", options=all_providers)
@@ -56,9 +61,14 @@ def _run() -> None:
     if min_month != max_month:
         all_months = sorted(
             conn.execute(
-                "SELECT DISTINCT referral_month FROM fct_wait_times ORDER BY referral_month"
+                "SELECT DISTINCT "
+                "CASE WHEN TRY_CAST(referral_month AS DATE) IS NOT NULL "
+                "     THEN STRFTIME(referral_month::DATE, '%Y-%m') "
+                "     ELSE referral_month::VARCHAR "
+                "END AS rm "
+                "FROM fct_wait_times ORDER BY rm"
             )
-            .df()["referral_month"]
+            .df()["rm"]
             .tolist()
         )
         date_range = st.sidebar.select_slider(
@@ -82,9 +92,14 @@ def _run() -> None:
         )
         return
 
-    breach_rate = (kpi_df["breach_rate_18wk"].iloc[0] or 0) * 100
-    median_wait = kpi_df["median_wait_days"].iloc[0] or 0
-    waiters_52wk = int(kpi_df["waiters_52wk"].iloc[0] or 0)
+    def _safe(val: object, default: float = 0.0) -> float:
+        if val is None or (isinstance(val, float) and math.isnan(val)):
+            return default
+        return float(val)
+
+    breach_rate = _safe(kpi_df["breach_rate_18wk"].iloc[0]) * 100
+    median_wait = _safe(kpi_df["median_wait_days"].iloc[0])
+    waiters_52wk = int(_safe(kpi_df["waiters_52wk"].iloc[0]))
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -126,6 +141,8 @@ def _run() -> None:
             "Days",
         )
         st.plotly_chart(fig_bar, use_container_width=True)
+    else:
+        st.info("No provider-level data available for current filters.")
 
     # Chart 2: Wait time trend by referral_month (line)
     trend_df = query_wait_trend(export_date, providers_t, specialties_t)
@@ -148,6 +165,10 @@ def _run() -> None:
                 "Days",
             )
             st.plotly_chart(fig_line, use_container_width=True)
+        else:
+            st.info("No trend data available for selected date range.")
+    else:
+        st.info("No trend data available for current filters.")
 
 
 _run()

@@ -15,10 +15,11 @@ SELECT
     provider_id,
     provider_code,
     site_name,
+    site_name AS provider_name,
     provider_type,
     ics_region,
     has_ed,
     has_inpatient_beds,
     size_band
 FROM {{ ref('providers') }}
-WHERE site_status = 'active'
+WHERE UPPER(site_status) = 'ACTIVE'

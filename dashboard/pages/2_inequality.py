@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from lib.charts import (
@@ -99,6 +100,9 @@ def _run() -> None:
         )
         return
 
+    # Convert metric_value to numeric (stored as object in parquet)
+    df["metric_value"] = pd.to_numeric(df["metric_value"], errors="coerce")
+
     # Filter for specific metrics
     df_wait = df[df["metric_name"] == "wait_time_median"].copy()
 
@@ -118,51 +122,59 @@ def _run() -> None:
     col_left, col_right = st.columns([3, 2])
 
     with col_left:
-        # DNA rate by age band -- always show age band regardless of stratifier picker
-        df_dna_age = query_inequality_by_stratifier(export_date, "age_band")
-        df_dna_age = df_dna_age[df_dna_age["metric_name"] == "dna_rate"].copy()
-        if not df_dna_age.empty:
-            fig_dna = bar_with_suppression(
-                df_dna_age,
-                "stratum",
-                "metric_value",
-                "DNA Rate by Age Band",
-                "Age Band",
-                "DNA Rate",
-            )
-            st.plotly_chart(fig_dna, use_container_width=True)
+        # DNA rate by selected stratifier
+        df_dna = df[df["metric_name"] == "dna_rate"].copy()
+        if not df_dna.empty:
+            if df_dna["metric_value"].fillna(0).eq(0).all():
+                st.info(f"All DNA rates are 0% for {selected_stratifier}.")
+            else:
+                fig_dna = bar_with_suppression(
+                    df_dna,
+                    "stratum",
+                    "metric_value",
+                    f"DNA Rate by {selected_stratifier}",
+                    selected_stratifier,
+                    "DNA Rate",
+                )
+                st.plotly_chart(fig_dna, use_container_width=True)
 
     with col_right:
         # Demographic breakdown heatmap -- pivot metric x stratum
-        if not df.empty:
-            pivot_df = df[["metric_name", "stratum", "metric_value"]].copy()
-            pivot_df = pivot_df.dropna(subset=["metric_value"])
-            if not pivot_df.empty:
-                fig_heatmap = heatmap_chart(
-                    pivot_df,
-                    "stratum",
-                    "metric_name",
-                    "metric_value",
-                    f"Demographic Breakdown ({selected_stratifier})",
-                    selected_stratifier,
-                    "Metric",
-                    colorscale=[[0, "#FFFFFF"], [1, "#AE2573"]],
-                )
-                st.plotly_chart(fig_heatmap, use_container_width=True)
+        # Aggregate across periods to get one value per metric+stratum
+        pivot_df = df.groupby(["metric_name", "stratum"], as_index=False)["metric_value"].mean()
+        pivot_df = pivot_df.dropna(subset=["metric_value"])
+        if not pivot_df.empty:
+            # Normalize each metric to 0-1 so all metrics are visible on the same scale
+            pivot_df["normalized"] = pivot_df.groupby("metric_name")["metric_value"].transform(
+                lambda s: (s - s.min()) / (s.max() - s.min()) if s.max() != s.min() else 0.5
+            )
+            fig_heatmap = heatmap_chart(
+                pivot_df,
+                "stratum",
+                "metric_name",
+                "normalized",
+                f"Demographic Breakdown ({selected_stratifier})",
+                selected_stratifier,
+                "Metric",
+                colorscale=[[0, "#FFFFFF"], [1, "#AE2573"]],
+            )
+            st.plotly_chart(fig_heatmap, use_container_width=True)
 
     # Chart 4 (full width): Deviation from Trust average
     if not df_wait.empty:
-        mean_val = df_wait["metric_value"].mean()
-        df_dev = df_wait[["stratum", "metric_value"]].copy()
-        df_dev["deviation"] = df_dev["metric_value"] - mean_val
-        df_dev = df_dev.dropna(subset=["deviation"])
-        if not df_dev.empty:
+        # Aggregate to one value per stratum across periods
+        df_agg = df_wait.groupby("stratum", as_index=False)["metric_value"].mean()
+        mean_val = df_agg["metric_value"].mean()
+        df_agg["deviation"] = df_agg["metric_value"] - mean_val
+        df_agg = df_agg.dropna(subset=["deviation"])
+        if not df_agg.empty:
             fig_dev = deviation_bar(
-                df_dev,
+                df_agg,
                 "stratum",
                 "deviation",
                 f"Deviation from Trust Average ({selected_stratifier})",
                 "Deviation (Days)",
+                yaxis_title=selected_stratifier,
             )
             st.plotly_chart(fig_dev, use_container_width=True)
 
