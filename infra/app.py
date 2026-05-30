@@ -1,6 +1,7 @@
 from aws_cdk import App, Environment
 
 from access_iq_infra.settings import load_env_config
+from access_iq_infra.stacks.budget import BudgetStack
 from access_iq_infra.stacks.catalog import CatalogStack
 from access_iq_infra.stacks.compute import ComputeStack
 from access_iq_infra.stacks.ecr import EcrStack
@@ -114,6 +115,22 @@ ComputeStack(
     observability_stack=obs,
     prefect_worker_role=iam_stack.prefect_worker_role,
     env=cdk_env,
+)
+
+# --- Phase 9: Cost ceiling (account-level, us-east-1) ---
+
+BudgetStack(
+    app,
+    f"budget-{cfg.app_name}-{cfg.env_name}",
+    cfg=cfg,
+    ephemeral_stack_names=[
+        f"compute-{cfg.app_name}-{cfg.env_name}",
+        f"warehouse-{cfg.app_name}-{cfg.env_name}",
+        f"network-{cfg.app_name}-{cfg.env_name}",
+        f"observability-{cfg.app_name}-{cfg.env_name}",
+        f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
+    ],
+    env=Environment(account=cfg.account_id, region="us-east-1"),
 )
 
 app.synth()
