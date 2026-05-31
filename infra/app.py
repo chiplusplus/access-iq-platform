@@ -117,7 +117,7 @@ ComputeStack(
     env=cdk_env,
 )
 
-# --- Phase 9: Cost ceiling (account-level, us-east-1) ---
+# --- Phase 9: Cost ceiling (account-level) ---
 
 BudgetStack(
     app,
@@ -130,7 +130,7 @@ BudgetStack(
         f"observability-{cfg.app_name}-{cfg.env_name}",
         f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
     ],
-    env=Environment(account=cfg.account_id, region="us-east-1"),
+    env=Environment(account=cfg.account_id, region=cfg.region),
 )
 
 # Trust account budget - only synthesised when explicitly requested via CDK context
@@ -147,7 +147,7 @@ if trust_account_id and include_trust_budget:
         target_account_id=trust_account_id,
         target_region=cfg.region,
         topic_name_suffix="trust-budget-alarm",
-        env=Environment(account=trust_account_id, region="us-east-1"),
+        env=Environment(account=trust_account_id, region=cfg.region),
     )
 
 app.synth()
