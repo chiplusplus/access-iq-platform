@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Access-IQ workspace root (uv workspace)"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
-# NO runtime deps here — members own their own.
+# NO runtime deps here - members own their own.
 
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]

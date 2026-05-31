@@ -1,8 +1,8 @@
-"""WarehouseStack — Redshift Serverless namespace, workgroup, Spectrum IAM role, SG, usage limit.
+"""WarehouseStack - Redshift Serverless namespace, workgroup, Spectrum IAM role, SG, usage limit.
 
 Snapshot lifecycle:
   - FinalSnapshotName uses a timestamp suffix to guarantee uniqueness across destroy/recreate
-    cycles (avoids SnapshotAlreadyExistsFault — Pitfall 6).
+    cycles (avoids SnapshotAlreadyExistsFault - Pitfall 6).
   - Snapshots are taken automatically on ``cdk destroy`` but not auto-restored on deploy.
     Fresh namespace is created each session; bronze data in S3 persists for dbt rebuilds.
 """
@@ -39,13 +39,13 @@ class WarehouseStack(Stack):
       - CfnWorkgroup  (private subnets, enhanced VPC routing, not publicly accessible)
       - Spectrum IAM role  (S3 read on lake + Glue Catalog read-only)
       - Redshift security group  (inbound 5439 from ECS task SG only)
-      - Usage limit CR  (caps RPU-hours/day via AwsCustomResource — CfnUsageLimit not in CDK)
+      - Usage limit CR  (caps RPU-hours/day via AwsCustomResource - CfnUsageLimit not in CDK)
 
     Exposes:
-        self.workgroup      — rs.CfnWorkgroup
-        self.namespace      — rs.CfnNamespace
-        self.spectrum_role  — iam.Role
-        self.redshift_sg    — ec2.SecurityGroup
+        self.workgroup      - rs.CfnWorkgroup
+        self.namespace      - rs.CfnNamespace
+        self.spectrum_role  - iam.Role
+        self.redshift_sg    - ec2.SecurityGroup
     """
 
     def __init__(
@@ -285,7 +285,7 @@ class WarehouseStack(Stack):
         )
 
         # ── SSM Tunnel Instance (dev only) ───────────────────────────────
-        # Lightweight EC2 for SSM port forwarding — enables local dbt development.
+        # Lightweight EC2 for SSM port forwarding - enables local dbt development.
         if cfg.env_name == "dev":
             tunnel_sg = ec2.SecurityGroup(
                 self,

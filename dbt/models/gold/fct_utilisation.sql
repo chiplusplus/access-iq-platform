@@ -10,10 +10,10 @@
     Gold fct_utilisation
     Grain: one row per appointment_id
     DNA flag: booking_status = 'DNA'
-    imd_decile: re-derived via dim_patient join — intentionally excluded from Silver
+    imd_decile: re-derived via dim_patient join - intentionally excluded from Silver
                 appointments by design (D-04/T-05-12, Pitfall 5)
-    Provider capacity not available from simulator — scope to volume + DNA rate
-    dim_site joined via service_location_id::varchar = provider_code (LEFT JOIN — preserve all appts)
+    Provider capacity not available from simulator - scope to volume + DNA rate
+    dim_site joined via service_location_id::varchar = provider_code (LEFT JOIN - preserve all appts)
     Key decisions: D-14 (distkey patient_sk, sortkey appointment_start_datetime), D-17 (appointment_month)
     Source: silver.appointments + gold.dim_patient + gold.dim_site
 #}

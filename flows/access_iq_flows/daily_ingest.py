@@ -1,4 +1,4 @@
-"""Daily ingestion pipeline flow — Bronze -> Spectrum -> Silver -> GE -> Gold -> Export.
+"""Daily ingestion pipeline flow - Bronze -> Spectrum -> Silver -> GE -> Gold -> Export.
 
 Single ECS task runs the entire flow (D-01). Each step is a @task for
 Prefect UI visibility (D-02). Ingestion called as Python imports (D-03).
@@ -81,7 +81,7 @@ def task_ingest_trust_s3(run_date: str, settings: Settings) -> dict:
     ingest_date = date.fromisoformat(run_date)
     trust_s3_cfg = settings.trust_s3
     if trust_s3_cfg is None:
-        log.warning("trust_s3_config_missing", reason="trust_s3 not configured — skipping")
+        log.warning("trust_s3_config_missing", reason="trust_s3 not configured - skipping")
         return {}
 
     import boto3

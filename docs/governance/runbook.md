@@ -22,22 +22,22 @@ The Trust stack creates: RDS Postgres (EHR + urgent care), S3 bucket (diagnostic
 
 ### Step 2: Read Trust Outputs
 
-The session script automatically reads CloudFormation outputs from `NorthshireTrustStack` — VPC ID, RDS endpoint, SFTP endpoint, S3 bucket name — and passes them to Platform stack deployment.
+The session script automatically reads CloudFormation outputs from `NorthshireTrustStack` - VPC ID, RDS endpoint, SFTP endpoint, S3 bucket name - and passes them to Platform stack deployment.
 
 ### Step 3: Deploy Platform CDK Stacks (5-10 min)
 
 Stacks deployed in dependency order:
 
-1. `lake` — S3 data lake bucket + KMS CMK
-2. `secrets` — Secrets Manager (pseudonymisation key, Redshift password)
-3. `catalog` — Glue Data Catalog database for Spectrum
-4. `ecr` — Container registry for ingestion image
-5. `ingestion-role` — IAM roles (ECS task, execution, Prefect worker)
-6. `network` — VPC, subnets, NAT Gateway, VPC peering to Trust
-7. `observability` — CloudWatch log groups, metric filters, SNS alarms, ops dashboard
-8. `warehouse` — Redshift Serverless namespace + workgroup with usage limits
-9. `compute` — ECS Fargate cluster, task definitions, Prefect server + worker services
-10. `budget` — AWS Budgets with Lambda teardown (us-east-1)
+1. `lake` - S3 data lake bucket + KMS CMK
+2. `secrets` - Secrets Manager (pseudonymisation key, Redshift password)
+3. `catalog` - Glue Data Catalog database for Spectrum
+4. `ecr` - Container registry for ingestion image
+5. `ingestion-role` - IAM roles (ECS task, execution, Prefect worker)
+6. `network` - VPC, subnets, NAT Gateway, VPC peering to Trust
+7. `observability` - CloudWatch log groups, metric filters, SNS alarms, ops dashboard
+8. `warehouse` - Redshift Serverless namespace + workgroup with usage limits
+9. `compute` - ECS Fargate cluster, task definitions, Prefect server + worker services
+10. `budget` - AWS Budgets with Lambda teardown (us-east-1)
 
 ### Step 4: Redshift Pre-warm + Spectrum (30-60s)
 
@@ -63,7 +63,7 @@ Platform Secrets Manager entries are seeded from Trust CloudFormation outputs: E
 Build the ingestion container image and push to ECR:
 
 ```bash
-# Automated by session script — builds from repo root Dockerfile
+# Automated by session script - builds from repo root Dockerfile
 # Tags: latest + git SHA
 ```
 
@@ -195,9 +195,9 @@ aws logs tail /ecs/access-iq-{env}/ingest-{source} --since 1h --profile $AWS_PRO
 
 **Common causes**:
 
-- Trust RDS not available — VPC peering not yet active or Trust stack not deployed. Fix: verify Trust stack is deployed, check Security Group rules, re-run `make ingest`.
-- SFTP credentials expired or rotated — Secrets Manager entry stale. Fix: re-run Step 6 (seed secrets) from `make up`.
-- S3 access denied — cross-account bucket policy not applied. Fix: verify Trust stack outputs include bucket policy grant.
+- Trust RDS not available - VPC peering not yet active or Trust stack not deployed. Fix: verify Trust stack is deployed, check Security Group rules, re-run `make ingest`.
+- SFTP credentials expired or rotated - Secrets Manager entry stale. Fix: re-run Step 6 (seed secrets) from `make up`.
+- S3 access denied - cross-account bucket policy not applied. Fix: verify Trust stack outputs include bucket policy grant.
 
 ### Redshift Unavailable
 
@@ -213,9 +213,9 @@ aws redshift-serverless get-workgroup \
 
 **Common causes**:
 
-- Cold start — workgroup transitioning from CREATING/RESUMING. Fix: wait 30-90 seconds, re-check status.
-- Usage limit exceeded — RPU-hours exhausted for the day. Fix: wait until next UTC day or temporarily increase limit in CDK config.
-- Workgroup deleted — `make down` was run. Fix: `make up` to redeploy.
+- Cold start - workgroup transitioning from CREATING/RESUMING. Fix: wait 30-90 seconds, re-check status.
+- Usage limit exceeded - RPU-hours exhausted for the day. Fix: wait until next UTC day or temporarily increase limit in CDK config.
+- Workgroup deleted - `make down` was run. Fix: `make up` to redeploy.
 
 ### Dashboard Blank or Stale
 
@@ -229,9 +229,9 @@ aws s3 ls s3://{bucket}/gold/ --profile $AWS_PROFILE
 
 **Common causes**:
 
-- Pipeline hasn't run since last session — Gold export is stale or missing. Fix: `make pipeline` to run full flow and re-export.
-- Export task failed — check CloudWatch logs for the export ECS task.
-- IAM credentials expired — dashboard reader IAM user keys rotated. Fix: update Streamlit secrets.
+- Pipeline hasn't run since last session - Gold export is stale or missing. Fix: `make pipeline` to run full flow and re-export.
+- Export task failed - check CloudWatch logs for the export ECS task.
+- IAM credentials expired - dashboard reader IAM user keys rotated. Fix: update Streamlit secrets.
 
 ### Budget Alarm Fired
 
@@ -281,5 +281,5 @@ aws redshift-serverless list-snapshots \
 
 **Common causes**:
 
-- Snapshot name mismatch — the `restore_snapshot_name` CDK context key doesn't match an existing snapshot. Fix: list snapshots and pass the correct name.
-- Snapshot from different namespace — cross-namespace restore not supported. Fix: use a snapshot from the same `access-iq-{env}` namespace.
+- Snapshot name mismatch - the `restore_snapshot_name` CDK context key doesn't match an existing snapshot. Fix: list snapshots and pass the correct name.
+- Snapshot from different namespace - cross-namespace restore not supported. Fix: use a snapshot from the same `access-iq-{env}` namespace.

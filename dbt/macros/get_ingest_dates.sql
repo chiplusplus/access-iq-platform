@@ -30,7 +30,7 @@
 {% endif %}
 
 {% if table_exists %}
-    {# Table exists — discover partitions from Glue catalog via Spectrum metadata #}
+    {# Table exists - discover partitions from Glue catalog via Spectrum metadata #}
     {% set discover_sql %}
         select distinct "values" from svv_external_partitions
         where schemaname = 'bronze_external'
@@ -49,7 +49,7 @@
         {{ return([]) }}
     {% endif %}
 {% else %}
-    {# Table doesn't exist yet — return empty list so CREATE TABLE proceeds without refresh #}
+    {# Table doesn't exist yet - return empty list so CREATE TABLE proceeds without refresh #}
     {{ return([]) }}
 {% endif %}
 

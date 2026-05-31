@@ -12,6 +12,6 @@ COPY src/access_iq/ ./src/access_iq/
 # needing all members present)
 RUN uv venv .venv && uv pip install --python .venv/bin/python ./src/access_iq/
 
-# Default entrypoint — ECS task definition overrides CMD per source
+# Default entrypoint - ECS task definition overrides CMD per source
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "access_iq.ingestion.cli"]
 CMD ["ingest-postgres"]

@@ -81,7 +81,7 @@ def test_dns_requester_custom_resource() -> None:
     tpl = _template()
     custom_resources = tpl.find_resources("Custom::AWS")
     assert len(custom_resources) == 1, (
-        "Expected exactly 1 AwsCustomResource (DNS requester only — "
+        "Expected exactly 1 AwsCustomResource (DNS requester only - "
         "Trust routes and DNS accepter are managed by Trust stack)"
     )
 

@@ -17,7 +17,7 @@ def _get_platform_vpc_id(ec2_client: Any, prefix: str) -> str:
     )
     vpcs = response["Vpcs"]
     if not vpcs:
-        # Try broader filter — CDK names may vary
+        # Try broader filter - CDK names may vary
         response = ec2_client.describe_vpcs(
             Filters=[{"Name": "tag:aws:cloudformation:stack-name", "Values": [f"network-{prefix}"]}]
         )

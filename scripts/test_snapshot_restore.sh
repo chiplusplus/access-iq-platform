@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Integration test: verify Redshift snapshot/restore round-trip preserves data.
-# This is a standalone test — snapshot restore is NOT part of the make up flow.
+# This is a standalone test - snapshot restore is NOT part of the make up flow.
 # Usage: ./scripts/test_snapshot_restore.sh
 # Requires: Redshift Serverless workgroup deployed (make up first).
 set -euo pipefail

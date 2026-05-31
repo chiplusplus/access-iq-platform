@@ -1,4 +1,4 @@
-# Data Contract — SFTP Outbound Appointment Drops
+# Data Contract - SFTP Outbound Appointment Drops
 
 ## 1) Source Overview
 

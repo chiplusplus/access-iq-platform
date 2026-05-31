@@ -52,12 +52,12 @@ def _run() -> None:
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        sii_help = "Slope Index of Inequality — measures the absolute difference in health outcomes between the most and least deprived groups. Only available when stratified by IMD Decile."
+        sii_help = "Slope Index of Inequality - measures the absolute difference in health outcomes between the most and least deprived groups. Only available when stratified by IMD Decile."
         if selected_stratifier != "IMD Decile":
             st.metric(label="SII (Slope Index)", value="N/A", help=sii_help)
             st.markdown(
                 '<span style="color:#768692; font-size:12px;">'
-                "N/A — SII requires IMD decile stratifier</span>",
+                "N/A - SII requires IMD decile stratifier</span>",
                 unsafe_allow_html=True,
             )
         else:
@@ -67,7 +67,7 @@ def _run() -> None:
                 label="SII (Slope Index)",
                 value=f"{sii:.2f}",
                 delta_color="inverse",
-                help="Slope Index of Inequality — measures the absolute difference in health outcomes between the most and least deprived groups. A positive value means more deprived areas have worse outcomes.",
+                help="Slope Index of Inequality - measures the absolute difference in health outcomes between the most and least deprived groups. A positive value means more deprived areas have worse outcomes.",
             )
     with c2:
         imd_gap = kpi_df["imd_gap"].iloc[0] if not kpi_df.empty else 0

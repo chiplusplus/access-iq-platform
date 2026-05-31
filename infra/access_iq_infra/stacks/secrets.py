@@ -1,4 +1,4 @@
-"""SecretsStack — pseudonymisation HMAC key bootstrap (D9)."""
+"""SecretsStack - pseudonymisation HMAC key bootstrap (D9)."""
 
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 
 All values come from env vars prefixed with ``ACCESS_IQ_``. Nested fields
 (``postgres_sources``, ``sftp_sources``, ``trust_s3``) accept JSON-encoded
-strings — see ``.env.example`` at the repo root for the schema.
+strings - see ``.env.example`` at the repo root for the schema.
 
 This module is the single source of runtime truth: no JSON file in CWD, no
 filesystem-relative lookup. The CDK config tree at ``infra/config/{env}.json``

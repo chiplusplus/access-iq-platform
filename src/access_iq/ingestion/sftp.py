@@ -49,7 +49,7 @@ def _csv_bytes_to_parquet_buffer(raw_bytes: bytes) -> io.BytesIO:
     reader = csv_mod.DictReader(io.StringIO(text, newline=""))
     rows = list(reader)
     if not rows:
-        # Empty file — return empty Parquet with headers only
+        # Empty file - return empty Parquet with headers only
         columns = reader.fieldnames or []
         tbl = pa.Table.from_pydict({col: [] for col in columns})
     else:

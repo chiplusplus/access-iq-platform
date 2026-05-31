@@ -1,4 +1,4 @@
-"""CatalogStack — Glue Data Catalog database placeholder for Phase 4."""
+"""CatalogStack - Glue Data Catalog database placeholder for Phase 4."""
 
 from __future__ import annotations
 

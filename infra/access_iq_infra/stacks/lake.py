@@ -1,4 +1,4 @@
-"""LakeStack — stateful KMS CMK + S3 lake bucket + hardened bucket policy.
+"""LakeStack - stateful KMS CMK + S3 lake bucket + hardened bucket policy.
 
 Bundled because the bucket's default encryption AND deny-non-KMS bucket policy
 both reference the KMS key ARN; splitting these into two stacks would create
@@ -31,7 +31,7 @@ class LakeStack(Stack):
 
     Removal policy:
       - KMS key: RETAIN in dev AND prod (pending-deletion window breaks
-        redeploy cycles — see pitfalls.md #8).
+        redeploy cycles - see pitfalls.md #8).
       - S3 bucket: RETAIN in prod; DESTROY + auto_delete_objects in dev.
     """
 
@@ -86,7 +86,7 @@ class LakeStack(Stack):
 
         # 3) Defence-in-depth bucket policy: deny non-KMS uploads even though
         # default encryption is KMS (clients can still explicitly request
-        # SSE-S3 or SSE-C on a put — this blocks them).
+        # SSE-S3 or SSE-C on a put - this blocks them).
         lake_bucket.add_to_resource_policy(
             iam.PolicyStatement(
                 sid="DenyUnEncryptedObjectUploads",

@@ -74,7 +74,7 @@ class ObservabilityStack(Stack):
             )
             log_groups[source] = lg
 
-        # Pipeline log group (Phase 7 — full orchestration flow)
+        # Pipeline log group (Phase 7 - full orchestration flow)
         pipeline_lg = logs.LogGroup(
             self,
             "LogGroup-pipeline",
@@ -84,7 +84,7 @@ class ObservabilityStack(Stack):
         )
         log_groups["pipeline"] = pipeline_lg
 
-        # Prefect server + worker log groups (Phase 7 — self-hosted Prefect)
+        # Prefect server + worker log groups (Phase 7 - self-hosted Prefect)
         for extra in ("prefect-server", "prefect-worker"):
             lg = logs.LogGroup(
                 self,
@@ -163,7 +163,7 @@ class ObservabilityStack(Stack):
 
         # Scope metric filters to ingestion + pipeline log groups only.
         # Prefect server/worker log groups produce structured logs with different
-        # schemas — applying ingestion metric filters to them causes false positives.
+        # schemas - applying ingestion metric filters to them causes false positives.
         metric_filter_sources = {
             source: lg
             for source, lg in log_groups.items()

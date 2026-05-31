@@ -133,7 +133,7 @@ BudgetStack(
     env=Environment(account=cfg.account_id, region="us-east-1"),
 )
 
-# Trust account budget — only synthesised when explicitly requested via CDK context
+# Trust account budget - only synthesised when explicitly requested via CDK context
 # to avoid `cdk deploy --all` attempting cross-account deploy with Platform credentials.
 # Deployed separately: cdk deploy budget-trust-... -c include_trust_budget=true --profile $TRUST_PROFILE
 trust_account_id = cfg.iam.get("trust_account_id", "") if isinstance(cfg.iam, dict) else ""

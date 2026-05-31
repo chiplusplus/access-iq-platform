@@ -19,7 +19,7 @@ class TestSecretsManager:
         )
         secrets = response.get("SecretList", [])
         if not secrets:
-            pytest.skip("No secrets found — stack may not be deployed")
+            pytest.skip("No secrets found - stack may not be deployed")
         secret_names = [s["Name"] for s in secrets]
         assert len(secret_names) >= 1, "Expected at least one secret"
 

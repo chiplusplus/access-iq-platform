@@ -1,6 +1,6 @@
 # access-iq-flows
 
-Workspace skeleton for the Access-IQ Prefect orchestration layer — flows
+Workspace skeleton for the Access-IQ Prefect orchestration layer - flows
 that compose ingestion → dbt → Great Expectations validation into one
 operational pipeline.
 

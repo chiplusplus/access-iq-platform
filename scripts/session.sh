@@ -379,7 +379,7 @@ cmd_up() {
     seed_secret "${SECRET_PREFIX}/redshift-password"  "$RS_PASS"
     echo "  ✓ Redshift DSN + password seeded"
   else
-    echo "  WARNING: Redshift admin secret not found — skipping redshift-dsn/password seeding"
+    echo "  WARNING: Redshift admin secret not found - skipping redshift-dsn/password seeding"
   fi
 
   fi  # skip_infra
@@ -460,7 +460,7 @@ EOF
     if [ "$stmt_status" = "FINISHED" ]; then
       echo "  ✓ Spectrum external schema ready"
     else
-      echo "  WARNING: Spectrum schema creation failed — run CREATE EXTERNAL SCHEMA manually"
+      echo "  WARNING: Spectrum schema creation failed - run CREATE EXTERNAL SCHEMA manually"
     fi
   fi
 
@@ -514,7 +514,7 @@ EOF
   aws ecs wait services-stable \
     --cluster "$cluster_name" --services "$svc_name" \
     --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null \
-    || echo "  WARNING: ecs wait timed out — attempting tunnel anyway"
+    || echo "  WARNING: ecs wait timed out - attempting tunnel anyway"
 
   # Start SSM tunnel with retry (Cloud Map DNS may take a few seconds after service stabilises)
   local server_ready=false
@@ -534,7 +534,7 @@ EOF
       break
     fi
 
-    # Tunnel failed — kill it and retry after a wait
+    # Tunnel failed - kill it and retry after a wait
     kill "$prefect_tunnel_pid" 2>/dev/null || true
     if [ "$attempt" -lt 3 ]; then
       echo "  Tunnel attempt $attempt failed, retrying in 15s..."
@@ -597,7 +597,7 @@ EOF
       --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
 
     if [ "$PRIVATE_SUBNET_IDS" = "[]" ] || [ -z "$PRIVATE_SUBNET_IDS" ]; then
-      echo "  ERROR: No private subnets found for VPC $PLATFORM_VPC — cannot deploy Prefect flow"
+      echo "  ERROR: No private subnets found for VPC $PLATFORM_VPC - cannot deploy Prefect flow"
       return 1
     fi
 
@@ -817,7 +817,7 @@ cmd_status() {
     if [ "$diag_count" -gt 0 ] && [ "$prov_count" -gt 0 ]; then
       ok "diagnostics ($diag_count files) | providers ($prov_count files)"
     elif [ "$diag_count" -gt 0 ] || [ "$prov_count" -gt 0 ]; then
-      warn "diagnostics ($diag_count) | providers ($prov_count) — partial"
+      warn "diagnostics ($diag_count) | providers ($prov_count) - partial"
     else
       fail "no export files found"
     fi
@@ -903,7 +903,7 @@ cmd_status() {
     --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
 
   if [ -z "$platform_bucket" ] || [ "$platform_bucket" = "None" ]; then
-    printf "  ${_r}Lake bucket not found — lake stack not deployed${_0}\n"
+    printf "  ${_r}Lake bucket not found - lake stack not deployed${_0}\n"
   else
     local entities=(
       "source=ehr_postgres/entity=patient_demographics"
@@ -988,7 +988,7 @@ cmd_status() {
   # ─────────────────────────────────────────────────────────────────────
 
   if [ "$rs_status" != "AVAILABLE" ]; then
-    printf "  ${_y}Skipped — Redshift workgroup not available${_0}\n"
+    printf "  ${_y}Skipped - Redshift workgroup not available${_0}\n"
   else
     local RS_SECRET_ARN
     RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
@@ -1248,9 +1248,9 @@ cmd_ingest() {
       --region "$REGION")
 
     if [ "$exit_code" = "0" ]; then
-      printf "  \033[1;32m✓ %s — exit 0\033[0m\n" "$source"
+      printf "  \033[1;32m✓ %s - exit 0\033[0m\n" "$source"
     else
-      printf "  \033[1;31m✗ %s — exit %s\033[0m\n" "$source" "$exit_code"
+      printf "  \033[1;31m✗ %s - exit %s\033[0m\n" "$source" "$exit_code"
       FAILED=$((FAILED + 1))
     fi
   done

@@ -1,4 +1,4 @@
-# Data Contract — Trust S3 Provider/Site Reference (Excel)
+# Data Contract - Trust S3 Provider/Site Reference (Excel)
 
 ## 1) Source Overview
 

@@ -1,4 +1,4 @@
-"""End-to-end synth test — both envs synthesise the expected stack shape.
+"""End-to-end synth test - both envs synthesise the expected stack shape.
 
 Programmatic synth is the canonical gate: fast, no `cdk` binary, no Node
 toolchain in the test runner.

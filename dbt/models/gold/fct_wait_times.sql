@@ -13,7 +13,7 @@
     DM01 breach: >6 weeks = 42 days (NHS diagnostics waiting time standard)
     Treatment date: first attended outpatient encounter after referral_date for same patient
     WARN: referral-to-encounter join is approximated via patient_sk + time window (no FK in Silver)
-    NOTE: diagnoses Silver table is empty (simulator bug) — do NOT join to diagnoses
+    NOTE: diagnoses Silver table is empty (simulator bug) - do NOT join to diagnoses
     Key decisions: D-05 (per-referral grain), D-14 (distkey/sortkey), D-17 (referral_month)
 #}
 
@@ -21,7 +21,7 @@ WITH referrals AS (
     SELECT * FROM {{ ref('referrals') }}
 ),
 
--- DM01: diagnostic orders linked via referral_id (LEFT JOIN — patient_sk nullable in diagnostics_orders)
+-- DM01: diagnostic orders linked via referral_id (LEFT JOIN - patient_sk nullable in diagnostics_orders)
 diagnostics AS (
     SELECT
         referral_id,
@@ -32,7 +32,7 @@ diagnostics AS (
     GROUP BY referral_id
 ),
 
--- First attended encounter per patient after each referral (approximate — no FK between referrals and encounters)
+-- First attended encounter per patient after each referral (approximate - no FK between referrals and encounters)
 first_treatment AS (
     SELECT
         r.referral_id,

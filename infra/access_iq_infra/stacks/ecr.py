@@ -1,4 +1,4 @@
-"""EcrStack — container registry for the ingestion image (Phase 3)."""
+"""EcrStack - container registry for the ingestion image (Phase 3)."""
 
 from __future__ import annotations
 

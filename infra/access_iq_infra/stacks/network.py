@@ -1,4 +1,4 @@
-"""NetworkStack — stateless Platform VPC, peering, routes, endpoints, security groups.
+"""NetworkStack - stateless Platform VPC, peering, routes, endpoints, security groups.
 
 All resources use DESTROY removal policy. Deploy and destroy each working session.
 Trust VPC ID is ephemeral and must be passed as a CDK context param at synth time.
@@ -38,8 +38,8 @@ class NetworkStack(Stack):
     cross-account AwsCustomResource failures during cdk destroy.
 
     Exposes for Phase 3 ECS stack:
-        self.vpc          — ec2.Vpc
-        self.ecs_task_sg  — ec2.SecurityGroup (deny-by-default egress)
+        self.vpc          - ec2.Vpc
+        self.ecs_task_sg  - ec2.SecurityGroup (deny-by-default egress)
 
     Required CDK context params:
         -c trust_vpc_id=vpc-xxx
@@ -94,7 +94,7 @@ class NetworkStack(Stack):
 
         # ── Section 3: VPC Peering (REQ-NET-02, D-01) ────────────────────────
         # peer_role_arn triggers CloudFormation to assume the Trust role and auto-accept
-        # the peering connection — no separate AwsCustomResource needed for acceptance.
+        # the peering connection - no separate AwsCustomResource needed for acceptance.
         peering = ec2.CfnVPCPeeringConnection(
             self,
             "PlatformToTrustPeering",
@@ -117,8 +117,8 @@ class NetworkStack(Stack):
             )
             route.add_dependency(peering)
 
-        # ── Section 5: DNS resolution — requester side (REQ-NET-02, D-03) ──
-        # Requester side — same account, from_sdk_calls is fine (no cross-account STS).
+        # ── Section 5: DNS resolution - requester side (REQ-NET-02, D-03) ──
+        # Requester side - same account, from_sdk_calls is fine (no cross-account STS).
         # Accepter side is managed by the Trust stack to avoid cross-account destroy failures.
         dns_requester_cr = AwsCustomResource(
             self,
@@ -148,8 +148,8 @@ class NetworkStack(Stack):
         )
 
         # ── Section 7: Security Groups (REQ-NET-02, T-02-05) ─────────────────
-        # ECS task SG — deny-by-default egress; explicit rules only for required ports.
-        # allow_all_outbound=False is CRITICAL — CDK default adds 0.0.0.0/0 egress.
+        # ECS task SG - deny-by-default egress; explicit rules only for required ports.
+        # allow_all_outbound=False is CRITICAL - CDK default adds 0.0.0.0/0 egress.
         ecs_sg = ec2.SecurityGroup(
             self,
             "EcsTaskSg",
@@ -167,13 +167,13 @@ class NetworkStack(Stack):
             ec2.Port.tcp(443),
             "HTTPS - ECR, Secrets Manager, CloudWatch via endpoints or NAT",
         )
-        # Redshift Serverless — dbt Silver/Gold builds connect on port 5439
+        # Redshift Serverless - dbt Silver/Gold builds connect on port 5439
         ecs_sg.add_egress_rule(
             ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),
             ec2.Port.tcp(5439),
             "Redshift Serverless (dbt builds)",
         )
-        # Prefect server API — ingress + egress within Platform VPC (Phase 7)
+        # Prefect server API - ingress + egress within Platform VPC (Phase 7)
         ecs_sg.add_ingress_rule(
             ec2.Peer.ipv4(cfg.vpc["platform_cidr"]),
             ec2.Port.tcp(4200),
@@ -185,7 +185,7 @@ class NetworkStack(Stack):
             "Prefect server API (worker + pipeline tasks)",
         )
 
-        # Endpoint SG — allows HTTPS ingress from Platform VPC; no outbound needed.
+        # Endpoint SG - allows HTTPS ingress from Platform VPC; no outbound needed.
         endpoint_sg = ec2.SecurityGroup(
             self,
             "EndpointSg",
@@ -200,14 +200,14 @@ class NetworkStack(Stack):
         )
 
         # ── Section 8: VPC Endpoints (REQ-NET-03, D-07) ──────────────────────
-        # S3 gateway endpoint — free; routes Bronze writes off NAT gateway.
+        # S3 gateway endpoint - free; routes Bronze writes off NAT gateway.
         vpc.add_gateway_endpoint(
             "S3Endpoint",
             service=ec2.GatewayVpcEndpointAwsService.S3,
             subnets=[ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)],
         )
 
-        # Interface endpoints — deploy in both AZs (both private subnets) per Claude's Discretion.
+        # Interface endpoints - deploy in both AZs (both private subnets) per Claude's Discretion.
         # private_dns_enabled=True overrides public DNS for service hostnames within VPC.
         for eid, svc in [
             ("SecretsManagerEndpoint", ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER),

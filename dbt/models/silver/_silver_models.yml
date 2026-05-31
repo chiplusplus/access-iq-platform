@@ -8,7 +8,7 @@ models:
           min_value: 1
     columns:
       - name: patient_sk
-        description: "HMAC-SHA-256 of NHS number — primary key"
+        description: "HMAC-SHA-256 of NHS number - primary key"
         tests:
           - not_null
           - unique
@@ -148,7 +148,7 @@ models:
               severity: warn
 
   - name: providers
-    description: "Provider site reference — no patient linkage"
+    description: "Provider site reference - no patient linkage"
     tests:
       - dbt_expectations.expect_table_row_count_to_be_between:
           min_value: 1

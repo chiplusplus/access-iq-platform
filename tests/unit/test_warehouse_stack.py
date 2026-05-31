@@ -162,7 +162,7 @@ def test_redshift_sg_ingress_port_5439() -> None:
 
 def test_usage_limit_custom_resource_exists() -> None:
     tpl = _template()
-    # CfnUsageLimit not in this CDK version — usage limit is an AwsCustomResource
+    # CfnUsageLimit not in this CDK version - usage limit is an AwsCustomResource
     # which synthesises as Custom::AWS
     resources = tpl.find_resources("Custom::AWS")
     # Verify at least one custom resource exists (usage limit CR)

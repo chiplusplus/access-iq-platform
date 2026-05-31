@@ -1,4 +1,4 @@
-# Pseudonymisation method — access-iq
+# Pseudonymisation method - access-iq
 
 ## Method
 HMAC-SHA-256 with a per-environment 32-byte secret key managed by AWS Secrets Manager.
@@ -22,14 +22,14 @@ anonymisation assessment (k-anonymity + quasi-identifier removal) proves otherwi
 - Generation: CDK `Secret.generate_secret_string()` with `exclude_characters` to
   ensure URL-safe ASCII. 64 chars (>= 32 bytes entropy).
 - Rotation: annual + on staff change (real-world DSPT cadence). Tooling for
-  rotation is a Deferred Idea — built when first prod data lands.
+  rotation is a Deferred Idea - built when first prod data lands.
 - Access: only the ingestion task role and the Silver transform role (Phase 5)
   can `secretsmanager:GetSecretValue` against the secret ARN.
 
 ## Output
 - 64-character hex digest of HMAC-SHA-256.
 - Stable across runs within the same environment.
-- Different across environments (different keys) — supports a Caldicott-aligned
+- Different across environments (different keys) - supports a Caldicott-aligned
   "dev cannot link to prod patients" property.
 
 ## Caveat

@@ -209,7 +209,7 @@ class ComputeStack(Stack):
 
             task_defs[source] = task_def
 
-        # -- Section 4b: Pipeline Task Definition (Phase 7 — full orchestration flow) --
+        # -- Section 4b: Pipeline Task Definition (Phase 7 - full orchestration flow) --
         # Merges all ingestion secrets + Prefect API key. Environment includes
         # Redshift, dbt, GE, and SNS config for the single-container pipeline.
         pipeline_secrets: dict[str, ecs.Secret] = {

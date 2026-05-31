@@ -182,7 +182,7 @@ def _run() -> None:
             "stratum",
             ["avg_triage", "avg_seen", "avg_discharge"],
             ["Triage", "Seen by Clinician", "Discharge"],
-            f"Average Time by Stage — by {equity_stratifier}",
+            f"Average Time by Stage - by {equity_stratifier}",
             equity_stratifier,
             "Minutes",
         )

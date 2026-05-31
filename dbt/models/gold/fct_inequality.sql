@@ -8,7 +8,7 @@
 }}
 {#
     Gold fct_inequality
-    Grain: metric x period x stratifier x stratum (NHS OHID Fingertips long-form — D-06)
+    Grain: metric x period x stratifier x stratum (NHS OHID Fingertips long-form - D-06)
     Stratifiers: imd_decile, age_band, ethnicity_ons, sex (REQ-GOLD-INEQ-01)
     Metrics: wait_time_median, four_hour_breach_rate, dna_rate
     Small-cell suppression D-07: counts < 5 replaced with NULL (NHS Digital standard)

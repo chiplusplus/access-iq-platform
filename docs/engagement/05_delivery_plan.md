@@ -1,4 +1,4 @@
-# access-iq — Delivery Plan
+# access-iq - Delivery Plan
 
 ## Purpose of This Document
 
@@ -38,7 +38,7 @@ Dates are indicative and may flex to maintain quality.
 
 ---
 
-## Phase 0 — Engagement Setup
+## Phase 0 - Engagement Setup
 
 **Deliverables**
 - Context, scope, metric definitions
@@ -51,7 +51,7 @@ Dates are indicative and may flex to maintain quality.
 
 ---
 
-## Phase 1 — Platform Foundations
+## Phase 1 - Platform Foundations
 
 ### Objectives
 - Establish a professional, production-grade baseline
@@ -75,7 +75,7 @@ Dates are indicative and may flex to maintain quality.
 
 ---
 
-## Phase 2 — Bronze Ingestion
+## Phase 2 - Bronze Ingestion
 
 ### Objectives
 - Reliably land raw data from all sources
@@ -106,7 +106,7 @@ Dates are indicative and may flex to maintain quality.
 
 ---
 
-## Phase 3 — Silver Layer & Data Quality
+## Phase 3 - Silver Layer & Data Quality
 
 ### Objectives
 - Standardise, dedupe, and reconcile messy operational data
@@ -130,7 +130,7 @@ Dates are indicative and may flex to maintain quality.
 
 ---
 
-## Phase 4 — Gold Layer & Metrics
+## Phase 4 - Gold Layer & Metrics
 
 ### Objectives
 - Implement metric-ready marts aligned to definitions
@@ -154,7 +154,7 @@ Dates are indicative and may flex to maintain quality.
 
 ---
 
-## Phase 5 — Product Layer & Observability
+## Phase 5 - Product Layer & Observability
 
 ### Objectives
 - Deliver stakeholder-facing insights
@@ -178,7 +178,7 @@ Dates are indicative and may flex to maintain quality.
 
 ---
 
-## Phase 6 — Hardening & Portfolio Packaging
+## Phase 6 - Hardening & Portfolio Packaging
 
 ### Objectives
 - Make the project explainable, maintainable, and credible

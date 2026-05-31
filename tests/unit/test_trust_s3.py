@@ -76,7 +76,7 @@ def test_provider_ref_success_uploads_parquet_and_writes_manifest(monkeypatch):
     )
 
     assert out["status"] == "success"
-    # No copy_object — should use upload_fileobj
+    # No copy_object - should use upload_fileobj
     assert len(s3.uploads) == 1
     assert s3.uploads[0]["Key"].endswith(".parquet")
     assert s3.uploads[0]["Body"][:4] == b"PAR1"

@@ -1,4 +1,4 @@
-# access-iq — Scope and Success Criteria
+# access-iq - Scope and Success Criteria
 
 ## Purpose of This Document
 

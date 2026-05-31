@@ -106,7 +106,7 @@ class TestSpectrum:
         ns = redshift_serverless_client.get_namespace(namespaceName=env_config["prefix"])
         secret_arn = ns["namespace"].get("adminPasswordSecretArn")
         if not secret_arn:
-            pytest.skip("No managed admin password — can't authenticate")
+            pytest.skip("No managed admin password - can't authenticate")
 
         stmt = redshift_data_client.execute_statement(
             WorkgroupName=env_config["prefix"],
@@ -150,7 +150,7 @@ class TestSpectrum:
         ns = redshift_serverless_client.get_namespace(namespaceName=env_config["prefix"])
         secret_arn = ns["namespace"].get("adminPasswordSecretArn")
         if not secret_arn:
-            pytest.skip("No managed admin password — can't authenticate")
+            pytest.skip("No managed admin password - can't authenticate")
 
         stmt = redshift_data_client.execute_statement(
             WorkgroupName=env_config["prefix"],

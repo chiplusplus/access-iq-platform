@@ -1,7 +1,7 @@
 {%- macro calc_sii(metric_col, population_col, ridit_col) -%}
 {#
     SII (Slope Index of Inequality) via weighted OLS.
-    Source: PHE/OHID Technical Guide — fingertips.phe.org.uk/static-reports/
+    Source: PHE/OHID Technical Guide - fingertips.phe.org.uk/static-reports/
             public-health-technical-guidance/Inequality/SII.html
 
     Expects caller to provide:

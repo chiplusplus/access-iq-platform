@@ -1,4 +1,4 @@
-# access-iq — Environment Matrix (Dev + Prod)
+# access-iq - Environment Matrix (Dev + Prod)
 
 ## Purpose
 

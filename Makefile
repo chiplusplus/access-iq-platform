@@ -86,7 +86,7 @@ tunnel-stop:  ## Kill background SSM tunnel started by make up
 		fi; \
 		rm -f .tunnel.pid; \
 	else \
-		echo "No .tunnel.pid file — tunnel not managed by make up"; \
+		echo "No .tunnel.pid file - tunnel not managed by make up"; \
 	fi
 
 tunnel-env:  ## Print export commands for dbt Redshift credentials

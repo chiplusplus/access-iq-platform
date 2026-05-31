@@ -112,7 +112,7 @@ models:
           min_value: 1
     columns:
       - name: referral_id
-        description: "Primary key — one row per referral from Silver referrals"
+        description: "Primary key - one row per referral from Silver referrals"
         tests:
           - not_null
           - unique
@@ -202,7 +202,7 @@ models:
           min_value: 1
     columns:
       - name: uc_log_id
-        description: "Primary key — one row per A&E attendance from Silver urgent_care"
+        description: "Primary key - one row per A&E attendance from Silver urgent_care"
         tests:
           - not_null
           - unique
@@ -260,7 +260,7 @@ models:
           min_value: 1
     columns:
       - name: appointment_id
-        description: "Primary key — one row per appointment from Silver appointments"
+        description: "Primary key - one row per appointment from Silver appointments"
         tests:
           - not_null
           - unique

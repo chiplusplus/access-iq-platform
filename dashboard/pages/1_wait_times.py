@@ -31,7 +31,7 @@ def _run() -> None:
     register_tables(conn, bucket, export_date, ["fct_wait_times", "dim_site", "dim_specialty"])
 
     # --- Sidebar filters (D-07) ---
-    # Provider multiselect — only providers with actual wait times data
+    # Provider multiselect - only providers with actual wait times data
     providers_df = conn.execute(
         "SELECT DISTINCT ds.provider_name "
         "FROM fct_wait_times fw "

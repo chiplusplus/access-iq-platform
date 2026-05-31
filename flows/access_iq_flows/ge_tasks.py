@@ -40,7 +40,7 @@ def _load_ge_gate_module():
 def run_ge_gate() -> None:
     """Run GE validation on Silver tables; raise on failure (not sys.exit).
 
-    Calls run_ge_validation() directly — NOT main() which calls sys.exit(1).
+    Calls run_ge_validation() directly - NOT main() which calls sys.exit(1).
     Writes results to Redshift _dq_results table and S3 _dq/ prefix.
     """
     mod = _load_ge_gate_module()
@@ -49,7 +49,7 @@ def run_ge_gate() -> None:
 
     if not results:
         raise RuntimeError(
-            "GE gate returned empty results — no expectations were evaluated. "
+            "GE gate returned empty results - no expectations were evaluated. "
             "Check Silver tables exist and GE suites are configured."
         )
 

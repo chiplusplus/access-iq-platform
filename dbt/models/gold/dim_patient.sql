@@ -8,7 +8,7 @@
 }}
 {#
     Gold dim_patient
-    Grain: one row per patient (SCD2 scaffold — single snapshot until simulator produces change streams)
+    Grain: one row per patient (SCD2 scaffold - single snapshot until simulator produces change streams)
     Source: silver.patients
     Key decisions: D-01 (SCD2 scaffold), D-14 (distkey/sortkey demonstrative)
 #}

@@ -1,4 +1,4 @@
-# Data Contract — EHR Postgres Mirror
+# Data Contract - EHR Postgres Mirror
 
 ## 1) Source Overview
 

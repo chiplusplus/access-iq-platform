@@ -26,7 +26,7 @@ class TestLakeBucket:
         rules = encryption["ServerSideEncryptionConfiguration"]["Rules"]
         sse = rules[0]["ApplyServerSideEncryptionByDefault"]
         assert sse["SSEAlgorithm"] == "aws:kms"
-        assert sse["KMSMasterKeyID"]  # not empty — CMK, not SSE-S3
+        assert sse["KMSMasterKeyID"]  # not empty - CMK, not SSE-S3
 
     @skip_if_not_found
     def test_lake_bucket_versioning_enabled(

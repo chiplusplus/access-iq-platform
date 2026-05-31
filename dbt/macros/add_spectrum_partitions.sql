@@ -1,7 +1,7 @@
 {% macro add_spectrum_partitions() %}
 {# Registers ingest_date partitions for all bronze Spectrum tables.
    Uses today's date (from run_started_at) so partitions match the current ingestion.
-   ADD IF NOT EXISTS makes this idempotent — safe to rerun.
+   ADD IF NOT EXISTS makes this idempotent - safe to rerun.
    Run via: dbt run-operation add_spectrum_partitions #}
 
 {% set bronze_prefix = env_var('BRONZE_S3_PREFIX') %}

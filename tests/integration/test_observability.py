@@ -133,7 +133,7 @@ class TestCloudWatchMetrics:
             Namespace=f"AccessIQ/{env_config['env_name']}",
         )
         if not response["Metrics"]:
-            pytest.skip("No CloudWatch metrics found — ingestion may not have run yet")
+            pytest.skip("No CloudWatch metrics found - ingestion may not have run yet")
 
 
 class TestSns:

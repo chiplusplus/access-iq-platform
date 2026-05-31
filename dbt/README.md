@@ -1,6 +1,6 @@
 # access-iq-dbt
 
-Workspace skeleton for the Access-IQ dbt project — Silver staging models
+Workspace skeleton for the Access-IQ dbt project - Silver staging models
 (patients, encounters, appointments, urgent_care, diagnostics, providers)
 and Gold marts (wait_times, inequality, urgent_care, utilisation) targeting
 Redshift Serverless.

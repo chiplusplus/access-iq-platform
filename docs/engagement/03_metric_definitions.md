@@ -1,4 +1,4 @@
-# access-iq — Metric Definitions
+# access-iq - Metric Definitions
 
 ## Purpose of This Document
 

@@ -1,4 +1,4 @@
-"""NHS Mod-11 checksum validation — Python reference implementation + tests.
+"""NHS Mod-11 checksum validation - Python reference implementation + tests.
 
 The SQL equivalent of ``validate_nhs_mod11`` will be embedded in
 ``dbt/models/silver/patients.sql`` as a CASE expression.  This Python
@@ -23,9 +23,9 @@ def validate_nhs_mod11(nhs: str) -> str | None:
     """Return a failure reason string, or ``None`` if valid.
 
     Failure reasons:
-    - ``"invalid_format"`` — not exactly 10 digits
-    - ``"mod11_invalid"`` — remainder is 10 (inherently invalid NHS number)
-    - ``"mod11_mismatch"`` — computed check digit does not match the 10th digit
+    - ``"invalid_format"`` - not exactly 10 digits
+    - ``"mod11_invalid"`` - remainder is 10 (inherently invalid NHS number)
+    - ``"mod11_mismatch"`` - computed check digit does not match the 10th digit
     """
     cleaned = re.sub(r"[^0-9]", "", nhs)
     if len(cleaned) != 10:
@@ -90,7 +90,7 @@ def test_mod11_remainder_10_is_invalid() -> None:
     Constructed: first 9 digits of ``100000001`` produce weighted_sum=12,
     remainder = 11 - (12 % 11) = 11 - 1 = 10.  Any 10th digit is invalid.
     """
-    # 100000001 + any check digit — remainder is 10
+    # 100000001 + any check digit - remainder is 10
     nhs = "1000000010"  # append 0 as check digit
     # Verify weighted sum gives remainder 10
     ws = sum(int(nhs[i]) * (10 - i) for i in range(9))

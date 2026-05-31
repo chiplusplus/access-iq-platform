@@ -1,4 +1,4 @@
-# Data Contract — Urgent Care Postgres Mirror
+# Data Contract - Urgent Care Postgres Mirror
 
 ## 1) Source Overview
 

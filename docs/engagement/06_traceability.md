@@ -1,4 +1,4 @@
-# access-iq — Traceability Matrix
+# access-iq - Traceability Matrix
 
 ## Purpose of This Document
 
@@ -125,7 +125,7 @@ It ensures:
 
 ## Dashboard Page Traceability (MLP)
 
-### Page 1 — Access & Waiting Times
+### Page 1 - Access & Waiting Times
 **Primary marts**
 - mart_access_wait_times_uc
 - mart_access_wait_times_appt
@@ -136,7 +136,7 @@ It ensures:
 
 ---
 
-### Page 2 — Inequality Lens
+### Page 2 - Inequality Lens
 **Primary marts**
 - mart_inequality_summary
 - mart_access_wait_times_uc
@@ -148,7 +148,7 @@ It ensures:
 
 ---
 
-### Page 3 — Utilisation & Flow
+### Page 3 - Utilisation & Flow
 **Primary marts**
 - mart_flow_urgent_care
 - mart_utilisation_appointments

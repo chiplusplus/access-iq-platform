@@ -1,4 +1,4 @@
-# Data Contract — Trust S3 Diagnostics Orders Exports (CSV)
+# Data Contract - Trust S3 Diagnostics Orders Exports (CSV)
 
 ## 1) Source Overview
 
@@ -81,7 +81,7 @@ Trust S3 exports are the **source of truth** for diagnostics extracts used by ac
 
 **Bronze:**
 - Partition-based landing by export_date; retain raw files exactly
-- Re-run for export_date overwrites Bronze partition (or writes new run_id and Silver picks latest) — choose one and document in ADR
+- Re-run for export_date overwrites Bronze partition (or writes new run_id and Silver picks latest) - choose one and document in ADR
 
 **Silver:**
 - Deterministic upsert/dedupe by key + latest record

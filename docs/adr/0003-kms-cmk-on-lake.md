@@ -18,7 +18,7 @@ across all objects and a window where mixed-encryption is possible), or
 ## Decision
 Option (b). Specifically:
 - LakeStack creates a CMK with `RemovalPolicy.RETAIN` and 30-day pending deletion.
-  (Pending-deletion window is well-documented gotcha — see pitfalls.md #8.)
+  (Pending-deletion window is well-documented gotcha - see pitfalls.md #8.)
 - The lake bucket is created with `BucketEncryption.KMS` referencing that CMK.
 - Bucket policy denies `s3:PutObject` where `s3:x-amz-server-side-encryption` != `aws:kms`.
 - Bucket policy denies `s3:PutObject` where `s3:x-amz-server-side-encryption-aws-kms-key-id`
@@ -37,14 +37,14 @@ recreated on first `cdk deploy LakeStack` (after destroying the legacy stack).
 - Cross-account COPY to Bronze (none today; Phase 3 keeps Bronze writes inside the
   Platform account) would require a KMS key grant on the Trust principal.
 - Spectrum reads from Redshift Serverless (Phase 4) require the Redshift namespace
-  IAM role to have `kms:Decrypt` on the lake CMK — captured as a Phase 4 follow-up.
+  IAM role to have `kms:Decrypt` on the lake CMK - captured as a Phase 4 follow-up.
 - Future stateful resources (Secrets, Glue, ECR) can re-use the same CMK or get
   their own.
 
 ## Alternatives considered
-- SSE-S3 with a "we'll upgrade later" plan — rejected: re-encryption job overhead
+- SSE-S3 with a "we'll upgrade later" plan - rejected: re-encryption job overhead
   + a window where mixed-encryption is acceptable creates audit ambiguity.
-- AWS-managed KMS key (`aws/s3`) — rejected: no control over key policy; cannot
+- AWS-managed KMS key (`aws/s3`) - rejected: no control over key policy; cannot
   scope grants per principal; weaker DSPT story.
 
 ## References

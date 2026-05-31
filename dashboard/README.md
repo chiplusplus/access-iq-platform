@@ -1,6 +1,6 @@
 # access-iq-dashboard
 
-Workspace skeleton for the Access-IQ Streamlit dashboard — three pages
+Workspace skeleton for the Access-IQ Streamlit dashboard - three pages
 (Wait Times, Inequality, Urgent Care) reading from the Gold layer in
 Redshift Serverless.
 

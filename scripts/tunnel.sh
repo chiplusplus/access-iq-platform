@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SSM port-forwarding tunnel to Redshift Serverless.
 # Usage:
-#   ./scripts/tunnel.sh          — start the tunnel (foreground, Ctrl+C to stop)
-#   ./scripts/tunnel.sh env      — print export commands for dbt credentials
+#   ./scripts/tunnel.sh          - start the tunnel (foreground, Ctrl+C to stop)
+#   ./scripts/tunnel.sh env      - print export commands for dbt credentials
 #   eval $(./scripts/tunnel.sh env) && dbt debug --profiles-dir .
 set -euo pipefail
 
@@ -167,7 +167,7 @@ cmd_reconnect() {
     echo "Prefect UI: http://localhost:4200"
     echo "Run: export PREFECT_API_URL=http://localhost:4200/api"
   else
-    echo "  ⚠ Prefect server not responding — tunnel may still be connecting"
+    echo "  ⚠ Prefect server not responding - tunnel may still be connecting"
     echo "  Check: curl http://localhost:4200/api/health"
   fi
 }

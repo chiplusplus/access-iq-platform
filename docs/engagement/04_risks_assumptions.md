@@ -1,4 +1,4 @@
-# access-iq — Risks and Assumptions
+# access-iq - Risks and Assumptions
 
 ## Purpose of This Document
 

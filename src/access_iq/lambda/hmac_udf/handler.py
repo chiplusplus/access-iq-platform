@@ -3,7 +3,7 @@
 Backs the ``f_hmac_nhs_number`` external function that Silver models call
 via the ``{{ hmac_pseudonymise() }}`` dbt macro.  The handler fetches the
 HMAC key from Secrets Manager once per warm Lambda instance and caches it
-in module-level state (Lambda is single-threaded — no lock needed).
+in module-level state (Lambda is single-threaded - no lock needed).
 
 Redshift batch contract
 -----------------------
@@ -62,7 +62,7 @@ def handler(event: dict, context: object) -> str:  # noqa: ARG001
     Returns
     -------
     str
-        JSON string — Redshift Serverless requires ``json.dumps()`` on the
+        JSON string - Redshift Serverless requires ``json.dumps()`` on the
         response dict, not a bare dict (the runtime double-encodes it, and
         Redshift parses the inner JSON string).
     """
