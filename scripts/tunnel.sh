@@ -6,13 +6,9 @@
 #   eval $(./scripts/tunnel.sh env) && dbt debug --profiles-dir .
 set -euo pipefail
 
+AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
 CDK_ENV="${CDK_ENV:-dev}"
 REGION="${REGION:-eu-west-2}"
-
-if [ -z "${AWS_PROFILE:-}" ]; then
-  echo "ERROR: AWS_PROFILE must be set. export AWS_PROFILE=<your-platform-profile>"
-  exit 1
-fi
 LOCAL_PORT="${LOCAL_PORT:-5439}"
 STACK_NAME="warehouse-access-iq-${CDK_ENV}"
 

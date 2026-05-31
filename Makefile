@@ -31,14 +31,12 @@ ready:  ## Run Bronze-to-Silver readiness gate (requires make up + make ingest)
 	uv run --package access-iq-ingestion --extra profiling python -m access_iq.profiling.readiness_gate
 
 dq-gate:  ## Run GE validation gate on Silver tables (requires make up + tunnel)
-	eval $$(./scripts/tunnel.sh env) && uv run --package access-iq-flows python dbt/scripts/run_ge_gate.py
+	eval $$(./scripts/tunnel.sh env) && AWS_PROFILE=$${AWS_PROFILE:-CHI-Engineer-222308823356} uv run --package access-iq-flows python dbt/scripts/run_ge_gate.py
 
 # ── Infrastructure (CDK) ────────────────────────────────────────────
 # TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.
 # Example: make infra-deploy TRUST_VPC_ID=vpc-0abc123
-ifndef AWS_PROFILE
-$(error AWS_PROFILE is not set. Export it before running infra targets: export AWS_PROFILE=<your-platform-profile>)
-endif
+AWS_PROFILE ?= CHI-Engineer-222308823356
 CDK_CONTEXT := -c "env=$${CDK_ENV:-dev}" $(if $(TRUST_VPC_ID),-c "trust_vpc_id=$(TRUST_VPC_ID)") --profile $(AWS_PROFILE)
 
 infra-bootstrap:  ## Bootstrap CDK (requires AWS_PROFILE, CDK_ENV)

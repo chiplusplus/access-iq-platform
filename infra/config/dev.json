@@ -1,8 +1,8 @@
 {
   "app_name": "access-iq",
   "env_name": "dev",
-  "account_id": "<your-platform-account-id>",
-  "user_name": "<your-sso-role-path>",
+  "account_id": "222308823356",
+  "user_name": "AWSReservedSSO_CHI-Engineer_56b619fe880e8582/chia",
   "region": "eu-west-2",
   "tags": {
     "Environment": "dev",
@@ -14,8 +14,8 @@
     "removal_policy": "DESTROY"
   },
   "iam": {
-    "external_bucket": "<your-trust-exports-bucket>",
-    "trust_account_id": "<your-trust-account-id>"
+    "external_bucket": "northshire-trust-exports-911848242214",
+    "trust_account_id": "911848242214"
   },
   "vpc": {
     "platform_cidr": "10.10.0.0/16",
@@ -29,10 +29,10 @@
   },
   "obs": {
     "log_retention_days": 7,
-    "alert_email": "<your-alert-email>",
+    "alert_email": "tools@chiplusplus.com",
     "slack_channel_id": "",
     "slack_workspace_id": "",
-    "slack_webhook_url": ""
+    "slack_webhook_url": "https://hooks.slack.com/services/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"
   },
   "redshift": {
     "base_capacity": 8,
