@@ -45,7 +45,7 @@ SAFE_ENV_NAMES = {
     "REDSHIFT_LAMBDA_UDF_ROLE_ARN",
     "HMAC_LAMBDA_NAME",
     "ALERT_SNS_TOPIC_ARN",
-    "SPECTRUM_ROLE_ARN",
+    "REDSHIFT_SPECTRUM_ROLE_ARN",
     "BRONZE_S3_PREFIX",
     "PREFECT_API_URL",
     # Prefect server container env vars

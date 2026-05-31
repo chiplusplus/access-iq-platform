@@ -82,7 +82,7 @@ class TestDbtTasks:
         assert "build" in args
 
     def test_spectrum_success(self) -> None:
-        """run_dbt_spectrum calls stage_external_sources and add_spectrum_partitions."""
+        """run_dbt_spectrum calls create_external_schema, stage_external_sources, and add_spectrum_partitions."""
         mock_result = _MockDbtRunnerResult(success=True)
         mock_runner_instance = MagicMock()
         mock_runner_instance.invoke.return_value = mock_result
@@ -91,19 +91,34 @@ class TestDbtTasks:
         with patch("dbt.cli.main.dbtRunner", mock_runner_cls):
             run_dbt_spectrum()
 
-        assert mock_runner_instance.invoke.call_count == 2
-        first_args = mock_runner_instance.invoke.call_args_list[0][0][0]
-        second_args = mock_runner_instance.invoke.call_args_list[1][0][0]
-        assert "run-operation" in first_args
-        assert "stage_external_sources" in first_args
-        assert "run-operation" in second_args
-        assert "add_spectrum_partitions" in second_args
+        assert mock_runner_instance.invoke.call_count == 3
+        schema_args = mock_runner_instance.invoke.call_args_list[0][0][0]
+        stage_args = mock_runner_instance.invoke.call_args_list[1][0][0]
+        partition_args = mock_runner_instance.invoke.call_args_list[2][0][0]
+        assert "run-operation" in schema_args
+        assert "create_external_schema" in schema_args
+        assert "run-operation" in stage_args
+        assert "stage_external_sources" in stage_args
+        assert "run-operation" in partition_args
+        assert "add_spectrum_partitions" in partition_args
+
+    def test_spectrum_schema_failure_raises(self) -> None:
+        """run_dbt_spectrum raises RuntimeError when create_external_schema fails."""
+        mock_result = _MockDbtRunnerResult(success=False, exception=Exception("schema error"))
+        mock_runner_instance = MagicMock()
+        mock_runner_instance.invoke.return_value = mock_result
+        mock_runner_cls = MagicMock(return_value=mock_runner_instance)
+
+        with patch("dbt.cli.main.dbtRunner", mock_runner_cls):
+            with pytest.raises(RuntimeError, match="create_external_schema failed"):
+                run_dbt_spectrum()
 
     def test_spectrum_stage_failure_raises(self) -> None:
         """run_dbt_spectrum raises RuntimeError when stage_external_sources fails."""
-        mock_result = _MockDbtRunnerResult(success=False, exception=Exception("stage error"))
+        schema_ok = _MockDbtRunnerResult(success=True)
+        stage_fail = _MockDbtRunnerResult(success=False, exception=Exception("stage error"))
         mock_runner_instance = MagicMock()
-        mock_runner_instance.invoke.return_value = mock_result
+        mock_runner_instance.invoke.side_effect = [schema_ok, stage_fail]
         mock_runner_cls = MagicMock(return_value=mock_runner_instance)
 
         with patch("dbt.cli.main.dbtRunner", mock_runner_cls):
@@ -112,10 +127,10 @@ class TestDbtTasks:
 
     def test_spectrum_partition_failure_raises(self) -> None:
         """run_dbt_spectrum raises RuntimeError when add_spectrum_partitions fails."""
-        stage_ok = _MockDbtRunnerResult(success=True)
+        ok_result = _MockDbtRunnerResult(success=True)
         partition_fail = _MockDbtRunnerResult(success=False, exception=Exception("partition error"))
         mock_runner_instance = MagicMock()
-        mock_runner_instance.invoke.side_effect = [stage_ok, partition_fail]
+        mock_runner_instance.invoke.side_effect = [ok_result, ok_result, partition_fail]
         mock_runner_cls = MagicMock(return_value=mock_runner_instance)
 
         with patch("dbt.cli.main.dbtRunner", mock_runner_cls):

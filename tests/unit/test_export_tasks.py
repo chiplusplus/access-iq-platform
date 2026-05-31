@@ -31,7 +31,7 @@ class TestExportTasks:
     def test_unload_prefix_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """export_gold_to_s3 issues one UNLOAD per Gold table with correct S3 prefix."""
         monkeypatch.setenv("PLATFORM_BUCKET", "test-bucket")
-        monkeypatch.setenv("SPECTRUM_ROLE_ARN", "arn:aws:iam::123456789012:role/spectrum")
+        monkeypatch.setenv("REDSHIFT_SPECTRUM_ROLE_ARN", "arn:aws:iam::123456789012:role/spectrum")
         monkeypatch.setenv("REDSHIFT_HOST", "host")
         monkeypatch.setenv("REDSHIFT_USER", "user")
         monkeypatch.setenv("REDSHIFT_PASSWORD", "pass")

@@ -253,7 +253,7 @@ class ComputeStack(Stack):
         if warehouse_stack is not None:
             pipeline_env["REDSHIFT_LAMBDA_UDF_ROLE_ARN"] = warehouse_stack.lambda_udf_role.role_arn
             pipeline_env["HMAC_LAMBDA_NAME"] = warehouse_stack.hmac_lambda.function_name
-            pipeline_env["SPECTRUM_ROLE_ARN"] = warehouse_stack.spectrum_role.role_arn
+            pipeline_env["REDSHIFT_SPECTRUM_ROLE_ARN"] = warehouse_stack.spectrum_role.role_arn
             pipeline_env["REDSHIFT_HOST"] = (
                 warehouse_stack.workgroup.attr_workgroup_endpoint_address
             )

@@ -47,7 +47,7 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
     """
     export_date = _validate_export_date(run_date)
     bucket = os.environ.get("ACCESS_IQ_PLATFORM_BUCKET") or os.environ["PLATFORM_BUCKET"]
-    role_arn = os.environ["SPECTRUM_ROLE_ARN"]
+    role_arn = os.environ["REDSHIFT_SPECTRUM_ROLE_ARN"]
     kms_key = os.environ.get("ACCESS_IQ_LAKE_KMS_KEY_ARN") or os.environ.get("LAKE_KMS_KEY_ARN", "")
 
     # Validate inputs to prevent SQL injection via interpolated values (T-07-02)

@@ -22,6 +22,14 @@ def run_dbt_spectrum() -> None:
     runner = dbtRunner()
     common_args = ["--profiles-dir", profiles_dir, "--project-dir", project_dir, "--target", target]
 
+    schema_result: dbtRunnerResult = runner.invoke(
+        ["run-operation", "create_external_schema", *common_args]
+    )
+    if not schema_result.success:
+        detail = schema_result.exception or str(schema_result.result) or "unknown error"
+        raise RuntimeError(f"create_external_schema failed: {detail}")
+    log.info("spectrum_schema_created")
+
     stage_result: dbtRunnerResult = runner.invoke(
         ["run-operation", "stage_external_sources", *common_args]
     )
