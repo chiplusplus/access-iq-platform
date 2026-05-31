@@ -3,10 +3,15 @@
 # Usage: ./scripts/session.sh up|down|status
 set -euo pipefail
 
-AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
-TRUST_PROFILE="${TRUST_PROFILE:-northshire-trust}"
 CDK_ENV="${CDK_ENV:-dev}"
 REGION="${REGION:-eu-west-2}"
+
+if [ -z "${AWS_PROFILE:-}" ] || [ -z "${TRUST_PROFILE:-}" ]; then
+  echo "ERROR: AWS_PROFILE and TRUST_PROFILE must be set."
+  echo "  export AWS_PROFILE=<your-platform-profile>"
+  echo "  export TRUST_PROFILE=<your-trust-profile>"
+  exit 1
+fi
 TRUST_REPO="${TRUST_REPO:-$(cd "$(dirname "$0")/../.." && pwd)/northshire-hospital-sim}"
 PLATFORM_REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -393,7 +398,7 @@ cmd_up() {
     echo "  Skipping .env write (--skip-infra, reusing existing .env)"
   else
     local TRUST_BUCKET
-    TRUST_BUCKET=$(trust_output ExternalBucketName 2>/dev/null || echo "northshire-trust-external-exports")
+    TRUST_BUCKET=$(trust_output ExternalBucketName)
 
     cat > "$PLATFORM_REPO/.env" <<EOF
 ACCESS_IQ_ENV=${CDK_ENV}
@@ -467,7 +472,7 @@ DASHEOF
 
   # Verify Spectrum schema creation completed (submitted in step 4/8).
   if [ -n "${SPECTRUM_STMT_ID:-}" ]; then
-    local saved_profile="${AWS_PROFILE:-CHI-Engineer-222308823356}"
+    local saved_profile="$AWS_PROFILE"
     local stmt_status="SUBMITTED"
     local wait_secs=0
     local max_wait=120
