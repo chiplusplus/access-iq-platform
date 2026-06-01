@@ -60,7 +60,7 @@ Source-specific notes:
 `app.py` requires `-c env=dev|prod` context, loads `infra/config/<env>.json` via `settings.load_env_config` into a frozen `EnvConfig` dataclass, and synthesises two stacks:
 
 1. `PlatformBucketStack` - the project bucket (`{app_name}-{env_name}-{account_id}`), versioned, SSL-enforced, with `RemovalPolicy.RETAIN` + no auto-delete in prod, `DESTROY` + auto-delete in dev.
-2. `IngestionRoleStack` - IAM role assumed by the SSO user in `cfg.user_name`. Grants read on the external Trust bucket (`cfg.iam.external_bucket`) and write on `bronze/*` + `_manifests/*` of the platform bucket only. Keep this prefix-scoped - silver/gold writes belong to different roles.
+2. `IngestionRoleStack` - IAM role assumed by the user in `cfg.user_name`. Grants read on the external Trust bucket (`cfg.iam.external_bucket`) and write on `bronze/*` + `_manifests/*` of the platform bucket only. Keep this prefix-scoped - silver/gold writes belong to different roles.
 
 Tags from `cfg.tags` are applied app-wide via `tagging.apply_tags(app, ...)` before stack instantiation.
 

@@ -86,7 +86,7 @@ graph LR
 
 ## Quick Start
 
-**Prerequisites:** AWS CLI v2 with SSO configured (two profiles: one for the Platform account, one for the Trust account), [uv](https://docs.astral.sh/uv/), Node.js (for CDK), Docker.
+**Prerequisites:** AWS CLI v2 with two named profiles configured (one for the Platform account, one for the Trust account), [uv](https://docs.astral.sh/uv/), Node.js (for CDK), Docker.
 
 ```bash
 # Clone both repos as siblings
