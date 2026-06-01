@@ -1,6 +1,6 @@
 # Operational Runbook
 
-Procedures for deploying, operating, and tearing down the Access-IQ platform. All commands assume the repository root as working directory with `AWS_PROFILE` and `CDK_ENV` environment variables set.
+Procedures for deploying, operating, and tearing down the Access-IQ platform. All commands assume the repository root as working directory with `PLATFORM_PROFILE` and `CDK_ENV` environment variables set.
 
 ---
 
@@ -209,7 +209,7 @@ make status
 
 ```bash
 # Check CloudWatch logs for the failing source:
-aws logs tail /access-iq/{env}/ingest-{source} --since 1h --profile $AWS_PROFILE
+aws logs tail /access-iq/{env}/ingest-{source} --since 1h --profile $PLATFORM_PROFILE
 ```
 
 **Common causes**:
@@ -227,7 +227,7 @@ aws logs tail /access-iq/{env}/ingest-{source} --since 1h --profile $AWS_PROFILE
 ```bash
 aws redshift-serverless get-workgroup \
   --workgroup-name access-iq-{env} \
-  --profile $AWS_PROFILE --region $REGION
+  --profile $PLATFORM_PROFILE --region $REGION
 ```
 
 **Common causes**:
@@ -243,7 +243,7 @@ aws redshift-serverless get-workgroup \
 **Investigate**: Check S3 Gold export prefix for Parquet files:
 
 ```bash
-aws s3 ls s3://{bucket}/gold_export/ --profile $AWS_PROFILE
+aws s3 ls s3://{bucket}/gold_export/ --profile $PLATFORM_PROFILE
 ```
 
 **Common causes**:
@@ -281,7 +281,7 @@ aws ssm start-session \
   --target {ecs-task-id} \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["4200"],"localPortNumber":["4200"]}' \
-  --profile $AWS_PROFILE --region $REGION &
+  --profile $PLATFORM_PROFILE --region $REGION &
 echo $! > .prefect-tunnel.pid
 ```
 
@@ -295,7 +295,7 @@ echo $! > .prefect-tunnel.pid
 # List available snapshots:
 aws redshift-serverless list-snapshots \
   --namespace-name access-iq-{env} \
-  --profile $AWS_PROFILE --region $REGION
+  --profile $PLATFORM_PROFILE --region $REGION
 ```
 
 **Common causes**:
@@ -326,13 +326,13 @@ The Streamlit Community Cloud dashboard needs to read Gold Parquet files from S3
 aws kms create-key \
   --description "Access-IQ dashboard exports encryption key (permanent)" \
   --tags TagKey=Project,TagValue=access-iq TagKey=Purpose,TagValue=dashboard-exports \
-  --profile $AWS_PROFILE --region eu-west-2
+  --profile $PLATFORM_PROFILE --region eu-west-2
 
 # Note the KeyId from output, then create an alias:
 aws kms create-alias \
   --alias-name alias/access-iq-dashboard-exports \
   --target-key-id <key-id> \
-  --profile $AWS_PROFILE --region eu-west-2
+  --profile $PLATFORM_PROFILE --region eu-west-2
 ```
 
 ### 2. Create the S3 bucket
@@ -342,18 +342,18 @@ aws s3api create-bucket \
   --bucket access-iq-dashboard-exports \
   --region eu-west-2 \
   --create-bucket-configuration LocationConstraint=eu-west-2 \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 
 aws s3api put-bucket-tagging \
   --bucket access-iq-dashboard-exports \
   --tagging 'TagSet=[{Key=Project,Value=access-iq},{Key=Purpose,Value=dashboard-exports},{Key=ManagedBy,Value=manual},{Key=Environment,Value=permanent}]' \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 
 aws s3api put-public-access-block \
   --bucket access-iq-dashboard-exports \
   --public-access-block-configuration \
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 
 # Default encryption with our KMS CMK + bucket key (reduces KMS API costs)
 aws s3api put-bucket-encryption \
@@ -367,7 +367,7 @@ aws s3api put-bucket-encryption \
       "BucketKeyEnabled": true
     }]
   }' \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 ```
 
 ### 3. Apply bucket policy
@@ -403,7 +403,7 @@ aws s3api put-bucket-policy \
       }
     ]
   }' \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 ```
 
 ### 4. Create the dashboard reader IAM user
@@ -411,7 +411,7 @@ aws s3api put-bucket-policy \
 ```bash
 aws iam create-user --user-name access-iq-dashboard-reader \
   --tags Key=Project,Value=access-iq Key=Purpose,Value=dashboard-reader \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 
 aws iam put-user-policy \
   --user-name access-iq-dashboard-reader \
@@ -434,9 +434,9 @@ aws iam put-user-policy \
       }
     ]
   }' \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 
-aws iam create-access-key --user-name access-iq-dashboard-reader --profile $AWS_PROFILE
+aws iam create-access-key --user-name access-iq-dashboard-reader --profile $PLATFORM_PROFILE
 ```
 
 Save the `AccessKeyId` and `SecretAccessKey` from the output.
@@ -467,7 +467,7 @@ aws iam put-role-policy \
       }
     ]
   }' \
-  --profile $AWS_PROFILE
+  --profile $PLATFORM_PROFILE
 ```
 
 ### 6. Configure the pipeline

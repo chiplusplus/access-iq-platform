@@ -3,10 +3,11 @@
 # Usage: ./scripts/session.sh up|down|status
 set -euo pipefail
 
-if [ -z "${AWS_PROFILE:-}" ]; then
-  echo "ERROR: AWS_PROFILE is not set. Export it before running: export AWS_PROFILE=<your-platform-profile>"
+if [ -z "${PLATFORM_PROFILE:-}" ]; then
+  echo "ERROR: PLATFORM_PROFILE is not set. Export it before running: export PLATFORM_PROFILE=<your-platform-profile>"
   exit 1
 fi
+AWS_PROFILE="$PLATFORM_PROFILE"
 if [ -z "${TRUST_PROFILE:-}" ]; then
   echo "ERROR: TRUST_PROFILE is not set. Export it before running: export TRUST_PROFILE=<your-trust-profile>"
   exit 1
@@ -409,7 +410,7 @@ cmd_up() {
 ACCESS_IQ_ENV=${CDK_ENV}
 ACCESS_IQ_AWS_REGION=${REGION}
 ACCESS_IQ_PLATFORM_BUCKET=${PLATFORM_BUCKET}
-ACCESS_IQ_AWS_PROFILE=${AWS_PROFILE}
+ACCESS_IQ_AWS_PROFILE=${PLATFORM_PROFILE}
 ACCESS_IQ_POSTGRES_SOURCES={"ehr_postgres": {"dsn_env": "EHR_DSN", "tables": ["patient_demographics","encounters","referrals","diagnoses"]}, "urgent_care_postgres": {"dsn_env": "URGENT_CARE_DSN", "tables": ["urgent_care_logs"]}}
 ACCESS_IQ_SFTP_SOURCES={"appointments": {"host_env":"SFTP_HOST","port_env":"SFTP_PORT","user_env":"SFTP_USER","private_key_env":"SFTP_PRIVATE_KEY","remote_dir":"/outbound/appointments/","source_name":"sftp_appointments"}}
 ACCESS_IQ_TRUST_S3={"base":{"bucket":"${TRUST_BUCKET}","profile":"${AWS_PROFILE}"},"diagnostics":{"prefix_root":"diagnostics","source_name":"trust_s3_diagnostics"},"provider_ref":{"key":"providers/sites_and_services_master.xlsx","source_name":"trust_s3_provider_ref"}}

@@ -5,10 +5,11 @@
 # Requires: Redshift Serverless workgroup deployed (make up first).
 set -euo pipefail
 
-if [ -z "${AWS_PROFILE:-}" ]; then
-  echo "ERROR: AWS_PROFILE is not set. Export it before running: export AWS_PROFILE=<your-platform-profile>"
+if [ -z "${PLATFORM_PROFILE:-}" ]; then
+  echo "ERROR: PLATFORM_PROFILE is not set. Export it before running: export PLATFORM_PROFILE=<your-platform-profile>"
   exit 1
 fi
+AWS_PROFILE="$PLATFORM_PROFILE"
 if [ -z "${TRUST_PROFILE:-}" ]; then
   echo "ERROR: TRUST_PROFILE is not set. Export it before running: export TRUST_PROFILE=<your-trust-profile>"
   exit 1

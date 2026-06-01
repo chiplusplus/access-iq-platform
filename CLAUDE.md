@@ -24,7 +24,7 @@ The project uses `uv` + a Make-driven workflow. Most commands assume `.venv` exi
 - `make ci` - fmt + lint + type + test (mirrors `.github/workflows/ci.yml`)
 - Run a single test: `. .venv/bin/activate && pytest tests/unit/test_postgres.py::test_name -v`
 
-CDK (run from `infra/`, requires `AWS_PROFILE` and `CDK_ENV` set to `dev` or `prod`):
+CDK (run from `infra/`, requires `PLATFORM_PROFILE` and `CDK_ENV` set to `dev` or `prod`):
 
 - `make infra-bootstrap` / `make infra-diff` / `make infra-deploy` / `make infra-destroy`
 - `infra-deploy` accepts `CDK_STACK=<name>` to deploy a single stack.

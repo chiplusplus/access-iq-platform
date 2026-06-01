@@ -44,10 +44,11 @@ dq-gate:  ## Run GE validation gate on Silver tables (requires make up + tunnel)
 # ── Infrastructure (CDK) ────────────────────────────────────────────
 # TRUST_VPC_ID is required for NetworkStack (peering). Get it from Trust CFN outputs or `make status`.
 # Example: make infra-deploy TRUST_VPC_ID=vpc-0abc123
-CDK_CONTEXT := -c "env=$${CDK_ENV:-dev}" $(if $(TRUST_VPC_ID),-c "trust_vpc_id=$(TRUST_VPC_ID)") $(if $(AWS_PROFILE),--profile $(AWS_PROFILE))
+AWS_PROFILE := $(PLATFORM_PROFILE)
+CDK_CONTEXT := -c "env=$${CDK_ENV:-dev}" $(if $(TRUST_VPC_ID),-c "trust_vpc_id=$(TRUST_VPC_ID)") $(if $(PLATFORM_PROFILE),--profile $(PLATFORM_PROFILE))
 
-infra-bootstrap:  ## Bootstrap CDK (requires AWS_PROFILE, CDK_ENV)
-	@test -n "$${AWS_PROFILE}" || { echo "ERROR: AWS_PROFILE is not set. Export it: export AWS_PROFILE=<your-platform-profile>"; exit 1; }
+infra-bootstrap:  ## Bootstrap CDK (requires PLATFORM_PROFILE, CDK_ENV)
+	@test -n "$${PLATFORM_PROFILE}" || { echo "ERROR: PLATFORM_PROFILE is not set. Export it: export PLATFORM_PROFILE=<your-platform-profile>"; exit 1; }
 	cd infra && uv run cdk bootstrap $(CDK_CONTEXT)
 
 infra-diff:  ## Show CDK diff

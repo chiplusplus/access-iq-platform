@@ -86,13 +86,27 @@ graph LR
 
 ## Quick Start
 
-**Prerequisites:** AWS CLI v2 with SSO configured, [uv](https://docs.astral.sh/uv/), Node.js (for CDK), Docker.
+**Prerequisites:** AWS CLI v2 with SSO configured (two profiles: one for the Platform account, one for the Trust account), [uv](https://docs.astral.sh/uv/), Node.js (for CDK), Docker.
 
 ```bash
-git clone https://github.com/chiplusplus/access-iq-platform.git && cd access-iq-platform
+# Clone both repos as siblings
+git clone https://github.com/chiplusplus/access-iq-platform.git
+git clone https://github.com/chiplusplus/northshire-hospital-sim.git
+
+# Set up the Trust simulator (create virtual environment and install dependencies)
+cd northshire-hospital-sim
+python -m venv .northshire-hospital-sim
+.northshire-hospital-sim/bin/pip install -r requirements.txt
+
+# Set up the platform
+cd ../access-iq-platform
 cp .env.example .env       # Fill in AWS profile, bucket name, secret ARNs
-# Review infra/config/{dev/prod}.json for account IDs, VPC CIDRs, Redshift capacity
+# Review infra/config/dev.json for account IDs, VPC CIDRs, Redshift capacity
 make setup                 # Create venv, install deps, pre-commit hooks
+
+# Deploy everything
+export PLATFORM_PROFILE=<your-platform-profile>
+export TRUST_PROFILE=<your-trust-profile>
 make up                    # Deploy infra, seed data, start pipeline (~25 min)
 ```
 

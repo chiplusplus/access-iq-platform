@@ -9,7 +9,7 @@ Deploy:
 
 Invoke:
   aws lambda invoke --function-name access-iq-connectivity-test \
-    --profile $AWS_PROFILE --region eu-west-2 \
+    --profile $PLATFORM_PROFILE --region eu-west-2 \
     /dev/stdout
 
 Tear down:
