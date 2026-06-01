@@ -309,40 +309,130 @@ aws redshift-serverless list-snapshots \
 
 The Streamlit Community Cloud dashboard needs to read Gold Parquet files from S3 using long-lived credentials. These resources live outside the ephemeral stacks so the dashboard stays live between sessions and survives budget teardowns. Other users cloning this project do not need this — the dashboard falls back to local Parquet files.
 
-### 1. Create the dashboard S3 bucket
+**Security model**: Three layers of defence — bucket policy (deny non-SSL, deny non-KMS uploads), IAM policy (scoped to dashboard reader only), and KMS key grant (separate decrypt permission required even if bucket access leaks). Data is pseudonymised but still healthcare data.
+
+### Resources created
+
+| Resource      | ARN / Name                          | Purpose                                                   |
+| ------------- | ----------------------------------- | --------------------------------------------------------- |
+| KMS CMK       | `alias/access-iq-dashboard-exports` | Encrypt Gold Parquet at rest (permanent, ~$1/month)       |
+| S3 bucket     | `access-iq-dashboard-exports`       | Hold Gold export files for Streamlit                      |
+| IAM user      | `access-iq-dashboard-reader`        | Long-lived read credentials for Streamlit Community Cloud |
+| Bucket policy | —                                   | Enforce SSL + KMS encryption on all uploads               |
+
+### 1. Create the KMS key
+
+```bash
+aws kms create-key \
+  --description "Access-IQ dashboard exports encryption key (permanent)" \
+  --tags TagKey=Project,TagValue=access-iq TagKey=Purpose,TagValue=dashboard-exports \
+  --profile $AWS_PROFILE --region eu-west-2
+
+# Note the KeyId from output, then create an alias:
+aws kms create-alias \
+  --alias-name alias/access-iq-dashboard-exports \
+  --target-key-id <key-id> \
+  --profile $AWS_PROFILE --region eu-west-2
+```
+
+### 2. Create the S3 bucket
 
 ```bash
 aws s3api create-bucket \
-  --bucket access-iq-dashboard-gold \
+  --bucket access-iq-dashboard-exports \
   --region eu-west-2 \
   --create-bucket-configuration LocationConstraint=eu-west-2 \
   --profile $AWS_PROFILE
 
+aws s3api put-bucket-tagging \
+  --bucket access-iq-dashboard-exports \
+  --tagging 'TagSet=[{Key=Project,Value=access-iq},{Key=Purpose,Value=dashboard-exports},{Key=ManagedBy,Value=manual},{Key=Environment,Value=permanent}]' \
+  --profile $AWS_PROFILE
+
 aws s3api put-public-access-block \
-  --bucket access-iq-dashboard-gold \
+  --bucket access-iq-dashboard-exports \
   --public-access-block-configuration \
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
   --profile $AWS_PROFILE
+
+# Default encryption with our KMS CMK + bucket key (reduces KMS API costs)
+aws s3api put-bucket-encryption \
+  --bucket access-iq-dashboard-exports \
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "aws:kms",
+        "KMSMasterKeyID": "<key-arn>"
+      },
+      "BucketKeyEnabled": true
+    }]
+  }' \
+  --profile $AWS_PROFILE
 ```
 
-### 2. Create the dashboard reader IAM user
+### 3. Apply bucket policy
+
+Denies non-SSL access and rejects uploads not using our KMS key:
 
 ```bash
-aws iam create-user --user-name access-iq-dashboard-reader --profile $AWS_PROFILE
+aws s3api put-bucket-policy \
+  --bucket access-iq-dashboard-exports \
+  --policy '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "DenyNonSSL",
+        "Effect": "Deny",
+        "Principal": "*",
+        "Action": "s3:*",
+        "Resource": [
+          "arn:aws:s3:::access-iq-dashboard-exports",
+          "arn:aws:s3:::access-iq-dashboard-exports/*"
+        ],
+        "Condition": {"Bool": {"aws:SecureTransport": "false"}}
+      },
+      {
+        "Sid": "DenyNonKMSUploads",
+        "Effect": "Deny",
+        "Principal": "*",
+        "Action": "s3:PutObject",
+        "Resource": "arn:aws:s3:::access-iq-dashboard-exports/*",
+        "Condition": {
+          "StringNotEquals": {"s3:x-amz-server-side-encryption": "aws:kms"}
+        }
+      }
+    ]
+  }' \
+  --profile $AWS_PROFILE
+```
+
+### 4. Create the dashboard reader IAM user
+
+```bash
+aws iam create-user --user-name access-iq-dashboard-reader \
+  --tags Key=Project,Value=access-iq Key=Purpose,Value=dashboard-reader \
+  --profile $AWS_PROFILE
 
 aws iam put-user-policy \
   --user-name access-iq-dashboard-reader \
-  --policy-name DashboardGoldReadOnly \
+  --policy-name DashboardExportsReadOnly \
   --policy-document '{
     "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:ListBucket"],
-      "Resource": [
-        "arn:aws:s3:::access-iq-dashboard-gold",
-        "arn:aws:s3:::access-iq-dashboard-gold/*"
-      ]
-    }]
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": ["s3:GetObject", "s3:ListBucket"],
+        "Resource": [
+          "arn:aws:s3:::access-iq-dashboard-exports",
+          "arn:aws:s3:::access-iq-dashboard-exports/*"
+        ]
+      },
+      {
+        "Effect": "Allow",
+        "Action": "kms:Decrypt",
+        "Resource": "<key-arn>"
+      }
+    ]
   }' \
   --profile $AWS_PROFILE
 
@@ -351,9 +441,9 @@ aws iam create-access-key --user-name access-iq-dashboard-reader --profile $AWS_
 
 Save the `AccessKeyId` and `SecretAccessKey` from the output.
 
-### 3. Grant Redshift UNLOAD write access
+### 5. Grant Redshift Spectrum role write + encrypt access
 
-The Spectrum IAM role needs write access to the dashboard bucket so the Gold export task can UNLOAD to it:
+The Spectrum IAM role needs write access to the dashboard bucket and encrypt permission on the KMS key so the Gold export UNLOAD can write encrypted Parquet:
 
 ```bash
 aws iam put-role-policy \
@@ -361,35 +451,45 @@ aws iam put-role-policy \
   --policy-name DashboardBucketWrite \
   --policy-document '{
     "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetBucketLocation"],
-      "Resource": [
-        "arn:aws:s3:::access-iq-dashboard-gold",
-        "arn:aws:s3:::access-iq-dashboard-gold/*"
-      ]
-    }]
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": ["s3:PutObject", "s3:GetBucketLocation"],
+        "Resource": [
+          "arn:aws:s3:::access-iq-dashboard-exports",
+          "arn:aws:s3:::access-iq-dashboard-exports/*"
+        ]
+      },
+      {
+        "Effect": "Allow",
+        "Action": ["kms:Encrypt", "kms:GenerateDataKey"],
+        "Resource": "<key-arn>"
+      }
+    ]
   }' \
   --profile $AWS_PROFILE
 ```
 
-### 4. Configure the pipeline
+### 6. Configure the pipeline
 
-Add to your `.env` (or set in the ECS task environment):
+Set in `infra/config/dev.json` (already done if cloning this repo):
 
-```bash
-DASHBOARD_EXPORT_BUCKET=access-iq-dashboard-gold
+```json
+"dashboard": {
+  "export_bucket": "access-iq-dashboard-exports",
+  "kms_key_arn": "<key-arn>"
+}
 ```
 
-The Gold export task writes to both the ephemeral lake bucket (KMS-encrypted, for Spectrum) and the dashboard bucket (unencrypted, for Streamlit).
+The Gold export task writes to both the ephemeral lake bucket (platform KMS key, for Spectrum) and the dashboard bucket (dashboard KMS key, for Streamlit). The dashboard bucket persists across stack teardowns.
 
-### 5. Configure Streamlit Community Cloud secrets
+### 7. Configure Streamlit Community Cloud secrets
 
 In the Streamlit app settings, set these secrets:
 
 ```toml
-PLATFORM_BUCKET = "access-iq-dashboard-gold"
-AWS_ACCESS_KEY_ID = "<from step 2>"
-AWS_SECRET_ACCESS_KEY = "<from step 2>"
+PLATFORM_BUCKET = "access-iq-dashboard-exports"
+AWS_ACCESS_KEY_ID = "<from step 4>"
+AWS_SECRET_ACCESS_KEY = "<from step 4>"
 AWS_REGION = "eu-west-2"
 ```

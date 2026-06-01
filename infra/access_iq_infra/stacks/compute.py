@@ -253,6 +253,9 @@ class ComputeStack(Stack):
         dashboard_export_bucket = cfg.dashboard.get("export_bucket")
         if dashboard_export_bucket:
             pipeline_env["DASHBOARD_EXPORT_BUCKET"] = dashboard_export_bucket
+            dashboard_kms_key = cfg.dashboard.get("kms_key_arn", "")
+            if dashboard_kms_key:
+                pipeline_env["DASHBOARD_KMS_KEY_ARN"] = dashboard_kms_key
         if warehouse_stack is not None:
             pipeline_env["REDSHIFT_LAMBDA_UDF_ROLE_ARN"] = warehouse_stack.lambda_udf_role.role_arn
             pipeline_env["HMAC_LAMBDA_NAME"] = warehouse_stack.hmac_lambda.function_name

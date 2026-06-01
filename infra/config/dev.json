@@ -41,6 +41,7 @@
     "db_name": "dev"
   },
   "dashboard": {
-    "export_bucket": "access-iq-dashboard-gold"
+    "export_bucket": "access-iq-dashboard-exports",
+    "kms_key_arn": "arn:aws:kms:eu-west-2:222308823356:key/0c70684d-6066-4614-87b5-395f0f8631f0"
   }
 }

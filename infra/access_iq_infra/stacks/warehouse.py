@@ -107,6 +107,27 @@ class WarehouseStack(Stack):
             )
         )
         lake_key.grant_encrypt_decrypt(spectrum_role)
+
+        # Dashboard export bucket: write + encrypt with dedicated KMS key (permanent, outside stacks)
+        dashboard_export_bucket = cfg.dashboard.get("export_bucket")
+        dashboard_kms_key_arn = cfg.dashboard.get("kms_key_arn")
+        if dashboard_export_bucket:
+            spectrum_role.add_to_principal_policy(
+                iam.PolicyStatement(
+                    actions=["s3:PutObject", "s3:GetBucketLocation"],
+                    resources=[
+                        f"arn:aws:s3:::{dashboard_export_bucket}",
+                        f"arn:aws:s3:::{dashboard_export_bucket}/*",
+                    ],
+                )
+            )
+        if dashboard_kms_key_arn:
+            spectrum_role.add_to_principal_policy(
+                iam.PolicyStatement(
+                    actions=["kms:Encrypt", "kms:GenerateDataKey"],
+                    resources=[dashboard_kms_key_arn],
+                )
+            )
         spectrum_role.add_to_principal_policy(
             iam.PolicyStatement(
                 actions=[
