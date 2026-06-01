@@ -1,25 +1,33 @@
-.PHONY: setup fmt lint type test test-integration ci profile ready dq-gate up down status ingest pipeline dbt rs-tunnel tunnel-stop tunnel-env reconnect dashboard
+.PHONY: setup check-prereqs fmt lint type test test-integration ci profile ready dq-gate up down status ingest pipeline dbt rs-tunnel tunnel-stop tunnel-env reconnect dashboard
 
 # ── Dev workflow ─────────────────────────────────────────────────────
-setup:  ## Create venv, install deps, install pre-commit hooks
-	uv venv .venv
-	uv pip install -e ".[dev]"
+setup: check-prereqs  ## Create venv, install all workspace members + dev deps, install pre-commit hooks
+	uv sync --group dev
 	uv run pre-commit install
+	@echo "\n✅ Setup complete. Run 'source .venv/bin/activate' or use 'make' targets directly."
+
+check-prereqs:  ## Verify required CLI tools are installed
+	@command -v uv >/dev/null 2>&1 || { echo "❌ uv not found. Install: https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	@command -v node >/dev/null 2>&1 || { echo "❌ node not found. Install: https://nodejs.org/"; exit 1; }
+	@command -v cdk >/dev/null 2>&1 || { echo "❌ aws-cdk CLI not found. Install: npm install -g aws-cdk"; exit 1; }
+	@command -v aws >/dev/null 2>&1 || { echo "❌ aws CLI not found. Install: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"; exit 1; }
+	@command -v jq >/dev/null 2>&1 || { echo "❌ jq not found. Install: brew install jq"; exit 1; }
+	@echo "✅ All prerequisites found."
 
 fmt:  ## Format code with ruff
-	ruff format .
+	uv run ruff format .
 
 lint:  ## Lint code with ruff
-	ruff check .
+	uv run ruff check .
 
 type:  ## Type-check with mypy
-	mypy
+	uv run mypy
 
 test:  ## Run unit tests with coverage
-	pytest --cov=access_iq
+	uv run pytest --cov=access_iq
 
 test-integration:  ## Run integration tests against live AWS (requires deployed stacks)
-	pytest -m integration --no-header -v
+	uv run pytest -m integration --no-header -v
 
 ci: fmt lint type test  ## Run full CI pipeline
 
@@ -93,7 +101,7 @@ tunnel-env:  ## Print export commands for dbt Redshift credentials
 	@./scripts/tunnel.sh env
 
 dashboard:  ## Run Streamlit dashboard locally (reads from S3 if secrets.toml is configured)
-	cd dashboard && streamlit run app.py
+	cd dashboard && uv run streamlit run app.py
 
 reconnect:  ## Re-establish SSM tunnels to Redshift + Prefect after session timeout
 	./scripts/tunnel.sh reconnect
