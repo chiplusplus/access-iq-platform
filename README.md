@@ -2,15 +2,17 @@
 
 ![Access-IQ Dashboard](docs/images/dashboard-screenshot.png)
 
-**[Live Dashboard](https://access-iq.streamlit.app)** | [Case Study](docs/case-study.md) | [Architecture Decisions](docs/adr/)
+### **[View the Live Dashboard →](https://access-iq-platform-h7uetia39pda9vbx3afhxl.streamlit.app/)**
+
+[Case Study](docs/case-study.md) | [Architecture Decisions](docs/adr/)
 
 # Access-IQ Platform
 
-End-to-end NHS Trust analytics platform - simulating a consultancy engagement that ingests operational healthcare data, models it through a medallion architecture, and surfaces access and inequality analytics.
+End-to-end NHS Trust analytics platform simulating a consultancy engagement that ingests operational healthcare data, models it through a medallion architecture, and surfaces access and inequality analytics.
 
 ## The Problem
 
-NHS Trusts generate vast amounts of operational data across EHR systems, A&E departments, diagnostic services, and appointment bookings - but rarely have the engineering infrastructure to turn it into actionable inequality analytics.
+NHS Trusts generate vast amounts of operational data across EHR systems, A&E departments, diagnostic services, appointment bookings etc, but they rarely have the engineering infrastructure to turn it into actionable inequality analytics.
 
 Waiting times, A&E breaches, and diagnostic delays affect deprived communities disproportionately. National targets (18-week RTT, 6-week DM01, 4-hour A&E) are tracked in aggregate, but breakdowns by IMD decile, ethnicity, age band, and gender are largely invisible.
 
@@ -70,17 +72,17 @@ graph LR
 
 ## Tech Stack
 
-| Component            | Tool                      | Version         | Why                                             |
-| -------------------- | ------------------------- | --------------- | ----------------------------------------------- |
-| **Ingestion**        | ECS Fargate + Python      | 3.12 + PyArrow  | Parallel Bronze ingestion from 3 sources        |
-| **Storage**          | S3 + KMS CMK              | -               | Encrypted data lake with medallion layout       |
-| **Warehouse**        | Redshift Serverless       | 8 RPU           | Spectrum on Bronze, native Silver/Gold, $0 idle |
-| **Modelling**        | dbt-core + dbt-redshift   | 1.10            | Incremental Silver, dimensional Gold marts      |
-| **Data Quality**     | dbt-expectations + GE 1.x | -               | DQ gates block Gold promotion on failure        |
-| **Orchestration**    | Prefect 3 (self-hosted)   | ECS Fargate     | Ephemeral server, ECS work pool, $0 idle        |
-| **Dashboard**        | Streamlit                 | Community Cloud | Static Gold Parquet via DuckDB, $0/mo           |
-| **Infrastructure**   | AWS CDK                   | Python          | 9 stacks, ephemeral deploy/destroy              |
-| **Pseudonymisation** | HMAC-SHA-256              | Lambda UDF      | NHS Mod-11 validated, per-env key               |
+| Component            | Tool                      | Version         | Why                                                                                                                                                                  |
+| -------------------- | ------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ingestion**        | ECS Fargate + Python      | 3.12 + PyArrow  | Serverless containers avoid idle EC2 costs; Fargate scales each source independently without cluster management                                                      |
+| **Storage**          | S3 + KMS CMK              | -               | Decouples storage from compute; KMS CMK enables per-env key rotation and cross-account grants that SSE-S3 cannot                                                     |
+| **Warehouse**        | Redshift Serverless       | 8 RPU           | Spectrum queries Bronze in-place (no ETL duplication), RPU auto-scales to zero when idle, and native dbt adapter avoids Athena per-query costs                       |
+| **Modelling**        | dbt-core + dbt-redshift   | 1.10            | Declarative SQL transformations with built-in lineage, test contracts, and incremental materialisation that Redshift stored procedures lack                          |
+| **Data Quality**     | dbt-expectations + GE 1.x | -               | dbt-expectations validates inline during transforms; Great Expectations covers row-level profiling that dbt tests alone cannot express                               |
+| **Orchestration**    | Prefect 3 (self-hosted)   | ECS Fargate     | Free self-hosted server on Fargate avoids Prefect Cloud costs; ECS work pool launches tasks as ephemeral containers with $0 idle                                     |
+| **Dashboard**        | Streamlit                 | Community Cloud | Reads static Gold Parquet via DuckDB with no warehouse connection; Community Cloud hosts free-tier with zero infrastructure                                          |
+| **Infrastructure**   | AWS CDK                   | Python          | Imperative Python over declarative YAML keeps config DRY with shared `EnvConfig`; L2 constructs handle IAM/encryption defaults that CloudFormation requires manually |
+| **Pseudonymisation** | HMAC-SHA-256              | Lambda UDF      | Deterministic hash preserves join integrity across tables while NHS Mod-11 validation catches malformed identifiers before pseudonymisation                          |
 
 ## Quick Start
 
@@ -88,73 +90,78 @@ graph LR
 
 ```bash
 git clone https://github.com/chiplusplus/access-iq-platform.git && cd access-iq-platform
-make setup        # Create venv, install deps, pre-commit hooks
-make up           # Deploy infra, seed data, start pipeline (~25 min)
+cp .env.example .env       # Fill in AWS profile, bucket name, secret ARNs
+# Review infra/config/{dev/prod}.json for account IDs, VPC CIDRs, Redshift capacity
+make setup                 # Create venv, install deps, pre-commit hooks
+make up                    # Deploy infra, seed data, start pipeline (~25 min)
 ```
 
 `make up` invokes `scripts/session.sh` which orchestrates an 8-step deployment:
 
 1. **Trust bootstrap** - deploys Trust CDK stack, seeds RDS with ~100K synthetic patients + ~586K encounters via `northshire-hospital-sim`, publishes to RDS/S3/SFTP
 2. **Platform deploy** - deploys all Platform stacks (lake, secrets, catalog, ECR, network, warehouse, compute, observability, budget) with VPC peering
-3. **Redshift pre-warm** - creates Spectrum external schema, restores snapshot if available
+3. **Redshift pre-warm** - creates Spectrum external schema, waits for workgroup availability
 4. **Secrets + Docker + dbt + Prefect** - seeds Secrets Manager, builds and pushes ingestion image, registers Spectrum tables, starts Prefect server and worker
 
 After completion: Streamlit URL printed, CloudWatch dashboard URL printed, Prefect UI at `localhost:4200` (via SSM tunnel).
 
+## Environments
+
+Only dev is actively deployed. The CDK stacks and config files support a separate prod environment (`infra/config/prod.json` with RETAIN policies, Redshift snapshots, 90-day log retention), but running a second account with stateful resources is not justified for a portfolio project. See [Environment Matrix](docs/architecture/environment_matrix.md) for the full prod design.
+
+Each environment is driven by a config file at `infra/config/{dev,prod}.json` where you set your own account IDs, region, VPC CIDRs, and Redshift capacity. CDK reads the config matching the `CDK_ENV` variable:
+
+```bash
+CDK_ENV=dev make infra-bootstrap   # one-time CDK bootstrap per account
+CDK_ENV=dev make up                # deploy dev (default)
+```
+
+In dev, all resources use `DESTROY` removal policy — `make down` leaves the accounts at $0 idle cost with nothing persisted between sessions.
+
 ## Session Workflow
 
 ```bash
-make up           # Deploy all stacks, restore Redshift, seed Trust, start Prefect
-make ingest       # Trigger Bronze ingestion (3 ECS tasks in parallel)
-make pipeline     # Run full pipeline: ingest -> dbt -> DQ -> Gold export
+make up           # Deploy all stacks, seed Trust data, start Prefect
 make status       # Show stack status, Redshift state, latest manifest
-make down         # Snapshot Redshift, destroy all ephemeral stacks
+make pipeline     # Optional (pipeline is scheduled to trigger on the hour every hour): Run full pipeline: ingest -> dbt -> DQ -> Gold export
+make dashboard    # Run Streamlit dashboard locally (reads Gold Parquet from S3 via DuckDB)
+make down         # Destroy all stacks across both accounts
 ```
 
-`make down` returns to **$0 idle cost**. Stateful resources (S3 lake, KMS key, Secrets Manager, ECR, Glue Catalog) persist with `RETAIN` policy. Redshift is snapshotted before destruction and restored on next `make up`.
+`make down` returns to **$0 idle cost**. In dev, every resource is destroyed (DESTROY removal policy) except the KMS CMK, which uses RETAIN in both environments because its pending-deletion window would break redeploy cycles.
 
-Additional targets: `make dbt CMD="run --select silver"`, `make rs-tunnel`, `make dq-gate`, `make dashboard`, `make reconnect`.
+**Budget safety net**: The BudgetStack deploys an AWS Budget with a monthly ceiling ($10 dev / $20 prod). If actual spend reaches 80% of the ceiling, an SNS alarm triggers a Lambda that **automatically destroys** the ephemeral stacks (compute, warehouse, network, observability, ingestion-role). Stateful stacks (lake, secrets, catalog, ECR) are not touched. This is a last-resort guard against forgotten `make down` sessions — if it fires, redeploy with `make up` when ready.
+
+Additional targets: `make dbt CMD="run --select silver"`, `make rs-tunnel`, `make dq-gate`, `make reconnect`, `make profile`, `make ready`.
 
 ## Lake Layout
 
-| Prefix        | Owner     | Description                                                                               |
-| ------------- | --------- | ----------------------------------------------------------------------------------------- |
-| `bronze/`     | Ingestion | Raw Parquet, partitioned `source/entity/ingest_date/run_id`                               |
-| `silver/`     | dbt       | Conformed tables: patients, encounters, appointments, urgent_care, diagnostics, providers |
-| `gold/`       | dbt       | Marts: fct_wait_times, fct_inequality, fct_urgent_care, fct_utilisation + 6 dimensions    |
-| `_manifests/` | Ingestion | JSON manifest per run (idempotency + audit)                                               |
-| `_dq/`        | GE        | Great Expectations validation results                                                     |
+| Prefix        | Written by | Description                                                                                                                                        |
+| ------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bronze/`     | Ingestion  | Raw Parquet, partitioned `source/entity/ingest_date/run_id`. Registered as Spectrum external tables via `dbt-external-tables` for Redshift queries |
+| `silver/`     | dbt        | Conformed tables: patients, encounters, appointments, urgent_care, diagnostics, providers                                                          |
+| `gold/`       | dbt        | Marts: fct_wait_times, fct_inequality, fct_urgent_care, fct_utilisation + 6 dimensions                                                             |
+| `_manifests/` | Ingestion  | JSON manifest per run (idempotency + audit)                                                                                                        |
+| `_dq/`        | GE         | Great Expectations validation results                                                                                                              |
 
 ## Architecture Decisions
 
 The project documents key technical decisions as Architecture Decision Records. Highlights:
 
-- [ADR-009: Redshift Serverless](docs/adr/ADR-009-redshift-serverless.md) - $0 idle cost, Spectrum on Bronze avoids ETL duplication
-- [ADR-010: Self-hosted Prefect](docs/adr/ADR-010-self-hosted-prefect.md) - Cloud push-pool incompatible with free tier
-- [ADR-011: Static Gold Export](docs/adr/ADR-011-static-gold-export.md) - DuckDB reads Parquet on Streamlit Community Cloud
-- [ADR-015: Two-account Boundary](docs/adr/ADR-015-two-account-staging.md) - models real NHS Trust engagement
-- [All 13 ADRs](docs/adr/)
+- [ADR-001: Medallion Architecture](docs/adr/ADR-001-medallion-architecture.md) - Bronze/Silver/Gold with Spectrum on Bronze
+- [ADR-004: Ephemeral Infrastructure](docs/adr/ADR-004-ephemeral-infrastructure.md) - deploy/destroy pattern, ~94% cost reduction
+- [ADR-008: Static Gold Export](docs/adr/ADR-008-static-gold-export.md) - DuckDB reads Parquet on Streamlit Community Cloud
+- [ADR-009: Self-hosted Prefect](docs/adr/ADR-009-self-hosted-prefect.md) - Cloud push-pool incompatible with free tier
+- [All 9 ADRs](docs/adr/)
 
 ## Future Work
 
-- **Demand forecasting** - Prophet/ARIMA on fct_wait_times time series to predict breach risk by specialty
-- **Referral-letter triage** - text classification on referral free-text fields to prioritise urgent pathways
-- **Breach-rate anomaly detection** - statistical process control on fct_urgent_care 4h/12h rates
-- **Real-time streaming** - Kinesis Data Streams replacing batch ECS tasks for sub-minute ingestion latency
+The Gold layer and pipeline infrastructure create natural extension points. These next areas to be explored for this project are:
 
-## Configuration
-
-Environment variables (with defaults) for `scripts/session.sh`:
-
-| Variable        | Default                      | Description                       |
-| --------------- | ---------------------------- | --------------------------------- |
-| `AWS_PROFILE`   | `CHI-Engineer-222308823356`  | Platform account SSO profile      |
-| `TRUST_PROFILE` | `northshire-trust`           | Trust account SSO profile         |
-| `CDK_ENV`       | `dev`                        | Target environment (`dev`/`prod`) |
-| `REGION`        | `eu-west-2`                  | AWS region                        |
-| `TRUST_REPO`    | `../northshire-hospital-sim` | Path to Trust simulator repo      |
-
-See [.env.example](.env.example) for the full runtime configuration schema.
+- **Demand forecasting** - the fct_wait_times time series lends itself to Prophet/ARIMA modelling to predict breach risk by specialty, giving Trust managers lead time to reallocate capacity
+- **Referral-letter triage** - referral free-text fields could be classified to prioritise urgent pathways, reducing manual clinical triage overhead
+- **Breach-rate anomaly detection** - statistical process control on fct_urgent_care 4h/12h breach rates could surface emerging pressure points before they hit aggregate targets
+- **Real-time ingestion** - replacing batch ECS tasks with Kinesis Data Streams would enable sub-minute latency for time-sensitive sources like A&E arrivals
 
 ---
 

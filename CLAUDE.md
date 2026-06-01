@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Access-IQ is a portfolio-grade data platform simulating a consultancy engagement with a UK NHS Trust ("Northshire Trust"). It ingests operational healthcare data from a simulated Trust environment, models it through a Bronze → Silver → Gold medallion architecture, and surfaces analytics about healthcare access and inequality via a Streamlit dashboard.
 
 Two AWS accounts model a vendor-client boundary:
+
 - **Trust account** - RDS Postgres (EHR + Urgent Care), AWS Transfer Family (SFTP appointment drops), S3 (diagnostics/provider exports), private VPC
 - **Platform account** - ECS Fargate (ingestion compute), S3 (data lake), Redshift Serverless (warehouse), Prefect (orchestration), CloudWatch (observability), Streamlit (dashboard), VPC peered to Trust
 
@@ -24,6 +25,7 @@ The project uses `uv` + a Make-driven workflow. Most commands assume `.venv` exi
 - Run a single test: `. .venv/bin/activate && pytest tests/unit/test_postgres.py::test_name -v`
 
 CDK (run from `infra/`, requires `AWS_PROFILE` and `CDK_ENV` set to `dev` or `prod`):
+
 - `make infra-bootstrap` / `make infra-diff` / `make infra-deploy` / `make infra-destroy`
 - `infra-deploy` accepts `CDK_STACK=<name>` to deploy a single stack.
 
@@ -41,19 +43,22 @@ This is an NHS Trust access-and-inequality analytics platform. Two top-level Pyt
 The CLI (`cli.py`) is the single entry point and dispatches three commands: `ingest-postgres`, `ingest-sftp`, `ingest-trust-s3`. It loads `config/{ENV}.json` from the current working directory (so the CLI must be run from repo root) and resolves credentials from env vars named in that config (e.g. `EHR_DSN`, `SFTP_HOST`).
 
 All three ingestion paths share the same Bronze contract:
+
 - Output key: `bronze/source=<src>/entity=<ent>/ingest_date=YYYY-MM-DD/run_id=<uuid>/<file>`
 - One run = one `run_id` (uuid4), one aggregate manifest at `_manifests/source=<src>/ingest_date=.../run_id=<uuid>.json`
-- **Idempotency**: before doing work, `idempotency.should_skip_if_already_successful` lists the latest manifest under that source+date prefix and skips if `status == "success"`. New work always writes a fresh `run_id`; manifests are append-only and the *latest* one wins.
+- **Idempotency**: before doing work, `idempotency.should_skip_if_already_successful` lists the latest manifest under that source+date prefix and skips if `status == "success"`. New work always writes a fresh `run_id`; manifests are append-only and the _latest_ one wins.
 - `fail_fast` flag controls whether per-table/per-file failures abort the run or continue and mark the manifest as `failed`.
 
 Source-specific notes:
-- `postgres.py` uses `COPY ... TO STDOUT WITH CSV HEADER` buffered into memory via `_copy_stream` - large tables will need a true streaming rewrite (noted in code).
+
+- `postgres.py` uses `SELECT *` with `cursor.fetchall()` converted to Parquet via `_parquet_buffer` - large tables will need a streaming rewrite.
 - `trust_s3.py` uses S3 server-side `copy_object` (no download). The Trust bucket uses `export_date=YYYYMMDD` (no dashes) in its prefix layout - the code handles the conversion; preserve it.
 - `sftp.py` reads files fully into memory and SHA-256s them before upload.
 
 ### Infra (`infra/`)
 
 `app.py` requires `-c env=dev|prod` context, loads `infra/config/<env>.json` via `settings.load_env_config` into a frozen `EnvConfig` dataclass, and synthesises two stacks:
+
 1. `PlatformBucketStack` - the project bucket (`{app_name}-{env_name}-{account_id}`), versioned, SSL-enforced, with `RemovalPolicy.RETAIN` + no auto-delete in prod, `DESTROY` + auto-delete in dev.
 2. `IngestionRoleStack` - IAM role assumed by the SSO user in `cfg.user_name`. Grants read on the external Trust bucket (`cfg.iam.external_bucket`) and write on `bronze/*` + `_manifests/*` of the platform bucket only. Keep this prefix-scoped - silver/gold writes belong to different roles.
 
@@ -76,4 +81,5 @@ The following components are planned but not yet implemented:
 - **Session workflow**: `make up` (deploy + seed), `make down` (destroy), `make ingest` (trigger ECS tasks)
 
 ## Things to remember
+
 1. Files under .planning/ are gitignored should not be commited

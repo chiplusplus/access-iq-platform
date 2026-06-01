@@ -37,7 +37,7 @@ Stacks deployed in dependency order:
 7. `observability` - CloudWatch log groups, metric filters, SNS alarms, ops dashboard
 8. `warehouse` - Redshift Serverless namespace + workgroup with usage limits
 9. `compute` - ECS Fargate cluster, task definitions, Prefect server + worker services
-10. `budget` - AWS Budgets with Lambda teardown (us-east-1)
+10. `budget` - AWS Budgets ($10 dev / $20 prod monthly ceiling) with SNS alarm at 80% threshold; breaching the threshold triggers a Lambda that automatically destroys ephemeral stacks (compute, warehouse, network, observability, ingestion-role)
 
 ### Step 4: Redshift Pre-warm + Spectrum (30-60s)
 
@@ -64,7 +64,7 @@ Build the ingestion container image and push to ECR:
 
 ```bash
 # Automated by session script - builds from repo root Dockerfile
-# Tags: latest + git SHA
+# Tags: latest
 ```
 
 ### Step 8: Prefect Configuration (30-60s)
@@ -73,7 +73,7 @@ Build the ingestion container image and push to ECR:
 2. Create/update ECS work pool
 3. Deploy flow definitions
 
-**Known slow path**: Prefect tunnel retries up to 3 times with 15-second backoff. Health poll waits up to 100 seconds for the server to respond. PID written to `.prefect-tunnel.pid`.
+**Known slow path**: Prefect tunnel retries up to 3 times with 15-second backoff. PID written to `.prefect-tunnel.pid`.
 
 ---
 
@@ -82,7 +82,7 @@ Build the ingestion container image and push to ECR:
 ### CloudWatch Dashboard
 
 ```
-https://{region}.console.aws.amazon.com/cloudwatch/home#dashboards:name=access-iq-{env}-ops
+https://{region}.console.aws.amazon.com/cloudwatch/home#dashboards:name=access-iq-{env}-ingestion
 ```
 
 Displays: ingestion task status, error rates, Redshift query latency, ECS CPU/memory utilisation.
@@ -92,7 +92,7 @@ Displays: ingestion task status, error rates, Redshift query latency, ECS CPU/me
 | Alarm                | Trigger                                      | Action                                                 |
 | -------------------- | -------------------------------------------- | ------------------------------------------------------ |
 | Ingestion failure    | Manifest `status: failed` in CloudWatch logs | SNS notification to ops topic                          |
-| Budget threshold     | 80% of monthly ceiling ($8 dev / $16 prod)   | SNS notification + Lambda teardown of ephemeral stacks |
+| Budget threshold     | 80% of monthly ceiling ($10 dev / $20 prod)  | SNS notification + Lambda teardown of ephemeral stacks |
 | Redshift usage limit | RPU-hours exceeded                           | Workgroup auto-pauses; `make status` reports state     |
 
 ### Prefect UI
@@ -154,6 +154,26 @@ Sequence:
 
 ---
 
+## Additional Session Commands
+
+| Command                | Description                                                                 |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `make up --skip-seed`  | Infra-only deploy (no data seeding)                                         |
+| `make up --skip-infra` | Reuse existing stacks (skip CDK deploy)                                     |
+| `make reconnect`       | Re-establish SSM tunnels without redeploying                                |
+| `make dbt CMD="..."`   | Run dbt commands through the Redshift SSM tunnel                            |
+| `make dashboard`       | Run Streamlit dashboard locally                                             |
+| `make profile`         | Profile Bronze data and generate data dictionary (requires live S3 session) |
+| `make ready`           | Run Bronze-to-Silver readiness gate (PK uniqueness, join keys, types)       |
+| `cleanup-snapshots`    | Remove stale Redshift snapshots                                             |
+
+Session workflow notes:
+
+- `make up` generates a `.env` file from Trust and Platform CloudFormation outputs. This file is gitignored and must be regenerated each session.
+- The budget stack monitors Platform account spend only. Trust account cost controls are managed in the Trust repository.
+
+---
+
 ## Teardown (`make down`)
 
 Total time: 6-10 minutes.
@@ -164,12 +184,11 @@ make down
 
 Sequence:
 
-1. Kill Prefect SSM tunnel (PID from `.prefect-tunnel.pid`)
-2. Kill Redshift SSM tunnel (PID from `.tunnel.pid`)
-3. `cdk destroy --all` Platform stacks
+1. Kill Prefect SSM tunnel (PID from `.prefect-tunnel.pid`) and Redshift SSM tunnel (PID from `.tunnel.pid`)
+2. `cdk destroy --all` Platform stacks
    - Dev: Redshift snapshot skipped, S3 auto-delete enabled
    - Prod: Timestamped final Redshift snapshot created, S3 retained
-4. `cdk destroy` Trust stack
+3. `cdk destroy` Trust stack
 
 **Post-teardown verification:**
 
@@ -190,7 +209,7 @@ make status
 
 ```bash
 # Check CloudWatch logs for the failing source:
-aws logs tail /ecs/access-iq-{env}/ingest-{source} --since 1h --profile $AWS_PROFILE
+aws logs tail /access-iq/{env}/ingest-{source} --since 1h --profile $AWS_PROFILE
 ```
 
 **Common causes**:
@@ -224,7 +243,7 @@ aws redshift-serverless get-workgroup \
 **Investigate**: Check S3 Gold export prefix for Parquet files:
 
 ```bash
-aws s3 ls s3://{bucket}/gold/ --profile $AWS_PROFILE
+aws s3 ls s3://{bucket}/gold_export/ --profile $AWS_PROFILE
 ```
 
 **Common causes**:
