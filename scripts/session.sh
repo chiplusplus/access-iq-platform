@@ -109,12 +109,16 @@ cmd_up() {
     (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
       -c "env=${CDK_ENV}" -c "trust_vpc_id=${TRUST_VPC}" --require-approval never)
 
-    # Deploy Trust account budget stack with Trust credentials (separate step
-    # because the stack targets the Trust account and needs $TRUST_PROFILE).
+    # Deploy Trust budget stack from Trust repo, passing alert config from Platform config.
+    local PLATFORM_CFG="$PLATFORM_REPO/infra/config/${CDK_ENV}.json"
+    local ALERT_EMAIL; ALERT_EMAIL=$(jq -r '.obs.alert_email // empty' "$PLATFORM_CFG")
+    local SLACK_WEBHOOK; SLACK_WEBHOOK=$(jq -r '.obs.slack_webhook_url // empty' "$PLATFORM_CFG")
     echo "  Deploying Trust budget stack..."
-    (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk deploy \
-      "budget-trust-access-iq-${CDK_ENV}" \
-      -c "env=${CDK_ENV}" -c "include_trust_budget=true" --require-approval never) \
+    (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
+      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy TrustBudgetStack \
+      ${ALERT_EMAIL:+-c "alertEmail=${ALERT_EMAIL}"} \
+      ${SLACK_WEBHOOK:+-c "slackWebhookUrl=${SLACK_WEBHOOK}"} \
+      --require-approval never) \
       || echo "  WARNING: Trust budget stack deploy failed (non-blocking)"
   fi
 
@@ -760,9 +764,8 @@ cmd_down() {
   step_done
 
   step_start "3/4" "Destroy Trust budget stack" "<1 min"
-  (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk destroy \
-    "budget-trust-access-iq-${CDK_ENV}" --force \
-    -c "env=$CDK_ENV" -c "include_trust_budget=true") 2>/dev/null \
+  (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
+    && AWS_PROFILE="$TRUST_PROFILE" cdk destroy TrustBudgetStack --force) 2>/dev/null \
     || echo "  Trust budget stack not deployed or already destroyed"
   step_done
 
