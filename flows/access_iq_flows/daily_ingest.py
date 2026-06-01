@@ -25,6 +25,7 @@ from access_iq_flows.alerts import sns_on_failure
 from access_iq_flows.dbt_tasks import run_dbt_gold, run_dbt_silver, run_dbt_spectrum
 from access_iq_flows.export_tasks import export_gold_to_s3
 from access_iq_flows.ge_tasks import run_ge_gate
+from access_iq_flows.repartition_task import repartition_bronze
 
 log = structlog.get_logger(__name__)
 
@@ -158,6 +159,10 @@ def daily_ingest(run_date: str | None = None, env: str = "dev") -> None:
         future.result()
 
     log.info("bronze_ingestion_complete")
+
+    # Step 1.5: Repartition bronze by business date
+    repartition_bronze(run_date=effective_date, settings=settings)
+    log.info("bronze_repartition_complete")
 
     # Step 2: Refresh Spectrum external tables + partitions
     run_dbt_spectrum()
