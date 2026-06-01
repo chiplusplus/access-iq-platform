@@ -46,6 +46,14 @@ def run_dbt_spectrum() -> None:
         raise RuntimeError(f"add_spectrum_partitions failed: {detail}")
     log.info("spectrum_partitions_registered")
 
+    backfill_result: dbtRunnerResult = runner.invoke(
+        ["run-operation", "backfill_spectrum_partitions", *common_args]
+    )
+    if not backfill_result.success:
+        detail = backfill_result.exception or str(backfill_result.result) or "unknown error"
+        raise RuntimeError(f"backfill_spectrum_partitions failed: {detail}")
+    log.info("spectrum_backfill_partitions_registered")
+
 
 @task(retries=2, retry_delay_seconds=[60, 120], name="dbt-silver")
 def run_dbt_silver() -> None:
