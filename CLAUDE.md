@@ -17,12 +17,12 @@ All infrastructure is CDK-managed with an ephemeral deploy/destroy pattern to av
 
 The project uses `uv` + a Make-driven workflow. Most commands assume `.venv` exists (created by `make setup`).
 
-- `make setup` - create venv, install `-e ".[dev]"`, install pre-commit hooks
+- `make setup` - check prereqs (`uv`, `node`, `cdk`, `aws`, `jq`), run `uv sync --group dev`, install `infra/` editable, install pre-commit hooks
 - `make fmt` / `make lint` - `ruff format .` / `ruff check .`
 - `make type` - `mypy .`
-- `make test` - `pytest --cov=access_iq`
+- `make test` - `pytest --cov=access_iq --cov=access_iq_infra`
 - `make ci` - fmt + lint + type + test (mirrors `.github/workflows/ci.yml`)
-- Run a single test: `. .venv/bin/activate && pytest tests/unit/test_postgres.py::test_name -v`
+- Run a single test: `.venv/bin/pytest tests/unit/test_postgres.py::test_name -v`
 
 CDK (run from `infra/`, requires `PLATFORM_PROFILE` and `CDK_ENV` set to `dev` or `prod`):
 
@@ -57,12 +57,29 @@ Source-specific notes:
 
 ### Infra (`infra/`)
 
-`app.py` requires `-c env=dev|prod` context, loads `infra/config/<env>.json` via `settings.load_env_config` into a frozen `EnvConfig` dataclass, and synthesises two stacks:
+`app.py` requires `-c env=dev|prod` context, loads `infra/config/<env>.json` via `settings.load_env_config` into a frozen `EnvConfig` dataclass, and synthesises these stacks:
 
-1. `PlatformBucketStack` - the project bucket (`{app_name}-{env_name}-{account_id}`), versioned, SSL-enforced, with `RemovalPolicy.RETAIN` + no auto-delete in prod, `DESTROY` + auto-delete in dev.
-2. `IngestionRoleStack` - IAM role assumed by the user in `cfg.user_name`. Grants read on the external Trust bucket (`cfg.iam.external_bucket`) and write on `bronze/*` + `_manifests/*` of the platform bucket only. Keep this prefix-scoped - silver/gold writes belong to different roles.
+1. `LakeStack` - S3 data lake bucket + KMS CMK for encryption at rest.
+2. `SecretsStack` - Secrets Manager entries (pseudonymisation key, Redshift password).
+3. `CatalogStack` - Glue Data Catalog database for Spectrum external tables.
+4. `EcrStack` - ECR container registry for ingestion image.
+5. `IamStack` - IAM roles (ECS task, execution, Prefect worker, Spectrum). Grants are prefix-scoped: ingestion writes `bronze/*` + `_manifests/*` only; Spectrum reads all prefixes + writes `gold_export/*`. Also grants dashboard export bucket write + KMS encrypt if `dashboard` config is set.
+6. `NetworkStack` - VPC, subnets, NAT Gateway, VPC peering to Trust.
+7. `ObservabilityStack` - CloudWatch log groups, 15+ metric filters (ingestion events + pipeline lifecycle), 6 alarms (ingestion failure, budget, Redshift usage, GE gate failure, validation error, pipeline/export staleness), EventBridge OOM detection rule, SNS topics, pipeline-health dashboard.
+8. `WarehouseStack` - Redshift Serverless namespace + workgroup with RPU usage limits.
+9. `ComputeStack` - ECS Fargate cluster, task definitions, Prefect server + worker services.
+10. `BudgetStack` - AWS Budgets ($10 dev / $20 prod monthly ceiling) with SNS alarm at 80% threshold. Breaching triggers a Lambda that auto-destroys ephemeral stacks (compute, warehouse, network, observability, ingestion-role). Connected to ObservabilityStack's delivery topic for notifications.
 
 Tags from `cfg.tags` are applied app-wide via `tagging.apply_tags(app, ...)` before stack instantiation.
+
+### Config (`infra/config/`)
+
+Each env config file (`dev.json`, `prod.json`) contains account IDs, VPC CIDRs, and feature-specific blocks. Key sections beyond the basics:
+
+- `obs.staleness_alarm_hours` / `obs.export_staleness_alarm_hours` - evaluation windows for pipeline and Gold export staleness alarms (defaults: 48h / 50h in dev).
+- `obs.slack_webhook_url` - optional Slack webhook for budget teardown notifications.
+- `dashboard.export_bucket` / `dashboard.kms_key_arn` - permanent S3 bucket and KMS key for Streamlit Gold exports (outside ephemeral stacks).
+- `redshift` block - base_capacity, usage_limit_rpu_hours, snapshot_retention_days, db_name.
 
 ### Environments
 
@@ -70,15 +87,11 @@ Two AWS accounts (dev/prod). Promotion model (per `docs/architecture/environment
 
 ## What's not built yet
 
-The following components are planned but not yet implemented:
+Most of the platform is implemented. Remaining gaps:
 
-- **Platform infra expansion**: ECS Fargate cluster, Redshift Serverless, VPC peering, NAT gateway - all as CDK additions to Platform stack
-- **Observability**: CloudWatch log groups, metric filters, alarms, operational dashboard
-- **dbt modelling layer**: Silver staging models (patients, encounters, appointments, urgent_care, diagnostics, providers) and Gold marts (wait_times, inequality, urgent_care, utilisation) targeting Redshift
-- **Data quality**: Great Expectations validation suites on Silver tables
-- **Orchestration**: Prefect flows for ingestion → dbt → GE validation pipeline
-- **Dashboard**: Streamlit app with 3 pages (Wait Times, Inequality, Urgent Care) reading from Gold layer
-- **Session workflow**: `make up` (deploy + seed), `make down` (destroy), `make ingest` (trigger ECS tasks)
+- **dbt Silver models**: 9 of 10 Silver models pass; `stg_patients` is blocked by a Redshift 3-part name resolution error (see `.planning/` notes).
+- **Great Expectations**: validation suite scaffolded but not fully wired into the pipeline gate.
+- **Observability integration tests**: unit tests cover all stacks; integration tests for the new pipeline-event metric filters and staleness alarms are stubbed but need live-stack validation.
 
 ## Things to remember
 

@@ -79,21 +79,55 @@ Build the ingestion container image and push to ECR:
 
 ## Monitor
 
-### CloudWatch Dashboard
+### CloudWatch Dashboards
+
+Two dashboards are deployed by the ObservabilityStack:
+
+**Pipeline Health Dashboard** (`access-iq-{env}-pipeline-health`):
 
 ```
-https://{region}.console.aws.amazon.com/cloudwatch/home#dashboards:name=access-iq-{env}-ingestion
+https://{region}.console.aws.amazon.com/cloudwatch/home#dashboards:name=access-iq-{env}-pipeline-health
 ```
 
-Displays: ingestion task status, error rates, Redshift query latency, ECS CPU/memory utilisation.
+Displays: pipeline last-success timestamp (log query), GE gate run/failure counts, ingestion task status, error rates, ECS CPU/memory utilisation.
+
+**Data Quality Dashboard** (namespace `AccessIQ/DataQuality`):
+
+Displays: GE gate runs and failures over time.
+
+### Metric Filters
+
+The ObservabilityStack creates metric filters on the pipeline log group (namespace `AccessIQ/{env_name}`) that emit a count of `1` each time the corresponding structured log event fires:
+
+| Event ($.event)        | Metric Name          | Purpose                                  |
+| ---------------------- | -------------------- | ---------------------------------------- |
+| `ge_gate_failed`       | `GEGateFailed`       | GE data quality gate failed              |
+| `ge_gate_passed`       | `GEGatePassed`       | GE data quality gate passed              |
+| `gold_export_complete` | `GoldExportComplete` | Gold Parquet export to S3 completed      |
+| `dbt_silver_complete`  | `DbtSilverComplete`  | dbt Silver models completed              |
+| `dbt_gold_complete`    | `DbtGoldComplete`    | dbt Gold models completed                |
+| `pipeline_complete`    | `PipelineComplete`   | Full pipeline run completed successfully |
+| `validation_error`     | `ValidationError`    | GE validation infrastructure error       |
+
+These are in addition to the existing ingestion-event filters (e.g. `IngestionStarted`, `IngestionComplete`, `IngestionFailed`).
 
 ### Alarms
 
-| Alarm                | Trigger                                      | Action                                                 |
-| -------------------- | -------------------------------------------- | ------------------------------------------------------ |
-| Ingestion failure    | Manifest `status: failed` in CloudWatch logs | SNS notification to ops topic                          |
-| Budget threshold     | 80% of monthly ceiling ($10 dev / $20 prod)  | SNS notification + Lambda teardown of ephemeral stacks |
-| Redshift usage limit | RPU-hours exceeded                           | Workgroup auto-pauses; `make status` reports state     |
+| Alarm                 | Trigger                                                  | Action                                                 |
+| --------------------- | -------------------------------------------------------- | ------------------------------------------------------ |
+| Ingestion failure     | Manifest `status: failed` in CloudWatch logs             | SNS notification to ops topic                          |
+| GE gate failure       | `GEGateFailed` >= 1 in 5 min                             | SNS notification to ops topic                          |
+| Validation error      | `ValidationError` >= 1 in 5 min                          | SNS notification to ops topic                          |
+| Pipeline staleness    | `PipelineComplete` < 1 over staleness window (48h dev)   | SNS notification (BREACHING on missing data)           |
+| Gold export staleness | `GoldExportComplete` < 1 over staleness window (50h dev) | SNS notification (BREACHING on missing data)           |
+| Budget threshold      | 80% of monthly ceiling ($10 dev / $20 prod)              | SNS notification + Lambda teardown of ephemeral stacks |
+| Redshift usage limit  | RPU-hours exceeded                                       | Workgroup auto-pauses; `make status` reports state     |
+
+Staleness alarm evaluation windows are configurable via `obs.staleness_alarm_hours` and `obs.export_staleness_alarm_hours` in `infra/config/{env}.json`.
+
+### ECS OOM Detection
+
+An EventBridge rule (`access-iq-{env}-ecs-oom-detection`) monitors ECS Task State Change events. When a task stops because an essential container exited (OOM or crash), it routes to the SNS ops topic. This catches container memory issues that would otherwise only appear in ECS task logs.
 
 ### Prefect UI
 
@@ -264,6 +298,62 @@ make status
 ```
 
 **Response**: The Lambda automatically destroys ephemeral stacks (compute, warehouse, network, observability, ingestion-role). Stateful stacks (lake, secrets, catalog, ecr) are retained. Redeploy with `make up` when ready to resume work.
+
+### GE Gate Failure Alarm
+
+**Symptoms**: SNS notification for `Alarm-GEGateFailed`. Silver tables have data quality validation failures.
+
+**Investigate**:
+
+```bash
+# Check recent GE gate events in pipeline logs:
+aws logs filter-log-events \
+  --log-group-name /access-iq/{env}/pipeline \
+  --filter-pattern '{ $.event = "ge_gate_failed" }' \
+  --start-time $(date -d '1 hour ago' +%s000) \
+  --profile $PLATFORM_PROFILE --region $REGION
+```
+
+**Response**: Identify which Silver table(s) failed validation. Check the `_dq/` prefix in S3 for GE validation results. Fix upstream data or adjust expectations, then re-run `make pipeline`.
+
+### Pipeline Staleness Alarm
+
+**Symptoms**: SNS notification for `Alarm-PipelineStaleness` or `Alarm-GoldExportStaleness`. Dashboard data may be outdated.
+
+**Investigate**: Check whether the pipeline has run recently:
+
+```bash
+aws logs filter-log-events \
+  --log-group-name /access-iq/{env}/pipeline \
+  --filter-pattern '{ $.event = "pipeline_complete" }' \
+  --start-time $(date -d '48 hours ago' +%s000) \
+  --profile $PLATFORM_PROFILE --region $REGION
+```
+
+**Common causes**:
+
+- Session ended without running the pipeline - normal for ephemeral deploy/destroy pattern. Fix: `make up` and `make pipeline`.
+- Prefect scheduler not running - worker or server task stopped. Fix: check ECS service status, redeploy if needed.
+- The alarm evaluation window is configurable (`obs.staleness_alarm_hours` in `infra/config/{env}.json`). In dev it is set to 48h to avoid false alarms from overnight gaps.
+
+### ECS OOM / Container Crash
+
+**Symptoms**: SNS notification from the `ecs-oom-detection` EventBridge rule. An ECS task stopped because an essential container exited unexpectedly.
+
+**Investigate**:
+
+```bash
+# Check recent stopped tasks:
+aws ecs list-tasks --cluster access-iq-{env} --desired-status STOPPED --profile $PLATFORM_PROFILE --region $REGION
+
+# Describe the stopped task for stoppedReason:
+aws ecs describe-tasks --cluster access-iq-{env} --tasks {task-arn} --profile $PLATFORM_PROFILE --region $REGION
+```
+
+**Common causes**:
+
+- Out of memory - container exceeded task memory limit. Fix: increase `memory` in the ECS task definition (ComputeStack) or reduce batch sizes in ingestion.
+- Application crash - check CloudWatch logs for the specific task's log stream for stack traces.
 
 ### Prefect Tunnel Failure
 

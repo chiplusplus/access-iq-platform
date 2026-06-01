@@ -158,6 +158,30 @@ Additional targets: `make dbt CMD="run --select silver"`, `make rs-tunnel`, `mak
 | `_manifests/` | Ingestion  | JSON manifest per run (idempotency + audit)                                                                                                        |
 | `_dq/`        | GE         | Great Expectations validation results                                                                                                              |
 
+## Observability
+
+The ObservabilityStack deploys production-grade monitoring across the full pipeline:
+
+**Dashboards**: A Pipeline Health dashboard (`access-iq-{env}-pipeline-health`) shows last-success timestamps, GE gate metrics, ingestion status, and ECS resource utilisation.
+
+**Metric Filters**: 15+ CloudWatch metric filters on the pipeline log group track structured events across the lifecycle: ingestion start/complete/fail, dbt Silver/Gold completion, GE gate pass/fail, Gold export completion, and validation errors.
+
+**Alarms**:
+
+| Alarm                 | What it catches                                        |
+| --------------------- | ------------------------------------------------------ |
+| Ingestion failure     | Manifest `status: failed` in logs                      |
+| GE gate failure       | Data quality validation failed on Silver tables        |
+| Validation error      | GE infrastructure error during checkpoint execution    |
+| Pipeline staleness    | No successful pipeline run in 48h (configurable)       |
+| Gold export staleness | No Gold export in 50h (configurable)                   |
+| Budget threshold      | 80% of monthly ceiling reached; triggers auto-teardown |
+| ECS OOM detection     | EventBridge rule catches container crashes/OOM kills   |
+
+Staleness alarms use `BREACHING` on missing data, so they fire even when the pipeline simply hasn't run (e.g. forgotten `make down`). Evaluation windows are configurable in `infra/config/{env}.json`.
+
+**Permanent Dashboard Exports**: Gold Parquet files are exported to a KMS-encrypted S3 bucket (`access-iq-dashboard-exports`) that lives outside the ephemeral stacks. This bucket, its KMS key, and a read-only IAM user persist across `make down` / budget teardowns, keeping the Streamlit Community Cloud dashboard live between sessions. See the [Runbook](docs/governance/runbook.md#permanent-dashboard-infrastructure-one-time-setup) for one-time setup instructions.
+
 ## Architecture Decisions
 
 The project documents key technical decisions as Architecture Decision Records. Highlights:
