@@ -39,5 +39,8 @@
     "usage_limit_rpu_hours": 4,
     "snapshot_retention_days": 7,
     "db_name": "dev"
+  },
+  "dashboard": {
+    "export_bucket": "access-iq-dashboard-gold"
   }
 }

@@ -47,6 +47,7 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
     """
     export_date = _validate_export_date(run_date)
     bucket = os.environ.get("ACCESS_IQ_PLATFORM_BUCKET") or os.environ["PLATFORM_BUCKET"]
+    dashboard_bucket = os.environ.get("DASHBOARD_EXPORT_BUCKET")
     role_arn = os.environ["REDSHIFT_SPECTRUM_ROLE_ARN"]
     kms_key = os.environ.get("ACCESS_IQ_LAKE_KMS_KEY_ARN") or os.environ.get("LAKE_KMS_KEY_ARN", "")
 
@@ -88,6 +89,26 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
                 )
                 cur.execute(sql)
                 log.info("gold_exported", table=table_name, prefix=s3_prefix)
+
+            # Write unencrypted copy to permanent dashboard bucket (if configured)
+            if dashboard_bucket:
+                if not _BUCKET_RE.match(dashboard_bucket):
+                    raise ValueError(f"Invalid dashboard bucket name: {dashboard_bucket!r}")
+                for table_name in sorted(GOLD_TABLES):
+                    s3_prefix = f"s3://{dashboard_bucket}/gold_export/table={table_name}/export_date={export_date}/"
+                    sql = (
+                        f"UNLOAD ('SELECT * FROM gold.{table_name}') "
+                        f"TO '{s3_prefix}' "
+                        f"IAM_ROLE '{role_arn}' "
+                        f"FORMAT AS PARQUET "
+                        f"ALLOWOVERWRITE "
+                        f"PARALLEL OFF"
+                    )
+                    cur.execute(sql)
+                log.info(
+                    "dashboard_export_complete", bucket=dashboard_bucket, export_date=export_date
+                )
+
         conn.commit()
     finally:
         conn.close()

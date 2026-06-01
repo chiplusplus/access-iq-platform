@@ -26,6 +26,7 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         ecs={},
         obs={},
         redshift={},
+        dashboard={},
     )
 
 

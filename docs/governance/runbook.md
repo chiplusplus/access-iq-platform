@@ -302,3 +302,94 @@ aws redshift-serverless list-snapshots \
 
 - Snapshot name mismatch - the `restore_snapshot_name` CDK context key doesn't match an existing snapshot. Fix: list snapshots and pass the correct name.
 - Snapshot from different namespace - cross-namespace restore not supported. Fix: use a snapshot from the same `access-iq-{env}` namespace.
+
+---
+
+## Permanent Dashboard Infrastructure (One-Time Setup)
+
+The Streamlit Community Cloud dashboard needs to read Gold Parquet files from S3 using long-lived credentials. These resources live outside the ephemeral stacks so the dashboard stays live between sessions and survives budget teardowns. Other users cloning this project do not need this — the dashboard falls back to local Parquet files.
+
+### 1. Create the dashboard S3 bucket
+
+```bash
+aws s3api create-bucket \
+  --bucket access-iq-dashboard-gold \
+  --region eu-west-2 \
+  --create-bucket-configuration LocationConstraint=eu-west-2 \
+  --profile $AWS_PROFILE
+
+aws s3api put-public-access-block \
+  --bucket access-iq-dashboard-gold \
+  --public-access-block-configuration \
+    BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
+  --profile $AWS_PROFILE
+```
+
+### 2. Create the dashboard reader IAM user
+
+```bash
+aws iam create-user --user-name access-iq-dashboard-reader --profile $AWS_PROFILE
+
+aws iam put-user-policy \
+  --user-name access-iq-dashboard-reader \
+  --policy-name DashboardGoldReadOnly \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::access-iq-dashboard-gold",
+        "arn:aws:s3:::access-iq-dashboard-gold/*"
+      ]
+    }]
+  }' \
+  --profile $AWS_PROFILE
+
+aws iam create-access-key --user-name access-iq-dashboard-reader --profile $AWS_PROFILE
+```
+
+Save the `AccessKeyId` and `SecretAccessKey` from the output.
+
+### 3. Grant Redshift UNLOAD write access
+
+The Spectrum IAM role needs write access to the dashboard bucket so the Gold export task can UNLOAD to it:
+
+```bash
+aws iam put-role-policy \
+  --role-name access-iq-dev-spectrum-role \
+  --policy-name DashboardBucketWrite \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetBucketLocation"],
+      "Resource": [
+        "arn:aws:s3:::access-iq-dashboard-gold",
+        "arn:aws:s3:::access-iq-dashboard-gold/*"
+      ]
+    }]
+  }' \
+  --profile $AWS_PROFILE
+```
+
+### 4. Configure the pipeline
+
+Add to your `.env` (or set in the ECS task environment):
+
+```bash
+DASHBOARD_EXPORT_BUCKET=access-iq-dashboard-gold
+```
+
+The Gold export task writes to both the ephemeral lake bucket (KMS-encrypted, for Spectrum) and the dashboard bucket (unencrypted, for Streamlit).
+
+### 5. Configure Streamlit Community Cloud secrets
+
+In the Streamlit app settings, set these secrets:
+
+```toml
+PLATFORM_BUCKET = "access-iq-dashboard-gold"
+AWS_ACCESS_KEY_ID = "<from step 2>"
+AWS_SECRET_ACCESS_KEY = "<from step 2>"
+AWS_REGION = "eu-west-2"
+```

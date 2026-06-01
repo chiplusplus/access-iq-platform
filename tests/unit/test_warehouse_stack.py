@@ -37,6 +37,7 @@ def _cfg() -> EnvConfig:
             "snapshot_retention_days": 7,
             "db_name": "dev",
         },
+        dashboard={},
     )
 
 
