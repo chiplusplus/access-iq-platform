@@ -5,13 +5,19 @@
 # Requires: Redshift Serverless workgroup deployed (make up first).
 set -euo pipefail
 
-AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
+if [ -z "${AWS_PROFILE:-}" ]; then
+  echo "ERROR: AWS_PROFILE is not set. Export it before running: export AWS_PROFILE=<your-platform-profile>"
+  exit 1
+fi
+if [ -z "${TRUST_PROFILE:-}" ]; then
+  echo "ERROR: TRUST_PROFILE is not set. Export it before running: export TRUST_PROFILE=<your-trust-profile>"
+  exit 1
+fi
 CDK_ENV="${CDK_ENV:-dev}"
 REGION="${REGION:-eu-west-2}"
 RS_WORKGROUP="access-iq-${CDK_ENV}"
 RS_DB="dev"
 PLATFORM_REPO="$(cd "$(dirname "$0")/.." && pwd)"
-TRUST_PROFILE="${TRUST_PROFILE:-northshire-trust}"
 
 RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
   --namespace-name "$RS_WORKGROUP" \

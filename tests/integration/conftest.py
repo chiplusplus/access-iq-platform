@@ -18,7 +18,7 @@ def _require_env(name: str, default: str | None = None) -> str:
 
 @pytest.fixture(scope="session")
 def env_config() -> dict[str, Any]:
-    profile = _require_env("AWS_PROFILE", "CHI-Engineer-222308823356")
+    profile = _require_env("AWS_PROFILE")
     env_name = _require_env("CDK_ENV", "dev")
     region = _require_env("AWS_REGION", "eu-west-2")
 

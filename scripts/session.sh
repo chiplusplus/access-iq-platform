@@ -3,8 +3,14 @@
 # Usage: ./scripts/session.sh up|down|status
 set -euo pipefail
 
-AWS_PROFILE="${AWS_PROFILE:-CHI-Engineer-222308823356}"
-TRUST_PROFILE="${TRUST_PROFILE:-northshire-trust}"
+if [ -z "${AWS_PROFILE:-}" ]; then
+  echo "ERROR: AWS_PROFILE is not set. Export it before running: export AWS_PROFILE=<your-platform-profile>"
+  exit 1
+fi
+if [ -z "${TRUST_PROFILE:-}" ]; then
+  echo "ERROR: TRUST_PROFILE is not set. Export it before running: export TRUST_PROFILE=<your-trust-profile>"
+  exit 1
+fi
 CDK_ENV="${CDK_ENV:-dev}"
 REGION="${REGION:-eu-west-2}"
 TRUST_REPO="${TRUST_REPO:-$(cd "$(dirname "$0")/../.." && pwd)/northshire-hospital-sim}"
@@ -471,7 +477,7 @@ DASHEOF
 
   # Verify Spectrum schema creation completed (submitted in step 4/8).
   if [ -n "${SPECTRUM_STMT_ID:-}" ]; then
-    local saved_profile="${AWS_PROFILE:-CHI-Engineer-222308823356}"
+    local saved_profile="$AWS_PROFILE"
     local stmt_status="SUBMITTED"
     local wait_secs=0
     local max_wait=120
