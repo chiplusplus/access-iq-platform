@@ -9,6 +9,13 @@ from typing import Any
 
 import boto3
 
+_ALARM_DESCRIPTIONS: dict[str, str] = {
+    "GEGateFailed": "DATA QUALITY FAILURE (GE gate blocked Gold build)",
+    "ValidationError": "VALIDATION ERROR (GE infrastructure failure)",
+    "PipelineStaleness": "STALENESS (pipeline has not completed on schedule)",
+    "GoldExportStaleness": "STALENESS (Gold export has not completed on schedule)",
+}
+
 
 def handler(event: dict, context: object) -> None:
     sns_client = boto3.client("sns")
@@ -26,6 +33,9 @@ def handler(event: dict, context: object) -> None:
         if payload.get("source") == "prefect":
             summary = _format_prefect(payload)
             subject = _format_prefect_subject(payload)
+        elif payload.get("source") == "aws.ecs":
+            summary = _format_ecs_event(payload)
+            subject = _format_ecs_subject(payload)
         else:
             summary = _format_alarm(payload, logs_client)
             subject = _format_subject(payload)
@@ -63,7 +73,7 @@ def _format_prefect(payload: dict) -> str:
     if ui_link:
         lines.append(f"  1. Flow run: {ui_link}")
     lines.append(f"  {'2' if ui_link else '1'}. Check logs: /access-iq/{env}/{flow}")
-    lines.append(f"  {'3' if ui_link else '2'}. Dashboard: access-iq-{env}-ingestion")
+    lines.append(f"  {'3' if ui_link else '2'}. Dashboard: access-iq-{env}-pipeline-health")
 
     return "\n".join(lines)
 
@@ -74,24 +84,73 @@ def _format_prefect_subject(payload: dict) -> str:
     return f"[ALERT] {flow} pipeline failed ({env})"
 
 
+def _format_ecs_event(payload: dict) -> str:
+    detail = payload.get("detail", {})
+    task_arn = detail.get("taskArn", "unknown")
+    task_short = task_arn.rsplit("/", 1)[-1] if "/" in task_arn else task_arn
+    stopped_reason = detail.get("stoppedReason", "unknown")
+    group = detail.get("group", "unknown")
+
+    containers = detail.get("containers", [])
+    container_lines = []
+    for c in containers:
+        name = c.get("name", "unknown")
+        exit_code = c.get("exitCode", "N/A")
+        reason = c.get("reason", "")
+        line = f"  - {name}: exit={exit_code}"
+        if reason:
+            line += f" ({reason})"
+        container_lines.append(line)
+
+    lines = [
+        "Type:   ECS TASK FAILURE",
+        f"Task:   {task_short}",
+        f"Group:  {group}",
+        f"Reason: {stopped_reason}",
+    ]
+    if container_lines:
+        lines.append("Containers:")
+        lines.extend(container_lines)
+
+    lines.append("")
+    lines.append("Next steps:")
+    lines.append("  1. Check ECS task logs in CloudWatch")
+    lines.append("  2. If exit=137, increase task memory allocation")
+    lines.append("  3. Dashboard: access-iq-infrastructure")
+
+    return "\n".join(lines)
+
+
+def _format_ecs_subject(payload: dict) -> str:
+    detail = payload.get("detail", {})
+    group = detail.get("group", "unknown")
+    stopped_reason = detail.get("stoppedReason", "")
+    label = "OOM" if "OutOfMemory" in stopped_reason or "137" in stopped_reason else "crash"
+    return f"[ALERT] ECS task {label} in {group}"
+
+
 def _format_alarm(alarm: dict, logs_client: object) -> str:
     trigger = alarm.get("Trigger", {})
     metric = trigger.get("MetricName", "Unknown")
     source = metric.split("-", 1)[1] if "-" in metric else metric
 
-    if "Crash" in metric:
-        failure_type = "CRASH (unhandled exception)"
-    elif "Failed" in metric:
-        failure_type = "FAILURE (manifest status: failed)"
-    else:
-        failure_type = "ALERT"
+    failure_type = _ALARM_DESCRIPTIONS.get(metric)
+    if not failure_type:
+        if "Crash" in metric:
+            failure_type = "CRASH (unhandled exception)"
+        elif "Failed" in metric:
+            failure_type = "FAILURE (manifest status: failed)"
+        else:
+            failure_type = "ALERT"
 
     state = alarm.get("NewStateValue", "Unknown")
     timestamp = alarm.get("StateChangeTime", "")
     time_short = timestamp[:19].replace("T", " ") if timestamp else "unknown"
     env = trigger.get("Namespace", "").split("/")[-1] or "unknown"
 
-    error_detail = _fetch_recent_error(logs_client, env, source)
+    is_staleness = "Staleness" in metric
+    log_source = "pipeline" if metric in _ALARM_DESCRIPTIONS else source
+    error_detail = "" if is_staleness else _fetch_recent_error(logs_client, env, log_source)
 
     lines = [
         f"Type:   {failure_type}",
@@ -105,8 +164,8 @@ def _format_alarm(alarm: dict, logs_client: object) -> str:
 
     lines.append("")
     lines.append("Next steps:")
-    lines.append(f"  1. Check logs: /access-iq/{env}/{source}")
-    lines.append(f"  2. Dashboard: access-iq-{env}-ingestion")
+    lines.append(f"  1. Check logs: /access-iq/{env}/{log_source}")
+    lines.append(f"  2. Dashboard: access-iq-{env}-pipeline-health")
 
     return "\n".join(lines)
 
@@ -149,6 +208,11 @@ def _format_subject(alarm: dict) -> str:
 
     if state == "OK":
         return f"[RESOLVED] {source} ({env})"
+
+    desc = _ALARM_DESCRIPTIONS.get(metric)
+    if desc:
+        short = desc.split("(")[0].strip().lower()
+        return f"[ALERT] {short} ({env})"
     return f"[ALERT] {source} ingestion failed ({env})"
 
 

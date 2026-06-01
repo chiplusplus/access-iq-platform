@@ -25,7 +25,12 @@ def _cfg(env_name: str = "dev") -> EnvConfig:
         vpc={},
         tags={},
         ecs={},
-        obs={"log_retention_days": retention, "alert_email": "test@example.com"},
+        obs={
+            "log_retention_days": retention,
+            "alert_email": "test@example.com",
+            "staleness_alarm_hours": 48,
+            "export_staleness_alarm_hours": 50,
+        },
         redshift={},
         dashboard={},
     )
@@ -60,9 +65,9 @@ def test_log_group_retention(env_name: str, expected_days: int) -> None:
 
 
 def test_metric_filters_per_source() -> None:
-    """3 ingestion + 1 pipeline = 4 sources, 2 filters each = 8 (prefect excluded)."""
+    """8 status-based (4 sources x 2) + 7 pipeline event-based = 15."""
     tpl = _template()
-    tpl.resource_count_is("AWS::Logs::MetricFilter", 8)
+    tpl.resource_count_is("AWS::Logs::MetricFilter", 15)
 
 
 def test_metric_filter_pattern() -> None:
@@ -76,10 +81,22 @@ def test_metric_filter_pattern() -> None:
     assert found, "Expected at least one MetricFilter with status/failed pattern"
 
 
-def test_alarms_per_source() -> None:
-    """3 ingestion + 1 pipeline = 4 alarms (prefect excluded from metric filters)."""
+def test_pipeline_event_metric_filters() -> None:
+    """Pipeline event filters target event names like ge_gate_failed, pipeline_complete."""
     tpl = _template()
-    tpl.resource_count_is("AWS::CloudWatch::Alarm", 4)
+    filters = tpl.find_resources("AWS::Logs::MetricFilter")
+    event_filters = [
+        lid
+        for lid, res in filters.items()
+        if "event" in res.get("Properties", {}).get("FilterPattern", "")
+    ]
+    assert len(event_filters) == 7
+
+
+def test_alarms_per_source() -> None:
+    """4 ingestion/pipeline + 4 new (GE gate, validation, staleness x2) = 8."""
+    tpl = _template()
+    tpl.resource_count_is("AWS::CloudWatch::Alarm", 8)
 
 
 def test_alarm_has_sns_action() -> None:
@@ -92,11 +109,63 @@ def test_alarm_has_sns_action() -> None:
     )
 
 
+def test_staleness_alarm_uses_breaching() -> None:
+    """Pipeline staleness alarm treats missing data as BREACHING."""
+    tpl = _template()
+    alarms = tpl.find_resources("AWS::CloudWatch::Alarm")
+    breaching_alarms = [
+        lid
+        for lid, res in alarms.items()
+        if res.get("Properties", {}).get("TreatMissingData") == "breaching"
+    ]
+    assert len(breaching_alarms) == 2, "Expected 2 staleness alarms with BREACHING"
+
+
+def test_staleness_alarm_evaluation_periods() -> None:
+    """Staleness alarm evaluation periods match configured hours."""
+    tpl = _template()
+    alarms = tpl.find_resources("AWS::CloudWatch::Alarm")
+    staleness_alarms = [
+        res
+        for _, res in alarms.items()
+        if res.get("Properties", {}).get("TreatMissingData") == "breaching"
+    ]
+    periods = sorted(res["Properties"]["EvaluationPeriods"] for res in staleness_alarms)
+    assert periods == [48, 50]
+
+
+def test_ge_gate_alarm() -> None:
+    """GE gate failure alarm fires on >= 1 failure in 5 min."""
+    tpl = _template()
+    alarms = tpl.find_resources("AWS::CloudWatch::Alarm")
+    ge_alarms = [
+        res
+        for _, res in alarms.items()
+        if "GE data quality gate failed" in res.get("Properties", {}).get("AlarmDescription", "")
+    ]
+    assert len(ge_alarms) == 1
+
+
 def test_sns_topics_exist() -> None:
     tpl = _template()
     tpl.resource_count_is("AWS::SNS::Topic", 2)
 
 
-def test_dashboard_exists() -> None:
+def test_four_dashboards() -> None:
+    """Pipeline health + ingestion detail + data quality + infrastructure = 4."""
     tpl = _template()
-    tpl.resource_count_is("AWS::CloudWatch::Dashboard", 1)
+    tpl.resource_count_is("AWS::CloudWatch::Dashboard", 4)
+
+
+def test_ecs_oom_event_rule() -> None:
+    """EventBridge rule for ECS OOM/crash detection."""
+    tpl = _template()
+    tpl.resource_count_is("AWS::Events::Rule", 1)
+    tpl.has_resource_properties(
+        "AWS::Events::Rule",
+        {
+            "EventPattern": Match.object_like(
+                {"source": ["aws.ecs"]},
+            ),
+        },
+    )

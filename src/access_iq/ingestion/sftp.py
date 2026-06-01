@@ -204,4 +204,5 @@ def ingest_sftp_directory_to_bronze(
 
     write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
     bound_log.info("ingest_done", status=status)
-    return manifest.model_dump()
+    result: dict[str, Any] = manifest.model_dump()
+    return result

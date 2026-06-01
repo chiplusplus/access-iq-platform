@@ -3,6 +3,7 @@
 # ── Dev workflow ─────────────────────────────────────────────────────
 setup: check-prereqs  ## Create venv, install all workspace members + dev deps, install pre-commit hooks
 	uv sync --group dev
+	uv pip install -e infra/
 	uv run pre-commit install
 	@echo "\n✅ Setup complete. Run 'source .venv/bin/activate' or use 'make' targets directly."
 
@@ -14,20 +15,22 @@ check-prereqs:  ## Verify required CLI tools are installed
 	@command -v jq >/dev/null 2>&1 || { echo "❌ jq not found. Install: brew install jq"; exit 1; }
 	@echo "✅ All prerequisites found."
 
+VENV := .venv/bin
+
 fmt:  ## Format code with ruff
-	uv run ruff format .
+	$(VENV)/ruff format .
 
 lint:  ## Lint code with ruff
-	uv run ruff check .
+	$(VENV)/ruff check .
 
 type:  ## Type-check with mypy
-	uv run mypy
+	$(VENV)/mypy
 
 test:  ## Run unit tests with coverage
-	uv run pytest --cov=access_iq
+	$(VENV)/pytest --cov=access_iq --cov=access_iq_infra
 
 test-integration:  ## Run integration tests against live AWS (requires deployed stacks)
-	uv run pytest -m integration --no-header -v
+	$(VENV)/pytest -m integration --no-header -v
 
 ci: fmt lint type test  ## Run full CI pipeline
 

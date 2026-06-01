@@ -138,7 +138,8 @@ def ingest_trust_provider_ref_to_bronze(
 
     write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
     bound_log.info("ingest_done", status="success")
-    return manifest.model_dump()
+    result: dict[str, Any] = manifest.model_dump()
+    return result
 
 
 def _discover_export_dates(s3: Any, trust_bucket: str, prefix_root: str) -> list[date]:
@@ -301,7 +302,8 @@ def ingest_trust_diagnostics_export_date_to_bronze(
             outputs={"objects_written": 0, "objects_failed": 0, "objects": []},
         )
         write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
-        return manifest.model_dump()
+        result: dict[str, Any] = manifest.model_dump()
+        return result
 
     finished_at = utc_now_iso()
 
@@ -324,4 +326,5 @@ def ingest_trust_diagnostics_export_date_to_bronze(
 
     write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
     bound_log.info("ingest_done", status=status)
-    return manifest.model_dump()
+    result = manifest.model_dump()
+    return result

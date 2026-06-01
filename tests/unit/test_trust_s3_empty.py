@@ -7,7 +7,9 @@ from moto import mock_aws
 
 from access_iq.ingestion.idempotency import should_skip_if_already_successful
 from access_iq.ingestion.manifests import Manifest
-from access_iq.ingestion.trust_s3 import ingest_trust_diagnostics_export_date_to_bronze
+from access_iq.ingestion.trust_s3 import (
+    ingest_trust_diagnostics_export_date_to_bronze,
+)
 
 
 @mock_aws

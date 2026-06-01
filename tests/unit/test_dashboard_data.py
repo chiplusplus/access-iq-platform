@@ -144,7 +144,6 @@ class TestQueryUcEquity:
 
     def test_query_uc_equity_has_connection(self) -> None:
         """Verify query_uc_equity calls get_connection() (no NameError)."""
-        # Stub duckdb before importing data module
         _duckdb = types.ModuleType("duckdb")
         sys.modules.setdefault("duckdb", _duckdb)
 

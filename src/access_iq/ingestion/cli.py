@@ -31,7 +31,7 @@ def main() -> None:
     args = parser.parse_args()
 
     ingest_date = date.fromisoformat(args.ingest_date)
-    settings = Settings()  # type: ignore[call-arg]  # pydantic-settings resolves required fields from env
+    settings = Settings()  # type: ignore[call-arg]
 
     structlog.contextvars.bind_contextvars(env=settings.env)
 

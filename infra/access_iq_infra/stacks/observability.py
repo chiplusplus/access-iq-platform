@@ -8,6 +8,8 @@ from typing import Any
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_cloudwatch as cw
 from aws_cdk import aws_cloudwatch_actions as cw_actions
+from aws_cdk import aws_events as events
+from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_sns as sns
@@ -208,51 +210,279 @@ class ObservabilityStack(Stack):
             )
             alarm_failed.add_alarm_action(cw_actions.SnsAction(sns_topic))
 
-        # -- Section 4: Dashboard (D-11, REQ-OBS-02) ----------
-        dashboard = cw.Dashboard(
+        # -- Section 3b: Pipeline event metric filters ----------
+        # Downstream stages (dbt, GE, export) log structured events by name
+        # rather than a status field. These filters track stage completion and
+        # failure across the full pipeline.
+        pipeline_event_filters: dict[str, logs.MetricFilter] = {}
+        for event_name, metric_name in (
+            ("ge_gate_failed", "GEGateFailed"),
+            ("ge_gate_passed", "GEGatePassed"),
+            ("gold_export_complete", "GoldExportComplete"),
+            ("dbt_silver_complete", "DbtSilverComplete"),
+            ("dbt_gold_complete", "DbtGoldComplete"),
+            ("pipeline_complete", "PipelineComplete"),
+            ("validation_error", "ValidationError"),
+        ):
+            mf = logs.MetricFilter(
+                self,
+                f"MetricFilter-{metric_name}",
+                log_group=pipeline_lg,
+                filter_pattern=logs.FilterPattern.string_value("$.event", "=", event_name),
+                metric_namespace=metric_namespace,
+                metric_name=metric_name,
+                metric_value="1",
+                default_value=0,
+            )
+            pipeline_event_filters[metric_name] = mf
+
+        # -- Section 3c: Quality gate & staleness alarms ----------
+        alarm_ge_gate = cw.Alarm(
+            self,
+            "Alarm-GEGateFailed",
+            metric=pipeline_event_filters["GEGateFailed"].metric(
+                statistic="Sum", period=Duration.minutes(5)
+            ),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
+            alarm_description="GE data quality gate failed — Silver tables have validation failures",
+        )
+        alarm_ge_gate.add_alarm_action(cw_actions.SnsAction(sns_topic))
+
+        alarm_validation_error = cw.Alarm(
+            self,
+            "Alarm-ValidationError",
+            metric=pipeline_event_filters["ValidationError"].metric(
+                statistic="Sum", period=Duration.minutes(5)
+            ),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
+            alarm_description="GE validation infrastructure error during checkpoint execution",
+        )
+        alarm_validation_error.add_alarm_action(cw_actions.SnsAction(sns_topic))
+
+        staleness_hours = int(cfg.obs.get("staleness_alarm_hours", 26))
+        alarm_staleness = cw.Alarm(
+            self,
+            "Alarm-PipelineStaleness",
+            metric=pipeline_event_filters["PipelineComplete"].metric(
+                statistic="Sum", period=Duration.hours(1)
+            ),
+            threshold=1,
+            evaluation_periods=staleness_hours,
+            comparison_operator=cw.ComparisonOperator.LESS_THAN_THRESHOLD,
+            treat_missing_data=cw.TreatMissingData.BREACHING,
+            alarm_description=(
+                f"Pipeline has not completed successfully in {staleness_hours}h "
+                "— dashboard data may be stale"
+            ),
+        )
+        alarm_staleness.add_alarm_action(cw_actions.SnsAction(sns_topic))
+
+        export_staleness_hours = int(cfg.obs.get("export_staleness_alarm_hours", 28))
+        alarm_export_staleness = cw.Alarm(
+            self,
+            "Alarm-GoldExportStaleness",
+            metric=pipeline_event_filters["GoldExportComplete"].metric(
+                statistic="Sum", period=Duration.hours(1)
+            ),
+            threshold=1,
+            evaluation_periods=export_staleness_hours,
+            comparison_operator=cw.ComparisonOperator.LESS_THAN_THRESHOLD,
+            treat_missing_data=cw.TreatMissingData.BREACHING,
+            alarm_description=(
+                f"Gold export has not completed in {export_staleness_hours}h "
+                "— Streamlit dashboard data may be stale"
+            ),
+        )
+        alarm_export_staleness.add_alarm_action(cw_actions.SnsAction(sns_topic))
+
+        # -- Section 3d: ECS OOM / crash detection (EventBridge) ----------
+        ecs_oom_rule = events.Rule(
+            self,
+            "EcsOomRule",
+            rule_name=f"{cfg.app_name}-{cfg.env_name}-ecs-oom-detection",
+            description="Detect ECS task OOM kills and non-zero exit codes",
+            event_pattern=events.EventPattern(
+                source=["aws.ecs"],
+                detail_type=["ECS Task State Change"],
+                detail={
+                    "lastStatus": ["STOPPED"],
+                    "stoppedReason": [{"prefix": "Essential container in task exited"}],
+                },
+            ),
+        )
+        ecs_oom_rule.add_target(targets.SnsTopic(sns_topic))
+
+        all_alarms = [
+            alarm_ge_gate,
+            alarm_validation_error,
+            alarm_staleness,
+            alarm_export_staleness,
+        ]
+
+        # -- Section 4: Dashboards (D-11, REQ-OBS-02) ----------
+        dq_namespace = "AccessIQ/DataQuality"
+        all_lg_names = [lg.log_group_name for lg in log_groups.values()]
+        pipeline_lg_names = [pipeline_lg.log_group_name]
+
+        # ---- 4a. Pipeline Health (main ops dashboard) ----------
+        health_dashboard = cw.Dashboard(
+            self,
+            "PipelineHealthDashboard",
+            dashboard_name=f"{cfg.app_name}-{cfg.env_name}-pipeline-health",
+        )
+
+        # Row 1: Status at-a-glance
+        health_dashboard.add_widgets(
+            cw.LogQueryWidget(
+                title="Pipeline Last Success",
+                log_group_names=pipeline_lg_names,
+                query_string=(
+                    "fields @timestamp\n"
+                    '| filter event = "pipeline_complete"\n'
+                    "| stats max(@timestamp) as last_success\n"
+                    "| display last_success"
+                ),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=6,
+                height=4,
+            ),
+            cw.SingleValueWidget(
+                title="DQ Gate Failures (24h)",
+                metrics=[
+                    cw.Metric(
+                        namespace=dq_namespace,
+                        metric_name="GEGateFailures",
+                        statistic="Sum",
+                        period=Duration.hours(24),
+                        label="GE Failures",
+                    ),
+                ],
+                width=6,
+                height=4,
+            ),
+            cw.AlarmStatusWidget(
+                title="Active Alarms",
+                alarms=all_alarms,
+                width=6,
+                height=4,
+            ),
+            cw.SingleValueWidget(
+                title="Pipeline Runs (24h)",
+                metrics=[
+                    cw.Metric(
+                        namespace=metric_namespace,
+                        metric_name="PipelineComplete",
+                        statistic="Sum",
+                        period=Duration.hours(24),
+                        label="Completions",
+                    ),
+                ],
+                width=6,
+                height=4,
+            ),
+        )
+
+        # Row 2: Stage completion timeline + ingestion health
+        health_dashboard.add_widgets(
+            cw.LogQueryWidget(
+                title="Stage Completion Timeline",
+                log_group_names=pipeline_lg_names,
+                query_string=(
+                    "fields @timestamp, event, run_date\n"
+                    "| filter event in ["
+                    '"pipeline_start", "bronze_ingestion_complete", '
+                    '"dbt_silver_complete", "ge_gate_passed", '
+                    '"dbt_gold_complete", "gold_export_complete", '
+                    '"pipeline_complete"]\n'
+                    "| sort @timestamp desc\n"
+                    "| limit 20"
+                ),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=12,
+                height=6,
+            ),
+            cw.GraphWidget(
+                title="Ingestion Source Health",
+                view=cw.GraphWidgetView.BAR,
+                left=[
+                    cw.Metric(
+                        namespace=metric_namespace,
+                        metric_name=f"IngestionSuccess-{src}",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label=f"{src} ok",
+                    )
+                    for src in INGESTION_SOURCES
+                ],
+                right=[
+                    cw.Metric(
+                        namespace=metric_namespace,
+                        metric_name=f"IngestionFailed-{src}",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label=f"{src} fail",
+                    )
+                    for src in INGESTION_SOURCES
+                ],
+                width=12,
+                height=6,
+            ),
+        )
+
+        # Row 3: Freshness + recent errors
+        health_dashboard.add_widgets(
+            cw.LogQueryWidget(
+                title="Data Freshness Per Source",
+                log_group_names=all_lg_names,
+                query_string=(
+                    "fields @timestamp, source, status\n"
+                    '| filter status = "success"\n'
+                    "| stats max(@timestamp) as latest_success by source\n"
+                    "| display source, latest_success"
+                ),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=12,
+                height=6,
+            ),
+            cw.LogQueryWidget(
+                title="Recent Errors",
+                log_group_names=all_lg_names,
+                query_string=(
+                    "fields @timestamp, event, source, @message\n"
+                    '| filter level = "error"\n'
+                    "| sort @timestamp desc\n"
+                    "| limit 10"
+                ),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=12,
+                height=6,
+            ),
+        )
+
+        # ---- 4b. Ingestion Detail (drill-down, preserves original construct ID) ----
+        ingestion_dashboard = cw.Dashboard(
             self,
             "IngestionDashboard",
-            dashboard_name=f"{cfg.app_name}-{cfg.env_name}-ingestion",
+            dashboard_name=f"{cfg.app_name}-{cfg.env_name}-ingestion-detail",
         )
 
-        # -- DQ Results Panel (REQ-DQ-02) ----------
-        # Metrics published by dbt/scripts/run_ge_gate.py via put_metric_data
-        dq_namespace = "AccessIQ/DataQuality"
-        dq_widget = cw.GraphWidget(
-            title="Data Quality Gate Status (GE Runs vs Failures)",
-            view=cw.GraphWidgetView.BAR,
-            left=[
-                cw.Metric(
-                    namespace=dq_namespace,
-                    metric_name="GEGateRuns",
-                    statistic="Sum",
-                    period=Duration.hours(1),
-                    label="GE Runs",
-                ),
-                cw.Metric(
-                    namespace=dq_namespace,
-                    metric_name="GEGateFailures",
-                    statistic="Sum",
-                    period=Duration.hours(1),
-                    label="GE Failures",
-                ),
-            ],
-            width=12,
-            height=6,
-        )
-        dashboard.add_widgets(dq_widget)
-
-        dashboard.add_widgets(
+        ingestion_dashboard.add_widgets(
             cw.GraphWidget(
-                title="Ingestion Failures & Crashes",
-                view=cw.GraphWidgetView.BAR,
+                title="Ingestion Failures by Source (24h)",
+                view=cw.GraphWidgetView.TIME_SERIES,
                 left=[
                     cw.Metric(
                         namespace=metric_namespace,
                         metric_name=f"IngestionFailed-{src}",
                         statistic="Sum",
-                        period=Duration.minutes(5),
-                        label=f"{src}",
+                        period=Duration.hours(1),
+                        label=src,
                     )
                     for src in INGESTION_SOURCES
                 ],
@@ -260,15 +490,15 @@ class ObservabilityStack(Stack):
                 height=6,
             ),
             cw.GraphWidget(
-                title="Successful Ingestions",
-                view=cw.GraphWidgetView.BAR,
+                title="Ingestion Successes by Source (24h)",
+                view=cw.GraphWidgetView.TIME_SERIES,
                 left=[
                     cw.Metric(
                         namespace=metric_namespace,
                         metric_name=f"IngestionSuccess-{src}",
                         statistic="Sum",
-                        period=Duration.minutes(5),
-                        label=f"{src}",
+                        period=Duration.hours(1),
+                        label=src,
                     )
                     for src in INGESTION_SOURCES
                 ],
@@ -277,7 +507,7 @@ class ObservabilityStack(Stack):
             ),
             cw.LogQueryWidget(
                 title="Latest Manifest Status",
-                log_group_names=[lg.log_group_name for lg in log_groups.values()],
+                log_group_names=all_lg_names,
                 query_string=(
                     "fields @timestamp, source, status, run_id\n"
                     "| filter ispresent(status)\n"
@@ -289,14 +519,155 @@ class ObservabilityStack(Stack):
                 height=6,
             ),
             cw.LogQueryWidget(
-                title="Pipeline Lag (Last Successful Ingest)",
-                log_group_names=[lg.log_group_name for lg in log_groups.values()],
+                title="Ingestion Errors",
+                log_group_names=all_lg_names,
                 query_string=(
-                    "fields @timestamp, source, status\n"
-                    '| filter status = "success"\n'
-                    "| stats max(@timestamp) as latest_success by source\n"
-                    "| display source, latest_success"
+                    "fields @timestamp, source, event, @message\n"
+                    '| filter event in ["ingest_abort", "ingest_crash"]\n'
+                    "| sort @timestamp desc\n"
+                    "| limit 20"
                 ),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=12,
+                height=6,
+            ),
+        )
+
+        # ---- 4c. Data Quality (drill-down) ----------
+        dq_dashboard = cw.Dashboard(
+            self,
+            "DataQualityDashboard",
+            dashboard_name=f"{cfg.app_name}-{cfg.env_name}-data-quality",
+        )
+
+        dq_dashboard.add_widgets(
+            cw.GraphWidget(
+                title="GE Gate Runs vs Failures (7d)",
+                view=cw.GraphWidgetView.BAR,
+                left=[
+                    cw.Metric(
+                        namespace=dq_namespace,
+                        metric_name="GEGateRuns",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label="GE Runs",
+                    ),
+                    cw.Metric(
+                        namespace=dq_namespace,
+                        metric_name="GEGateFailures",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label="GE Failures",
+                    ),
+                ],
+                width=12,
+                height=6,
+            ),
+            cw.GraphWidget(
+                title="DQ Pass Rate Trend",
+                view=cw.GraphWidgetView.TIME_SERIES,
+                left=[
+                    cw.Metric(
+                        namespace=metric_namespace,
+                        metric_name="GEGatePassed",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label="Passed",
+                    ),
+                    cw.Metric(
+                        namespace=metric_namespace,
+                        metric_name="GEGateFailed",
+                        statistic="Sum",
+                        period=Duration.hours(1),
+                        label="Failed",
+                    ),
+                ],
+                width=12,
+                height=6,
+            ),
+            cw.LogQueryWidget(
+                title="Per-Table Validation Results",
+                log_group_names=pipeline_lg_names,
+                query_string=(
+                    "fields @timestamp, table, status\n"
+                    '| filter event = "table_validated"\n'
+                    "| sort @timestamp desc\n"
+                    "| limit 20"
+                ),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=12,
+                height=6,
+            ),
+            cw.LogQueryWidget(
+                title="Validation Errors",
+                log_group_names=pipeline_lg_names,
+                query_string=(
+                    "fields @timestamp, table, error\n"
+                    '| filter event = "validation_error"\n'
+                    "| sort @timestamp desc\n"
+                    "| limit 10"
+                ),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=12,
+                height=6,
+            ),
+        )
+
+        # ---- 4d. Infrastructure (drill-down) ----------
+        infra_dashboard = cw.Dashboard(
+            self,
+            "InfrastructureDashboard",
+            dashboard_name=f"{cfg.app_name}-{cfg.env_name}-infrastructure",
+        )
+
+        cluster_name = f"{cfg.app_name}-{cfg.env_name}-ingestion"
+        ecs_namespace = "AWS/ECS"
+
+        infra_dashboard.add_widgets(
+            cw.GraphWidget(
+                title="ECS Task CPU Utilisation",
+                view=cw.GraphWidgetView.TIME_SERIES,
+                left=[
+                    cw.Metric(
+                        namespace=ecs_namespace,
+                        metric_name="CPUUtilization",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        dimensions_map={"ClusterName": cluster_name},
+                        label="CPU %",
+                    ),
+                ],
+                width=12,
+                height=6,
+            ),
+            cw.GraphWidget(
+                title="ECS Task Memory Utilisation",
+                view=cw.GraphWidgetView.TIME_SERIES,
+                left=[
+                    cw.Metric(
+                        namespace=ecs_namespace,
+                        metric_name="MemoryUtilization",
+                        statistic="Average",
+                        period=Duration.minutes(5),
+                        dimensions_map={"ClusterName": cluster_name},
+                        label="Memory %",
+                    ),
+                ],
+                width=12,
+                height=6,
+            ),
+            cw.LogQueryWidget(
+                title="Prefect Server Logs",
+                log_group_names=[log_groups["prefect-server"].log_group_name],
+                query_string=("fields @timestamp, @message\n| sort @timestamp desc\n| limit 10"),
+                view=cw.LogQueryVisualizationType.TABLE,
+                width=12,
+                height=6,
+            ),
+            cw.LogQueryWidget(
+                title="Prefect Worker Logs",
+                log_group_names=[log_groups["prefect-worker"].log_group_name],
+                query_string=("fields @timestamp, @message\n| sort @timestamp desc\n| limit 10"),
                 view=cw.LogQueryVisualizationType.TABLE,
                 width=12,
                 height=6,
@@ -313,8 +684,15 @@ class ObservabilityStack(Stack):
         )
         CfnOutput(
             self,
+            "PipelineHealthDashboardName",
+            value=health_dashboard.dashboard_name,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-pipeline-health-dashboard",
+            description="Main ops dashboard for end-to-end pipeline health.",
+        )
+        CfnOutput(
+            self,
             "IngestionDashboardName",
-            value=dashboard.dashboard_name,
+            value=ingestion_dashboard.dashboard_name,
             export_name=f"{cfg.app_name}-{cfg.env_name}-ingestion-dashboard-name",
             description="CloudWatch dashboard name for ingestion monitoring.",
         )

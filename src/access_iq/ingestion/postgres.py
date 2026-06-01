@@ -162,7 +162,8 @@ def ingest_postgres_source_to_bronze(
     )
 
     write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
-    return manifest.model_dump()
+    result: dict[str, Any] = manifest.model_dump()
+    return result
 
 
 def _parquet_buffer(cursor: Any, table: str) -> io.BytesIO:

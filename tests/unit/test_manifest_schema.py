@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from access_iq.ingestion.manifests import Manifest, build_manifest_key, build_manifest_prefix
+from access_iq.ingestion.manifests import (
+    Manifest,
+    build_manifest_key,
+    build_manifest_prefix,
+)
 
 
 def _base_fields() -> dict:
