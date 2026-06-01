@@ -157,6 +157,7 @@ class ObservabilityStack(Stack):
         sns_topic.add_subscription(subs.LambdaSubscription(formatter_fn))
 
         self.sns_topic = sns_topic
+        self.delivery_topic = delivery_topic
 
         # -- Section 3: Metric Filters + Alarms (D-12, REQ-OBS-01) ----------
         metric_namespace = f"AccessIQ/{cfg.env_name}"

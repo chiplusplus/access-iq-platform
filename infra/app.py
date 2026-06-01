@@ -130,24 +130,9 @@ BudgetStack(
         f"observability-{cfg.app_name}-{cfg.env_name}",
         f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
     ],
+    delivery_topic=obs.delivery_topic,
+    slack_webhook_url=cfg.obs.get("slack_webhook_url"),
     env=Environment(account=cfg.account_id, region=cfg.region),
 )
-
-# Trust account budget - only synthesised when explicitly requested via CDK context
-# to avoid `cdk deploy --all` attempting cross-account deploy with Platform credentials.
-# Deployed separately: cdk deploy budget-trust-... -c include_trust_budget=true --profile $TRUST_PROFILE
-trust_account_id = cfg.iam.get("trust_account_id", "") if isinstance(cfg.iam, dict) else ""
-include_trust_budget = app.node.try_get_context("include_trust_budget") == "true"
-if trust_account_id and include_trust_budget:
-    BudgetStack(
-        app,
-        f"budget-trust-{cfg.app_name}-{cfg.env_name}",
-        cfg=cfg,
-        ephemeral_stack_names=["NorthshireTrustStack"],
-        target_account_id=trust_account_id,
-        target_region=cfg.region,
-        topic_name_suffix="trust-budget-alarm",
-        env=Environment(account=trust_account_id, region=cfg.region),
-    )
 
 app.synth()

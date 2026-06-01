@@ -16,13 +16,43 @@ from access_iq_infra.settings import EnvConfig
 
 _TEARDOWN_HANDLER = """\
 import boto3
-import os
 import json
+import os
+import urllib.request
 
 
 def handler(event, context):
     stacks = os.environ["EPHEMERAL_STACKS"].split(",")
     region = os.environ["STACK_REGION"]
+    env = os.environ.get("ENV_NAME", "unknown")
+    delivery_topic_arn = os.environ.get("DELIVERY_TOPIC_ARN")
+    slack_webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+
+    message = (
+        f"Budget alarm triggered for {env}. "
+        f"Auto-destroying ephemeral stacks: {', '.join(stacks)}. "
+        f"Redeploy with `make up` when ready."
+    )
+
+    if delivery_topic_arn:
+        try:
+            sns = boto3.client("sns", region_name=region)
+            sns.publish(
+                TopicArn=delivery_topic_arn,
+                Subject=f"[{env.upper()}] Budget auto-teardown started",
+                Message=message,
+            )
+        except Exception as e:
+            print(f"SNS notify failed: {e}")
+
+    if slack_webhook_url:
+        try:
+            payload = json.dumps({"text": f":rotating_light: *Budget Auto-Teardown* — {message}"}).encode()
+            req = urllib.request.Request(slack_webhook_url, data=payload, headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=5)
+        except Exception as e:
+            print(f"Slack notify failed: {e}")
+
     cf = boto3.client("cloudformation", region_name=region)
     for stack in stacks:
         try:
@@ -41,15 +71,14 @@ class BudgetStack(Stack):
         *,
         cfg: EnvConfig,
         ephemeral_stack_names: list[str],
-        target_account_id: str | None = None,
-        target_region: str | None = None,
-        topic_name_suffix: str = "budget-alarm",
+        delivery_topic: sns.ITopic | None = None,
+        slack_webhook_url: str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        teardown_account = target_account_id or cfg.account_id
-        teardown_region = target_region or cfg.region
+        teardown_account = cfg.account_id
+        teardown_region = cfg.region
         is_prod = cfg.env_name == "prod"
         ceiling_amount = 20 if is_prod else 10
 
@@ -57,7 +86,7 @@ class BudgetStack(Stack):
         topic = sns.Topic(
             self,
             "BudgetAlarmTopic",
-            topic_name=f"{cfg.app_name}-{cfg.env_name}-{topic_name_suffix}",
+            topic_name=f"{cfg.app_name}-{cfg.env_name}-budget-alarm",
         )
 
         # Restrict publishers to AWS Budgets service only (T-09-02)
@@ -100,6 +129,16 @@ class BudgetStack(Stack):
         )
 
         # -- Lambda teardown function --
+        teardown_env: dict[str, str] = {
+            "EPHEMERAL_STACKS": ",".join(ephemeral_stack_names),
+            "STACK_REGION": teardown_region,
+            "ENV_NAME": cfg.env_name,
+        }
+        if delivery_topic:
+            teardown_env["DELIVERY_TOPIC_ARN"] = delivery_topic.topic_arn
+        if slack_webhook_url:
+            teardown_env["SLACK_WEBHOOK_URL"] = slack_webhook_url
+
         teardown_fn = _lambda.Function(
             self,
             "TeardownFn",
@@ -108,10 +147,7 @@ class BudgetStack(Stack):
             handler="index.handler",
             code=_lambda.InlineCode(_TEARDOWN_HANDLER),
             timeout=Duration.minutes(5),
-            environment={
-                "EPHEMERAL_STACKS": ",".join(ephemeral_stack_names),
-                "STACK_REGION": teardown_region,
-            },
+            environment=teardown_env,
         )
 
         # Scope IAM to specific stack ARNs only (T-09-01 least-privilege)
@@ -124,6 +160,9 @@ class BudgetStack(Stack):
                 ],
             )
         )
+
+        if delivery_topic:
+            delivery_topic.grant_publish(teardown_fn)
 
         # Subscribe Lambda to budget alarm topic
         topic.add_subscription(subs.LambdaSubscription(teardown_fn))
