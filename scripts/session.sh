@@ -710,6 +710,27 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
   fi
   step_done
 
+  # ── Step 9: Enable simulation schedule ─────────────────────────────────
+  step_start "9/9" "Enable simulation schedule" "<5s"
+
+  SIMULATION_RULE_NAME=$(
+    AWS_PROFILE="$TRUST_PROFILE" aws cloudformation describe-stacks \
+      --stack-name NorthshireTrustStack \
+      --query "Stacks[0].Outputs[?OutputKey=='SimulationRuleName'].OutputValue" \
+      --output text --region "$REGION" 2>/dev/null || echo ""
+  )
+
+  if [ -n "$SIMULATION_RULE_NAME" ] && [ "$SIMULATION_RULE_NAME" != "None" ]; then
+    AWS_PROFILE="$TRUST_PROFILE" aws events enable-rule \
+      --name "$SIMULATION_RULE_NAME" \
+      --region "$REGION"
+    echo "  ✅ Simulation schedule enabled: $SIMULATION_RULE_NAME (30-min cycle)"
+  else
+    echo "  ⚠️  No simulation rule found — skipping"
+  fi
+
+  step_done
+
   session_summary
   echo ""
   echo "  ✓ All stacks deployed, secrets seeded, image pushed."
@@ -731,6 +752,22 @@ cmd_down() {
   echo "  Destroy sequence: Prefect pause → Platform → Trust"
   echo "  Estimated total: 6-10 minutes"
   echo ""
+
+  # ── Disable simulation schedule before teardown ──
+  echo "  Disabling simulation schedule..."
+  SIMULATION_RULE_NAME=$(
+    AWS_PROFILE="$TRUST_PROFILE" aws cloudformation describe-stacks \
+      --stack-name NorthshireTrustStack \
+      --query "Stacks[0].Outputs[?OutputKey=='SimulationRuleName'].OutputValue" \
+      --output text --region "$REGION" 2>/dev/null || true
+  )
+
+  if [ -n "$SIMULATION_RULE_NAME" ] && [ "$SIMULATION_RULE_NAME" != "None" ]; then
+    AWS_PROFILE="$TRUST_PROFILE" aws events disable-rule \
+      --name "$SIMULATION_RULE_NAME" \
+      --region "$REGION" 2>/dev/null || true
+    echo "  ✅ Simulation schedule disabled"
+  fi
 
   TRUST_VPC=$(trust_output VpcId 2>/dev/null || echo "vpc-placeholder")
 
