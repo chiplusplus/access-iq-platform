@@ -104,9 +104,13 @@ cp .env.example .env       # Fill in AWS profile, bucket name, secret ARNs
 # Review infra/config/dev.json for account IDs, VPC CIDRs, Redshift capacity
 make setup                 # Create venv, install deps, pre-commit hooks
 
-# Deploy everything
+# Log in to both AWS accounts (skip if using IAM keys)
 export PLATFORM_PROFILE=<your-platform-profile>
 export TRUST_PROFILE=<your-trust-profile>
+aws sso login --profile $PLATFORM_PROFILE
+aws sso login --profile $TRUST_PROFILE
+
+# Deploy everything
 make up                    # Deploy infra, seed data, start pipeline (~25 min)
 ```
 
@@ -144,7 +148,7 @@ make down         # Destroy all stacks across both accounts
 
 `make down` returns to **$0 idle cost**. In dev, every resource is destroyed (DESTROY removal policy) except the KMS CMK, which uses RETAIN in both environments because its pending-deletion window would break redeploy cycles.
 
-**Budget safety net**: The BudgetStack deploys an AWS Budget with a monthly ceiling ($10 dev / $20 prod). If actual spend reaches 80% of the ceiling, an SNS alarm triggers a Lambda that **automatically destroys** the ephemeral stacks (compute, warehouse, network, observability, ingestion-role). Stateful stacks (lake, secrets, catalog, ECR) are not touched. This is a last-resort guard against forgotten `make down` sessions — if it fires, redeploy with `make up` when ready.
+**Budget safety net**: The BudgetStack deploys an AWS Budget with a monthly ceiling ($10 dev / $20 prod). If actual spend reaches 80% of the ceiling, an SNS alarm triggers a Lambda that **automatically destroys** the ephemeral stacks (compute, warehouse, network, observability, iam). Stateful stacks (lake, secrets, catalog, ECR) are not touched. This is a last-resort guard against forgotten `make down` sessions — if it fires, redeploy with `make up` when ready.
 
 Additional targets: `make dbt CMD="run --select silver"`, `make rs-tunnel`, `make dq-gate`, `make reconnect`, `make profile`, `make ready`.
 

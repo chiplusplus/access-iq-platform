@@ -68,7 +68,7 @@ Source-specific notes:
 7. `ObservabilityStack` - CloudWatch log groups, 15+ metric filters (ingestion events + pipeline lifecycle), 6 alarms (ingestion failure, budget, Redshift usage, GE gate failure, validation error, pipeline/export staleness), EventBridge OOM detection rule, SNS topics, pipeline-health dashboard.
 8. `WarehouseStack` - Redshift Serverless namespace + workgroup with RPU usage limits.
 9. `ComputeStack` - ECS Fargate cluster, task definitions, Prefect server + worker services.
-10. `BudgetStack` - AWS Budgets ($10 dev / $20 prod monthly ceiling) with SNS alarm at 80% threshold. Breaching triggers a Lambda that auto-destroys ephemeral stacks (compute, warehouse, network, observability, ingestion-role). Connected to ObservabilityStack's delivery topic for notifications.
+10. `BudgetStack` - AWS Budgets ($10 dev / $20 prod monthly ceiling) with SNS alarm at 80% threshold. Breaching triggers a Lambda that auto-destroys ephemeral stacks (compute, warehouse, network, observability, iam). Connected to ObservabilityStack's delivery topic for notifications.
 
 Tags from `cfg.tags` are applied app-wide via `tagging.apply_tags(app, ...)` before stack instantiation.
 

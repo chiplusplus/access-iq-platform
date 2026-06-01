@@ -47,7 +47,14 @@ def handler(event, context):
 
     if slack_webhook_url:
         try:
-            payload = json.dumps({"text": f":rotating_light: *Budget Auto-Teardown* — {message}"}).encode()
+            stack_list = "\\n".join(f"  • `{s}`" for s in stacks)
+            blocks = [
+                {"type": "header", "text": {"type": "plain_text", "text": ":rotating_light: Budget Auto-Teardown"}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"*Environment:* `{env}`\\n*Trigger:* Monthly spend exceeded 80% of ceiling"}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"*Destroying ephemeral stacks:*\\n{stack_list}"}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": "Stateful stacks (lake, secrets, catalog, ecr) are *retained*.\\nRedeploy with `make up` when ready."}},
+            ]
+            payload = json.dumps({"blocks": blocks, "text": message}).encode()
             req = urllib.request.Request(slack_webhook_url, data=payload, headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req, timeout=5)
         except Exception as e:

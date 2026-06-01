@@ -87,7 +87,7 @@ class IngestionRoleStack(Stack):
 
         # Grant secretsmanager:GetSecretValue manually instead of using
         # grant_read(), which also adds a KMS key policy on the lake key -
-        # that creates a cross-stack cyclic dependency (lake ↔ ingestion-role).
+        # that creates a cross-stack cyclic dependency (lake ↔ iam).
         # KMS decrypt is already covered by lake_key.grant_encrypt_decrypt above.
         if pseudonymisation_key_secret is not None:
             ingestion_role.add_to_principal_policy(

@@ -27,7 +27,7 @@ EXPECTED_STACKS = {
     "secrets-access-iq-{env}",
     "catalog-access-iq-{env}",
     "ecr-access-iq-{env}",
-    "ingestion-role-access-iq-{env}",
+    "iam-access-iq-{env}",
     "network-access-iq-{env}",
     "observability-access-iq-{env}",
     "compute-access-iq-{env}",
@@ -88,7 +88,7 @@ def _synth_app(env_name: str) -> App:
     ecr = EcrStack(app, f"ecr-{cfg.app_name}-{cfg.env_name}", cfg=cfg, env=cdk_env)
     iam_stack = IngestionRoleStack(
         app,
-        f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
+        f"iam-{cfg.app_name}-{cfg.env_name}",
         cfg=cfg,
         platform_bucket=lake.lake_bucket,
         lake_key=lake.lake_key,
@@ -153,7 +153,7 @@ def test_ingestion_role_has_secret_grant(env_name: str) -> None:
     app = _synth_app(env_name)
     from aws_cdk.assertions import Match, Template
 
-    ingestion_stack = app.node.find_child(f"ingestion-role-access-iq-{env_name}")
+    ingestion_stack = app.node.find_child(f"iam-access-iq-{env_name}")
     tpl = Template.from_stack(ingestion_stack)  # type: ignore
     tpl.has_resource_properties(
         "AWS::IAM::Policy",

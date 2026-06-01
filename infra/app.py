@@ -60,7 +60,7 @@ ecr = EcrStack(
 
 iam_stack = IngestionRoleStack(
     app,
-    f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
+    f"iam-{cfg.app_name}-{cfg.env_name}",
     cfg=cfg,
     platform_bucket=lake.lake_bucket,
     lake_key=lake.lake_key,
@@ -128,7 +128,7 @@ BudgetStack(
         f"warehouse-{cfg.app_name}-{cfg.env_name}",
         f"network-{cfg.app_name}-{cfg.env_name}",
         f"observability-{cfg.app_name}-{cfg.env_name}",
-        f"ingestion-role-{cfg.app_name}-{cfg.env_name}",
+        f"iam-{cfg.app_name}-{cfg.env_name}",
     ],
     delivery_topic=obs.delivery_topic,
     slack_webhook_url=cfg.obs.get("slack_webhook_url"),

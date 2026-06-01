@@ -48,7 +48,6 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
     export_date = _validate_export_date(run_date)
     bucket = os.environ.get("ACCESS_IQ_PLATFORM_BUCKET") or os.environ["PLATFORM_BUCKET"]
     dashboard_bucket = os.environ.get("DASHBOARD_EXPORT_BUCKET")
-    dashboard_kms_key = os.environ.get("DASHBOARD_KMS_KEY_ARN", "")
     role_arn = os.environ["REDSHIFT_SPECTRUM_ROLE_ARN"]
     kms_key = os.environ.get("ACCESS_IQ_LAKE_KMS_KEY_ARN") or os.environ.get("LAKE_KMS_KEY_ARN", "")
 
@@ -95,10 +94,6 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
             if dashboard_bucket:
                 if not _BUCKET_RE.match(dashboard_bucket):
                     raise ValueError(f"Invalid dashboard bucket name: {dashboard_bucket!r}")
-                if not dashboard_kms_key:
-                    raise ValueError(
-                        "DASHBOARD_KMS_KEY_ARN required when DASHBOARD_EXPORT_BUCKET is set"
-                    )
                 for table_name in sorted(GOLD_TABLES):
                     s3_prefix = f"s3://{dashboard_bucket}/gold_export/table={table_name}/export_date={export_date}/"
                     sql = (
@@ -107,8 +102,7 @@ def export_gold_to_s3(run_date: str | None = None) -> None:
                         f"IAM_ROLE '{role_arn}' "
                         f"FORMAT AS PARQUET "
                         f"ALLOWOVERWRITE "
-                        f"PARALLEL OFF "
-                        f"KMS_KEY_ID '{dashboard_kms_key}' ENCRYPTED"
+                        f"PARALLEL OFF"
                     )
                     cur.execute(sql)
                 log.info(

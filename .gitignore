@@ -223,6 +223,7 @@ infra/config/prod.json
 .planning/
 *.planning
 infra/cdk.context.json
+*/superpowers/*
 
 # dbt
 dbt/target/

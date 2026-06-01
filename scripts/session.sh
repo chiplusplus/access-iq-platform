@@ -95,7 +95,7 @@ cmd_up() {
     echo "  Skipping Trust deploy (--skip-infra)"
   elif [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
-      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --outputs-file cdk-outputs.json \
+      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --all --outputs-file cdk-outputs.json \
       --profile "$TRUST_PROFILE" --require-approval never)
   else
     (cd "$TRUST_REPO" && unset VIRTUAL_ENV && AWS_PROFILE="$TRUST_PROFILE" make trust-bootstrap \
@@ -115,18 +115,6 @@ cmd_up() {
   else
     (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk deploy --all \
       -c "env=${CDK_ENV}" -c "trust_vpc_id=${TRUST_VPC}" --require-approval never)
-
-    # Deploy Trust budget stack from Trust repo, passing alert config from Platform config.
-    local PLATFORM_CFG="$PLATFORM_REPO/infra/config/${CDK_ENV}.json"
-    local ALERT_EMAIL; ALERT_EMAIL=$(jq -r '.obs.alert_email // empty' "$PLATFORM_CFG")
-    local SLACK_WEBHOOK; SLACK_WEBHOOK=$(jq -r '.obs.slack_webhook_url // empty' "$PLATFORM_CFG")
-    echo "  Deploying Trust budget stack..."
-    (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
-      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy TrustBudgetStack \
-      ${ALERT_EMAIL:+-c "alertEmail=${ALERT_EMAIL}"} \
-      ${SLACK_WEBHOOK:+-c "slackWebhookUrl=${SLACK_WEBHOOK}"} \
-      --require-approval never) \
-      || echo "  WARNING: Trust budget stack deploy failed (non-blocking)"
   fi
 
   # Export BRONZE_S3_PREFIX for dbt
@@ -203,18 +191,23 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/8" "Redeploy Trust with routes and peering SG rules" "~2 min"
+  step_start "5/8" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust redeploy (--skip-infra)"
   else
     echo "  Platform VPC:  $PLATFORM_VPC"
     echo "  Peering ID:    $PEERING_ID"
+    local PLATFORM_CFG="$PLATFORM_REPO/infra/config/${CDK_ENV}.json"
+    local ALERT_EMAIL; ALERT_EMAIL=$(jq -r '.obs.alert_email // empty' "$PLATFORM_CFG")
+    local SLACK_WEBHOOK; SLACK_WEBHOOK=$(jq -r '.obs.slack_webhook_url // empty' "$PLATFORM_CFG")
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
-      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy \
+      && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --all \
       -c "platformVpcId=$PLATFORM_VPC" \
       -c "platformCidr=10.10.0.0/16" \
       -c "platformAccountId=$(aws sts get-caller-identity --query Account --output text --profile "$AWS_PROFILE")" \
       -c "peeringConnectionId=$PEERING_ID" \
+      ${ALERT_EMAIL:+-c "alertEmail=${ALERT_EMAIL}"} \
+      ${SLACK_WEBHOOK:+-c "slackWebhookUrl=${SLACK_WEBHOOK}"} \
       --require-approval never)
   fi
   step_done
@@ -436,11 +429,11 @@ EOF
     DASH_KEY_ID=$(aws cloudformation describe-stacks \
       --stack-name "iam-access-iq-${CDK_ENV}" \
       --query "Stacks[0].Outputs[?OutputKey=='DashboardReaderAccessKeyId'].OutputValue" \
-      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null)
+      --output text --profile "$AWS_PROFILE" --region "$REGION")
     DASH_SECRET_KEY=$(aws cloudformation describe-stacks \
       --stack-name "iam-access-iq-${CDK_ENV}" \
       --query "Stacks[0].Outputs[?OutputKey=='DashboardReaderSecretKey'].OutputValue" \
-      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null)
+      --output text --profile "$AWS_PROFILE" --region "$REGION")
 
     if [ -n "$DASH_KEY_ID" ] && [ "$DASH_KEY_ID" != "None" ]; then
       mkdir -p "$PLATFORM_REPO/dashboard/.streamlit"
@@ -600,8 +593,8 @@ DASHEOF
       --stack-name "$stack_name" \
       --query "Stacks[0].Outputs[?OutputKey=='ClusterArn'].OutputValue" \
       --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-    task_role_arn=$(platform_output ingestion-role EcsTaskRoleArn 2>/dev/null || echo "")
-    exec_role_arn=$(platform_output ingestion-role EcsExecutionRoleArn 2>/dev/null || echo "")
+    task_role_arn=$(platform_output iam EcsTaskRoleArn 2>/dev/null || echo "")
+    exec_role_arn=$(platform_output iam EcsExecutionRoleArn 2>/dev/null || echo "")
     local ecr_uri
     ecr_uri=$(aws cloudformation describe-stacks \
       --stack-name "ecr-access-iq-${CDK_ENV}" \
@@ -679,7 +672,7 @@ ${SUBNET_YAML}
 EOYAML
 
     # Create/update ecs work pool (idempotent)
-    "$PLATFORM_REPO/.venv/bin/prefect" work-pool create "access-iq-${CDK_ENV}-pipeline" \
+    uv run --package access-iq-flows prefect work-pool create "access-iq-${CDK_ENV}-pipeline" \
       --type ecs --overwrite 2>/dev/null || true
 
     # Fix work pool template defaults (prefect-aws templates them to 0/None)
@@ -703,8 +696,7 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
 
     # Deploy flow definition against self-hosted server
     (cd "$PLATFORM_REPO" && \
-      "$PLATFORM_REPO/.venv/bin/prefect" deploy --prefect-file "$DEPLOY_YAML" --name dev --no-prompt \
-        || true)
+      uv run --package access-iq-flows prefect deploy --prefect-file "$DEPLOY_YAML" --name dev --no-prompt)
 
     rm -f "$DEPLOY_YAML"
 
@@ -721,9 +713,15 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
   session_summary
   echo ""
   echo "  ✓ All stacks deployed, secrets seeded, image pushed."
-  echo "  ✓ Run 'make pipeline' to trigger ingestion via Prefect."
   echo "  ✓ SSM tunnel running on localhost:5439 (PID $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'unknown'))"
-  echo "    Run dbt commands: make dbt CMD=\"...\""
+  echo ""
+  echo "    Run make status to check stack and tunnel health."
+  echo ""
+  echo "    Now you can:"
+  echo "    Run 'make pipeline' to trigger ingestion via Prefect (or wait for scheduled run on the hour)."
+  echo "    Prefect UI available at http://localhost:4200"
+  echo "    If tunnel disconnects, run: make reconnect"
+  echo "    Once pipeline has successfully run at least once, you can view the dashboard by running: make dashboard"
   echo "    Stop tunnel: make down (or kill $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'PID'))"
   echo ""
 }
@@ -785,7 +783,7 @@ cmd_down() {
     fi
     rm -f "$TRUST_REPO/.tunnel.pid"
   fi
-  (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk destroy --force)
+  (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk destroy --all --force)
   step_done
 
   session_summary
@@ -862,7 +860,7 @@ cmd_status() {
   printf "\n${_c}═══ 2/6  Platform Stacks (%s) ═══${_0}\n\n" "$CDK_ENV"
   # ─────────────────────────────────────────────────────────────────────
 
-  for stack in lake secrets catalog ecr ingestion-role network observability compute warehouse; do
+  for stack in lake secrets catalog ecr iam network observability compute warehouse; do
     status=$(aws cloudformation describe-stacks --stack-name "${stack}-access-iq-${CDK_ENV}" \
       --query 'Stacks[0].StackStatus' --output text \
       --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "NOT_DEPLOYED")
@@ -1149,7 +1147,7 @@ cmd_ingest() {
   step_start "0/4" "Assume ECS operator role" "<5s"
 
   local OPERATOR_ROLE_ARN
-  OPERATOR_ROLE_ARN=$(platform_output "ingestion-role" "EcsOperatorRoleArn")
+  OPERATOR_ROLE_ARN=$(platform_output "iam" "EcsOperatorRoleArn")
 
   local STS_OUTPUT
   STS_OUTPUT=$(aws sts assume-role \
@@ -1381,7 +1379,7 @@ cmd_pipeline() {
   step_start "2/2" "Trigger flow run" "<10s"
   local run_date
   run_date=$(date +%Y-%m-%d)
-  "$PLATFORM_REPO/.venv/bin/prefect" deployment run 'daily-ingest/dev' \
+  uv run --package access-iq-flows prefect deployment run 'daily-ingest/dev' \
     --param "run_date=${run_date}" 2>&1 | tee /tmp/prefect_run.log
   printf "  Prefect UI: http://localhost:4200\n"
   step_done

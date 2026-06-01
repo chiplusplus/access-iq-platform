@@ -32,12 +32,12 @@ Stacks deployed in dependency order:
 2. `secrets` - Secrets Manager (pseudonymisation key, Redshift password)
 3. `catalog` - Glue Data Catalog database for Spectrum
 4. `ecr` - Container registry for ingestion image
-5. `ingestion-role` - IAM roles (ECS task, execution, Prefect worker)
+5. `iam` - IAM roles (ECS task, execution, Prefect worker, Spectrum, dashboard reader)
 6. `network` - VPC, subnets, NAT Gateway, VPC peering to Trust
 7. `observability` - CloudWatch log groups, metric filters, SNS alarms, ops dashboard
 8. `warehouse` - Redshift Serverless namespace + workgroup with usage limits
 9. `compute` - ECS Fargate cluster, task definitions, Prefect server + worker services
-10. `budget` - AWS Budgets ($10 dev / $20 prod monthly ceiling) with SNS alarm at 80% threshold; breaching the threshold triggers a Lambda that automatically destroys ephemeral stacks (compute, warehouse, network, observability, ingestion-role)
+10. `budget` - AWS Budgets ($10 dev / $20 prod monthly ceiling) with SNS alarm at 80% threshold; breaching the threshold triggers a Lambda that automatically destroys ephemeral stacks (compute, warehouse, network, observability, iam)
 
 ### Step 4: Redshift Pre-warm + Spectrum (30-60s)
 
@@ -297,7 +297,7 @@ make status
 # Check which stacks remain deployed
 ```
 
-**Response**: The Lambda automatically destroys ephemeral stacks (compute, warehouse, network, observability, ingestion-role). Stateful stacks (lake, secrets, catalog, ecr) are retained. Redeploy with `make up` when ready to resume work.
+**Response**: The Lambda automatically destroys ephemeral stacks (compute, warehouse, network, observability, iam). Stateful stacks (lake, secrets, catalog, ecr) are retained. Redeploy with `make up` when ready to resume work.
 
 ### GE Gate Failure Alarm
 
@@ -399,16 +399,16 @@ aws redshift-serverless list-snapshots \
 
 The Streamlit Community Cloud dashboard needs to read Gold Parquet files from S3 using long-lived credentials. These resources live outside the ephemeral stacks so the dashboard stays live between sessions and survives budget teardowns. Other users cloning this project do not need this — the dashboard falls back to local Parquet files.
 
-**Security model**: Three layers of defence — bucket policy (deny non-SSL, deny non-KMS uploads), IAM policy (scoped to dashboard reader only), and KMS key grant (separate decrypt permission required even if bucket access leaks). Data is pseudonymised but still healthcare data.
+**Security model**: Three layers of defence — bucket policy (deny non-SSL), default bucket encryption (KMS CMK, enforced server-side on every object), IAM policy (scoped to dashboard reader only), and KMS key grant (separate decrypt permission required even if bucket access leaks). Data is pseudonymised but still healthcare data.
 
 ### Resources created
 
-| Resource      | ARN / Name                          | Purpose                                                   |
-| ------------- | ----------------------------------- | --------------------------------------------------------- |
-| KMS CMK       | `alias/access-iq-dashboard-exports` | Encrypt Gold Parquet at rest (permanent, ~$1/month)       |
-| S3 bucket     | `access-iq-dashboard-exports`       | Hold Gold export files for Streamlit                      |
-| IAM user      | `access-iq-dashboard-reader`        | Long-lived read credentials for Streamlit Community Cloud |
-| Bucket policy | —                                   | Enforce SSL + KMS encryption on all uploads               |
+| Resource      | ARN / Name                          | Purpose                                                       |
+| ------------- | ----------------------------------- | ------------------------------------------------------------- |
+| KMS CMK       | `alias/access-iq-dashboard-exports` | Encrypt Gold Parquet at rest (permanent, ~$1/month)           |
+| S3 bucket     | `access-iq-dashboard-exports`       | Hold Gold export files for Streamlit                          |
+| IAM user      | `access-iq-dashboard-reader`        | Long-lived read credentials for Streamlit Community Cloud     |
+| Bucket policy | —                                   | Enforce SSL on all access (KMS handled by default encryption) |
 
 ### 1. Create the KMS key
 
@@ -462,7 +462,7 @@ aws s3api put-bucket-encryption \
 
 ### 3. Apply bucket policy
 
-Denies non-SSL access and rejects uploads not using our KMS key:
+Denies non-SSL access. KMS encryption is enforced by default bucket encryption (step 2) rather than a bucket policy condition, because Redshift UNLOAD multipart uploads are incompatible with `DenyNonKMSUploads` policy conditions.
 
 ```bash
 aws s3api put-bucket-policy \
@@ -480,16 +480,6 @@ aws s3api put-bucket-policy \
           "arn:aws:s3:::access-iq-dashboard-exports/*"
         ],
         "Condition": {"Bool": {"aws:SecureTransport": "false"}}
-      },
-      {
-        "Sid": "DenyNonKMSUploads",
-        "Effect": "Deny",
-        "Principal": "*",
-        "Action": "s3:PutObject",
-        "Resource": "arn:aws:s3:::access-iq-dashboard-exports/*",
-        "Condition": {
-          "StringNotEquals": {"s3:x-amz-server-side-encryption": "aws:kms"}
-        }
       }
     ]
   }' \

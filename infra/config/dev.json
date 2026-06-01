@@ -32,7 +32,7 @@
     "alert_email": "tools@chiplusplus.com",
     "slack_channel_id": "",
     "slack_workspace_id": "",
-    "slack_webhook_url": "https://hooks.slack.com/services/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",
+    "slack_webhook_url": "https://hooks.slack.com/services/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",
     "staleness_alarm_hours": 48,
     "export_staleness_alarm_hours": 50
   },

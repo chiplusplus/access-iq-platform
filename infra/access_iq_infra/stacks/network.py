@@ -61,7 +61,7 @@ class NetworkStack(Stack):
         # ── Section 1: Context validation ────────────────────────────────────
         # Use a placeholder when trust_vpc_id is missing so CDK can still
         # synthesize all stacks (needed for single-stack deploys like
-        # `cdk deploy ingestion-role-...`).  The placeholder will cause a
+        # `cdk deploy iam-...`).  The placeholder will cause a
         # CloudFormation error only if this stack is actually deployed
         # without providing the real value.
         trust_vpc_id: str = self.node.try_get_context("trust_vpc_id") or "REQUIRES-TRUST-VPC-ID"
