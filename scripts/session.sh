@@ -83,14 +83,26 @@ cmd_up() {
   done
 
   echo ""
-  echo "  Deploy sequence: Trust bootstrap → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → dbt Spectrum → Prefect"
+  echo "  Deploy sequence: Generate data (local) → Trust deploy + seed → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Prefect"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
   [ "$skip_infra" = true ] && echo "  Skipping infrastructure deployments (reusing existing stacks)"
   echo "  Estimated total: 20-35 minutes"
   echo ""
 
-  step_start "1/8" "Bootstrap Trust environment (deploy + DB + data)" "8-12 min"
+  # ── Step 0: Generate synthetic data locally (no AWS cost) ──
+  step_start "0/9" "Generate Trust synthetic data (local, no infra needed)" "2-5 min"
+  if [ -n "$skip_generate" ]; then
+    echo "  Skipping data generation (--skip-generate, reusing data/staging/)"
+  elif [ "$skip_seed" = true ]; then
+    echo "  Skipping data generation (--skip-seed)"
+  else
+    (cd "$TRUST_REPO" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
+      && python scripts/generate_data.py --staging-dir data/staging)
+  fi
+  step_done
+
+  step_start "1/9" "Deploy Trust infrastructure + seed data" "8-12 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust deploy (--skip-infra)"
   elif [ "$skip_seed" = true ]; then
@@ -99,16 +111,16 @@ cmd_up() {
       --profile "$TRUST_PROFILE" --require-approval never)
   else
     (cd "$TRUST_REPO" && unset VIRTUAL_ENV && AWS_PROFILE="$TRUST_PROFILE" make trust-bootstrap \
-      ARGS="--profile $TRUST_PROFILE $skip_generate")
+      ARGS="--profile $TRUST_PROFILE --skip-generate")
   fi
   step_done
 
-  step_start "2/8" "Read Trust outputs" "<5s"
+  step_start "2/9" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/8" "Deploy Platform stacks" "5-10min"
+  step_start "3/9" "Deploy Platform stacks" "5-10min"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Platform deploy (--skip-infra)"
@@ -128,7 +140,7 @@ cmd_up() {
 
   step_done
 
-  step_start "4/8" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
+  step_start "4/9" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
 
   SPECTRUM_STMT_ID=""
   if [ "$skip_seed" = true ]; then
@@ -191,7 +203,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/8" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
+  step_start "5/9" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust redeploy (--skip-infra)"
   else
@@ -213,7 +225,7 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "6/8" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/9" "Seed Platform secrets from Trust" "<30s"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping secret seeding (--skip-infra)"
@@ -451,7 +463,7 @@ DASHEOF
   fi
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/8" "Build and push ingestion image to ECR" "1-3 min"
+  step_start "7/9" "Build and push ingestion image to ECR" "1-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -493,8 +505,8 @@ DASHEOF
     fi
   fi
 
-  # ── Step 8/8: Start tunnel + configure self-hosted Prefect ──
-  step_start "8/8" "Start tunnel + configure Prefect (work pool + flow deploy)" "30-60s"
+  # ── Step 8/9: Start tunnel + configure self-hosted Prefect ──
+  step_start "8/9" "Start tunnel + configure Prefect (work pool + flow deploy)" "30-60s"
 
   local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
   local TUNNEL_INSTANCE_ID
