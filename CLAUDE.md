@@ -44,8 +44,8 @@ The CLI (`cli.py`) is the single entry point and dispatches three commands: `ing
 
 All three ingestion paths share the same Bronze contract:
 
-- Output key: `bronze/source=<src>/entity=<ent>/ingest_date=YYYY-MM-DD/run_id=<uuid>/<file>`
-- One run = one `run_id` (uuid4), one aggregate manifest at `_manifests/source=<src>/ingest_date=.../run_id=<uuid>.json`
+- Output key: `bronze/source=<src>/entity=<ent>/ingest_date=YYYY-MM-DD/<file>`
+- One run = one `run_id` (uuid4), tracked in manifest at `_manifests/source=<src>/ingest_date=.../run_id=<uuid>.json` (run_id is in manifests only, not in Bronze data paths)
 - **Idempotency**: before doing work, `idempotency.should_skip_if_already_successful` lists the latest manifest under that source+date prefix and skips if `status == "success"`. New work always writes a fresh `run_id`; manifests are append-only and the _latest_ one wins.
 - **Bronze `ingest_date` semantics**: `ingest_date` represents the **business date** of the source data, not the wall-clock time of ingestion. A post-processing step (`repartition.py`) after each ingestion run splits bronze Parquet files by the data's native date column (e.g. `encounter_datetime_start` for encounters, `arrival_datetime` for urgent care). This is a deliberate design choice so the platform looks like it has been running daily for 12 months. See `docs/superpowers/specs/2026-06-01-historical-data-simulation-design.md` for full context.
 - `fail_fast` flag controls whether per-table/per-file failures abort the run or continue and mark the manifest as `failed`.
