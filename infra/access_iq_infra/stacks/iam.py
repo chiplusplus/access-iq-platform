@@ -59,9 +59,7 @@ class IngestionRoleStack(Stack):
                 ),
                 iam.PolicyStatement(
                     actions=[
-                        "s3:GetObject",
                         "s3:PutObject",
-                        "s3:DeleteObject",
                         "s3:AbortMultipartUpload",
                         "s3:ListBucketMultipartUploads",
                         "s3:ListMultipartUploadParts",
@@ -125,7 +123,9 @@ class IngestionRoleStack(Stack):
                 ),
                 iam.PolicyStatement(
                     actions=[
+                        "s3:GetObject",
                         "s3:PutObject",
+                        "s3:DeleteObject",
                         "s3:AbortMultipartUpload",
                         "s3:ListBucketMultipartUploads",
                         "s3:ListMultipartUploadParts",
