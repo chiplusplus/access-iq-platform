@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Any
 
 import pandas as pd
 import structlog
 
 log = structlog.get_logger(__name__)
-
-_INGEST_DATE_RE = re.compile(r"ingest_date=(\d{4}-\d{2}-\d{2})")
 
 BRONZE_ENTITIES: dict[str, dict[str, Any]] = {
     "patient_demographics": {
@@ -65,78 +61,6 @@ BRONZE_ENTITIES: dict[str, dict[str, Any]] = {
 }
 
 
-def find_latest_partition(*, s3: Any, bucket: str, entity_prefix: str) -> str:
-    """Find the latest ingest_date partition under bronze/{entity_prefix}/.
-
-    Returns the full prefix ``bronze/{entity_prefix}/ingest_date={latest}/``
-    or an empty string if no partitions exist.
-    """
-    prefix = f"bronze/{entity_prefix}/"
-    paginator = s3.get_paginator("list_objects_v2")
-    dates: list[str] = []
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
-        for cp in page.get("CommonPrefixes", []):
-            m = _INGEST_DATE_RE.search(cp["Prefix"])
-            if m:
-                dates.append(m.group(1))
-    if not dates:
-        log.info("no_partitions_found", bucket=bucket, prefix=prefix)
-        return ""
-    latest = sorted(dates)[-1]
-    result = f"bronze/{entity_prefix}/ingest_date={latest}/"
-    log.info("latest_partition", partition=result)
-    return result
-
-
-def resolve_latest_run_id(*, s3: Any, bucket: str, manifest_prefix: str) -> str:
-    """Find the latest successful run_id from manifests under *manifest_prefix*.
-
-    Reads JSON manifests at ``_manifests/{source_prefix}/ingest_date={date}/``
-    and returns the ``run_id`` of the latest one with ``"status": "success"``.
-    Returns empty string if no successful manifest found.
-    """
-    paginator = s3.get_paginator("list_objects_v2")
-    successful_runs: list[tuple[str, str]] = []  # (timestamp, run_id)
-    manifest_count = 0
-    error_count = 0
-
-    for page in paginator.paginate(Bucket=bucket, Prefix=manifest_prefix):
-        for obj in page.get("Contents", []):
-            key = obj.get("Key", "")
-            if not key.endswith(".json"):
-                continue
-            manifest_count = manifest_count + 1
-            try:
-                resp = s3.get_object(Bucket=bucket, Key=key)
-                body = json.loads(resp["Body"].read())
-                if body.get("status") == "success":
-                    ts = body.get("finished_at", body.get("started_at", ""))
-                    run_id = body.get("run_id", "")
-                    if run_id:
-                        successful_runs.append((ts, run_id))
-            except Exception:
-                error_count = error_count + 1
-                log.warning("manifest_read_error", key=key, exc_info=True)
-
-    if error_count > 0 and error_count == manifest_count:
-        log.error(
-            "all_manifests_failed",
-            prefix=manifest_prefix,
-            total=manifest_count,
-            errors=error_count,
-        )
-
-    if not successful_runs:
-        log.info("no_successful_manifests", prefix=manifest_prefix)
-        return ""
-
-    # Sort by timestamp descending, pick latest
-    successful_runs.sort(key=lambda x: x[0], reverse=True)
-    run_id = successful_runs[0][1]
-    log.info("resolved_run_id", run_id=run_id)
-    return run_id
-
-
 def read_bronze_entity(
     *, s3_session: Any, bucket: str, prefix: str, region: str = "eu-west-2"
 ) -> pd.DataFrame | None:
@@ -148,6 +72,8 @@ def read_bronze_entity(
     Returns ``None`` on error instead of an empty DataFrame so callers
     can distinguish "no data" from "read failed".
     """
+    import pyarrow as pa
+    import pyarrow.dataset as pads
     import pyarrow.fs as pafs
 
     bare_path = f"{bucket}/{prefix}"
@@ -159,7 +85,14 @@ def read_bronze_entity(
             secret_key=creds.secret_key,
             session_token=creds.token,
         )
-        df = pd.read_parquet(bare_path, engine="pyarrow", filesystem=fs)
+        dataset = pads.dataset(bare_path, filesystem=fs, format="parquet")
+        fragments = list(dataset.get_fragments())
+        schema = pa.unify_schemas(
+            [f.physical_schema for f in fragments],
+            promote_options="permissive",
+        )
+        dataset = pads.dataset(bare_path, filesystem=fs, format="parquet", schema=schema)
+        df = dataset.to_table().to_pandas()
         log.info("read_bronze_entity", path=bare_path, rows=len(df))
         return df
     except Exception:
@@ -179,31 +112,14 @@ def load_all_bronze_entities(
     import boto3
 
     session = boto3.Session(profile_name=aws_profile, region_name=aws_region)
-    s3 = session.client("s3")
 
     entity_dfs: dict[str, pd.DataFrame] = {}
     for entity_name, entity_cfg in BRONZE_ENTITIES.items():
-        partition = find_latest_partition(
-            s3=s3,
-            bucket=platform_bucket,
-            entity_prefix=entity_cfg["source_prefix"],
-        )
-        if not partition:
-            log.warning("no_partition", entity=entity_name)
-            continue
-
-        source_part = entity_cfg["source_prefix"].split("/")[0]
-        date_part = partition.rstrip("/").split("/")[-1]
-        manifest_prefix = f"_manifests/{source_part}/{date_part}/"
-        run_id = resolve_latest_run_id(
-            s3=s3, bucket=platform_bucket, manifest_prefix=manifest_prefix
-        )
-
-        read_prefix = f"{partition}run_id={run_id}/" if run_id else partition
+        entity_prefix = f"bronze/{entity_cfg['source_prefix']}/"
         df = read_bronze_entity(
             s3_session=session,
             bucket=platform_bucket,
-            prefix=read_prefix,
+            prefix=entity_prefix,
             region=aws_region,
         )
         if df is None:
