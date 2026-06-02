@@ -105,7 +105,7 @@ def ingest_trust_provider_ref_to_bronze(
 
     bronze_key = (
         f"bronze/source={source_name}/entity=provider_site_reference/"
-        f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/provider_site_reference.parquet"
+        f"ingest_date={ingest_date.isoformat()}/provider_site_reference.parquet"
     )
 
     response = s3.get_object(Bucket=trust_bucket, Key=trust_key)
@@ -247,7 +247,7 @@ def ingest_trust_diagnostics_export_date_to_bronze(
                 )
                 bronze_key = (
                     f"bronze/source={source_name}/entity=diagnostics_orders/"
-                    f"ingest_date={export_date.isoformat()}/run_id={run_id}/{parquet_filename}"
+                    f"ingest_date={export_date.isoformat()}/{parquet_filename}"
                 )
 
                 response = s3.get_object(Bucket=trust_bucket, Key=trust_key)
