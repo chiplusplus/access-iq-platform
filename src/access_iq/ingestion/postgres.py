@@ -38,8 +38,7 @@ def ingest_table_to_bronze(
     started_at = utc_now_iso()
 
     bronze_key = (
-        f"bronze/source={db}/entity={table}/"
-        f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/{table}.parquet"
+        f"bronze/source={db}/entity={table}/ingest_date={ingest_date.isoformat()}/{table}.parquet"
     )
 
     conn = psycopg2.connect(dsn)

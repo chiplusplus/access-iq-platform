@@ -128,8 +128,7 @@ def test_ingest_table_to_bronze_uploads_expected_key(monkeypatch):
     assert out["db"] == "ehr"
     assert out["table"] == "patients"
     assert (
-        "bronze/source=ehr/entity=patients/ingest_date=2026-02-20/run_id=run-1/patients.parquet"
-        in out["s3_key"]
+        "bronze/source=ehr/entity=patients/ingest_date=2026-02-20/patients.parquet" == out["s3_key"]
     )
     assert len(s3.uploads) == 1
     assert s3.uploads[0]["bucket"] == "platform"
