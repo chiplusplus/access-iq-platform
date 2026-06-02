@@ -137,7 +137,7 @@ def ingest_sftp_directory_to_bronze(
                 digest = sha256_bytes(data)
                 s3_key = (
                     f"bronze/source={source_name}/entity=appointments/"
-                    f"ingest_date={ingest_date.isoformat()}/run_id={run_id}/files/{parquet_fname}"
+                    f"ingest_date={ingest_date.isoformat()}/{parquet_fname}"
                 )
 
                 extra = s3_kms_args(kms_key_arn)
