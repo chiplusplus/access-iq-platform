@@ -92,7 +92,7 @@ def read_bronze_entity(
             promote_options="permissive",
         )
         dataset = pads.dataset(bare_path, filesystem=fs, format="parquet", schema=schema)
-        df = dataset.to_table().to_pandas()
+        df: pd.DataFrame = dataset.to_table().to_pandas()
         log.info("read_bronze_entity", path=bare_path, rows=len(df))
         return df
     except Exception:
