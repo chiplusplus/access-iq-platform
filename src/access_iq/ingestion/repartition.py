@@ -3,6 +3,10 @@
 ingest_date in this system represents the business date of the source data,
 not the wall-clock time of ingestion. This is a deliberate design choice
 for the portfolio simulation.
+
+Dates before pipeline_start_date are clamped to pipeline_start_date — this
+simulates day-1 backfill where the pipeline ingested all pre-existing data
+on its first run.
 """
 
 from __future__ import annotations
@@ -28,6 +32,16 @@ ENTITY_DATE_COLUMNS: dict[str, str | None] = {
     "urgent_care_logs": "arrival_datetime",
     "provider_site_reference": None,
 }
+
+
+def _clamp_date(d: date, pipeline_start: date) -> date:
+    """Clamp a business date to the pipeline window.
+
+    Anything before pipeline_start becomes pipeline_start (day-1 backfill).
+    """
+    if d < pipeline_start:
+        return pipeline_start
+    return d
 
 
 def extract_business_dates(
@@ -66,10 +80,14 @@ def repartition_bronze_key(
     source_key: str,
     source: str,
     entity: str,
+    pipeline_start_date: date,
     date_column_map: dict[str, str | None] = ENTITY_DATE_COLUMNS,
     kms_key_arn: str | None = None,
 ) -> list[str]:
     """Read a bronze Parquet file and split it into per-business-date partitions.
+
+    Dates before pipeline_start_date are clamped to pipeline_start_date,
+    simulating day-1 backfill.
 
     Returns list of new S3 keys written.
     """
@@ -83,7 +101,8 @@ def repartition_bronze_key(
     table = pq.read_table(io.BytesIO(raw))
 
     df = table.to_pandas()
-    df["_biz_date"] = pd.to_datetime(df[date_col]).dt.date
+    raw_dates = pd.to_datetime(df[date_col]).dt.date
+    df["_biz_date"] = raw_dates.apply(lambda d: _clamp_date(d, pipeline_start_date))
 
     new_keys: list[str] = []
 

@@ -44,7 +44,8 @@ class TestExtractBusinessDates:
 
 
 class TestRepartitionBronzeKey:
-    def test_splits_parquet_by_date(self):
+    def test_splits_parquet_by_date_within_window(self):
+        """Dates within the pipeline window get their own partitions."""
         data = {
             "encounter_id": ["E1", "E2", "E3"],
             "encounter_datetime_start": [
@@ -61,32 +62,85 @@ class TestRepartitionBronzeKey:
         keys = repartition_bronze_key(
             s3=s3,
             bucket="platform-bucket",
-            source_key="bronze/source=ehr_postgres/entity=encounters/ingest_date=2026-06-01/encounters.parquet",
+            source_key="bronze/source=ehr_postgres/entity=encounters/ingest_date=2026-06-02/encounters.parquet",
             source="ehr_postgres",
             entity="encounters",
+            pipeline_start_date=date(2025, 6, 2),
         )
 
-        # Should upload 2 files (one per business date)
         assert s3.upload_fileobj.call_count == 2
         assert len(keys) == 2
 
         uploaded_keys = sorted(keys)
         assert "ingest_date=2026-05-01" in uploaded_keys[0]
         assert "ingest_date=2026-05-02" in uploaded_keys[1]
-
-        # Original should be deleted
         s3.delete_object.assert_called_once()
+
+    def test_clamps_old_dates_to_pipeline_start(self):
+        """Dates before pipeline_start_date are clamped to pipeline_start."""
+        data = {
+            "referral_id": ["R1", "R2", "R3"],
+            "referral_datetime": [
+                "2023-03-15 10:00:00",
+                "2024-06-01 14:00:00",
+                "2026-01-15 09:00:00",
+            ],
+        }
+
+        s3 = MagicMock()
+        s3.get_object.return_value = {"Body": io.BytesIO(_parquet_bytes(data))}
+
+        pipeline_start = date(2025, 6, 2)
+        keys = repartition_bronze_key(
+            s3=s3,
+            bucket="platform-bucket",
+            source_key="bronze/source=ehr_postgres/entity=referrals/ingest_date=2026-06-02/referrals.parquet",
+            source="ehr_postgres",
+            entity="referrals",
+            pipeline_start_date=pipeline_start,
+        )
+
+        # 2023 and 2024 dates both clamp to 2025-06-02; 2026-01-15 stays
+        assert s3.upload_fileobj.call_count == 2
+        uploaded_keys = sorted(keys)
+        assert "ingest_date=2025-06-02" in uploaded_keys[0]
+        assert "ingest_date=2026-01-15" in uploaded_keys[1]
+
+    def test_all_old_dates_produce_single_partition(self):
+        """When ALL data is before pipeline start, everything goes to day-1 partition."""
+        data = {
+            "patient_id": ["P1", "P2"],
+            "registration_start_date": ["2005-03-01", "2018-11-22"],
+        }
+
+        s3 = MagicMock()
+        s3.get_object.return_value = {"Body": io.BytesIO(_parquet_bytes(data))}
+
+        pipeline_start = date(2025, 6, 2)
+        keys = repartition_bronze_key(
+            s3=s3,
+            bucket="platform-bucket",
+            source_key="bronze/source=ehr_postgres/entity=patient_demographics/ingest_date=2026-06-02/patient_demographics.parquet",
+            source="ehr_postgres",
+            entity="patient_demographics",
+            pipeline_start_date=pipeline_start,
+        )
+
+        assert s3.upload_fileobj.call_count == 1
+        assert len(keys) == 1
+        assert "ingest_date=2025-06-02" in keys[0]
 
     def test_static_entity_returns_source_key(self):
         s3 = MagicMock()
         keys = repartition_bronze_key(
             s3=s3,
             bucket="platform-bucket",
-            source_key="bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-01/provider_site_reference.parquet",
+            source_key="bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-02/provider_site_reference.parquet",
             source="trust_s3_provider_ref",
             entity="provider_site_reference",
+            pipeline_start_date=date(2025, 6, 2),
         )
         assert keys == [
-            "bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-01/provider_site_reference.parquet"
+            "bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-02/provider_site_reference.parquet"
         ]
         s3.get_object.assert_not_called()

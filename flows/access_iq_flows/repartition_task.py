@@ -6,6 +6,7 @@ from datetime import date
 
 import boto3
 import structlog
+from dateutil.relativedelta import relativedelta
 from prefect import task
 
 from access_iq.config import Settings
@@ -26,6 +27,7 @@ SOURCE_ENTITIES = {
 def repartition_bronze(run_date: str, settings: Settings) -> dict:
     """Repartition all bronze entities from the current ingestion run by business date."""
     ingest_date = date.fromisoformat(run_date)
+    pipeline_start = date.today() - relativedelta(months=12)
     session = boto3.Session(region_name=settings.aws_region)
     s3 = session.client("s3")
     bucket = settings.platform_bucket
@@ -51,6 +53,7 @@ def repartition_bronze(run_date: str, settings: Settings) -> dict:
                         source_key=obj["Key"],
                         source=source,
                         entity=entity,
+                        pipeline_start_date=pipeline_start,
                         kms_key_arn=settings.lake_kms_key_arn,
                     )
                     results[f"{source}/{entity}"] = new_keys
