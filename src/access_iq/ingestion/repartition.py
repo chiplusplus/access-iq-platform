@@ -8,7 +8,6 @@ for the portfolio simulation.
 from __future__ import annotations
 
 import io
-import uuid
 from datetime import date
 from typing import Any
 
@@ -87,7 +86,6 @@ def repartition_bronze_key(
     df["_biz_date"] = pd.to_datetime(df[date_col]).dt.date
 
     new_keys: list[str] = []
-    run_id = str(uuid.uuid4())
 
     extra_args = {}
     if kms_key_arn:
@@ -105,7 +103,7 @@ def repartition_bronze_key(
 
         new_key = (
             f"bronze/source={source}/entity={entity}/"
-            f"ingest_date={biz_date.isoformat()}/run_id={run_id}/{entity}.parquet"
+            f"ingest_date={biz_date.isoformat()}/{entity}.parquet"
         )
 
         s3.upload_fileobj(
