@@ -61,7 +61,7 @@ class TestRepartitionBronzeKey:
         keys = repartition_bronze_key(
             s3=s3,
             bucket="platform-bucket",
-            source_key="bronze/source=ehr_postgres/entity=encounters/ingest_date=2026-06-01/run_id=abc/encounters.parquet",
+            source_key="bronze/source=ehr_postgres/entity=encounters/ingest_date=2026-06-01/encounters.parquet",
             source="ehr_postgres",
             entity="encounters",
         )
@@ -82,11 +82,11 @@ class TestRepartitionBronzeKey:
         keys = repartition_bronze_key(
             s3=s3,
             bucket="platform-bucket",
-            source_key="bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-01/run_id=abc/provider_site_reference.parquet",
+            source_key="bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-01/provider_site_reference.parquet",
             source="trust_s3_provider_ref",
             entity="provider_site_reference",
         )
         assert keys == [
-            "bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-01/run_id=abc/provider_site_reference.parquet"
+            "bronze/source=trust_s3_provider_ref/entity=provider_site_reference/ingest_date=2026-06-01/provider_site_reference.parquet"
         ]
         s3.get_object.assert_not_called()
