@@ -275,4 +275,29 @@ def backfill_from_staging(
         kms_key_arn=kms_key_arn,
     )
 
+    # Provider reference — static entity, single partition at pipeline start
+    provider_xlsx = staging_exports_dir / "providers" / "sites_and_services_master.xlsx"
+    if provider_xlsx.exists():
+        df = pd.read_excel(provider_xlsx, engine="openpyxl")
+        if not df.empty:
+            key = _write_partition(
+                df=df,
+                source="trust_s3_provider_ref",
+                entity="provider_site_reference",
+                biz_date=pipeline_start_date,
+                platform_bucket=platform_bucket,
+                env=env,
+                s3=s3,
+                kms_key_arn=kms_key_arn,
+            )
+            results["provider_site_reference"] = [key]
+            log.info(
+                "backfill_entity_done",
+                source="trust_s3_provider_ref",
+                entity="provider_site_reference",
+                partitions=1,
+            )
+    else:
+        log.warning("backfill_provider_ref_missing", path=str(provider_xlsx))
+
     return results
