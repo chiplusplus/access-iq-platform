@@ -515,6 +515,18 @@ DASHEOF
   local RS_ENDPOINT
   RS_ENDPOINT=$(platform_output warehouse WorkgroupEndpoint)
 
+  # Kill stale tunnels from prior runs
+  for pidfile in "$TUNNEL_PID_FILE" "$PLATFORM_REPO/.prefect-tunnel.pid"; do
+    if [ -f "$pidfile" ]; then
+      local old_pid
+      old_pid="$(cat "$pidfile" 2>/dev/null || true)"
+      if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
+        kill "$old_pid" 2>/dev/null || true
+        echo "  Killed stale tunnel (PID $old_pid)"
+      fi
+    fi
+  done
+
   # Start SSM tunnel in background (used by Prefect and manual dbt)
   aws ssm start-session \
     --target "$TUNNEL_INSTANCE_ID" \
@@ -611,7 +623,11 @@ DASHEOF
   if [ "$skip_seed" = true ]; then
     echo "  Skipping backfill (--skip-seed)"
   else
-    (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli)
+    local BACKFILL_ROLE_ARN
+    BACKFILL_ROLE_ARN=$(platform_output iam EcsTaskRoleArn)
+    echo "  Assuming role: $BACKFILL_ROLE_ARN"
+    (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli \
+      --assume-role-arn "$BACKFILL_ROLE_ARN")
   fi
 
   step_done

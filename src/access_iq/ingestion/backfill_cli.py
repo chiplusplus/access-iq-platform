@@ -31,6 +31,11 @@ def main() -> None:
         type=str,
         help="Path to Trust staging core CSVs (default: auto-detect from TRUST_REPO)",
     )
+    parser.add_argument(
+        "--assume-role-arn",
+        type=str,
+        help="IAM role ARN to assume for S3 writes (e.g. the ECS task role)",
+    )
     args = parser.parse_args()
 
     settings = Settings()  # type: ignore[call-arg]
@@ -58,7 +63,22 @@ def main() -> None:
         profile_name=settings.aws_profile,
         region_name=settings.aws_region,
     )
-    s3 = session.client("s3")
+
+    if args.assume_role_arn:
+        sts = session.client("sts")
+        creds = sts.assume_role(
+            RoleArn=args.assume_role_arn,
+            RoleSessionName="backfill-bronze",
+        )["Credentials"]
+        s3 = boto3.client(
+            "s3",
+            region_name=settings.aws_region,
+            aws_access_key_id=creds["AccessKeyId"],
+            aws_secret_access_key=creds["SecretAccessKey"],
+            aws_session_token=creds["SessionToken"],
+        )
+    else:
+        s3 = session.client("s3")
 
     log.info(
         "backfill_start",
