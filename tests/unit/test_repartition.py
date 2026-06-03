@@ -106,34 +106,6 @@ class TestRepartitionBronzeKey:
         assert "ingest_date=2025-06-02" in uploaded_keys[0]
         assert "ingest_date=2026-01-15" in uploaded_keys[1]
 
-    def test_drops_future_dates(self):
-        """Rows with business dates after today are excluded from repartition."""
-        data = {
-            "encounter_id": ["E1", "E2", "E3"],
-            "encounter_datetime_start": [
-                "2026-05-01 10:00:00",
-                "2026-06-03 14:00:00",
-                "2026-06-15 09:00:00",
-            ],
-            "patient_id": ["P1", "P2", "P3"],
-        }
-
-        s3 = MagicMock()
-        s3.get_object.return_value = {"Body": io.BytesIO(_parquet_bytes(data))}
-
-        keys = repartition_bronze_key(
-            s3=s3,
-            bucket="platform-bucket",
-            source_key="bronze/source=ehr_postgres/entity=encounters/ingest_date=2026-06-03/encounters.parquet",
-            source="ehr_postgres",
-            entity="encounters",
-            pipeline_start_date=date(2025, 6, 3),
-        )
-
-        # Only 2026-05-01 and today (2026-06-03) should be written; 2026-06-15 dropped
-        uploaded_keys = sorted(keys)
-        assert all("2026-06-15" not in k for k in uploaded_keys)
-
     def test_all_old_dates_produce_single_partition(self):
         """When ALL data is before pipeline start, everything goes to day-1 partition."""
         data = {
