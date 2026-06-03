@@ -19,6 +19,14 @@ log = structlog.get_logger(__name__)
 
 def main() -> None:
     configure_logging()
+
+    # Load ALL vars from .env into os.environ — pydantic Settings only reads
+    # ACCESS_IQ_* prefixed fields, but the DSN vars (EHR_DSN, etc.) are raw
+    # env vars referenced indirectly via postgres_sources.dsn_env.
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     settings = Settings()  # type: ignore[call-arg]
     pipeline_start = date.today() - relativedelta(months=12)
 
