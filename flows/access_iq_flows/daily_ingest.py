@@ -92,14 +92,16 @@ def task_ingest_trust_s3(run_date: str, settings: Settings) -> dict:
 
     base_bucket = trust_s3_cfg.base.bucket
 
-    # Diagnostics
+    # Diagnostics — pass export_date=None to auto-discover all available
+    # export_date folders in Trust S3. The function's idempotency check
+    # skips dates that already have a successful manifest.
     diag_cfg = trust_s3_cfg.diagnostics
     diag_manifest = ingest_trust_diagnostics_export_date_to_bronze(
         s3=s3,
         trust_bucket=base_bucket,
         prefix_root=diag_cfg.prefix_root or "",
         source_name=diag_cfg.source_name or "trust_diagnostics",
-        export_date=ingest_date,
+        export_date=None,
         platform_bucket=settings.platform_bucket,
         env=settings.env,
         kms_key_arn=settings.lake_kms_key_arn,

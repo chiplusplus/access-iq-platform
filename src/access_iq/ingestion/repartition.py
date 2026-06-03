@@ -34,11 +34,15 @@ ENTITY_DATE_COLUMNS: dict[str, str | None] = {
 }
 
 
-def _clamp_date(d: date, pipeline_start: date) -> date:
-    """Clamp a business date to the pipeline window.
+def _clamp_date(d: date, pipeline_start: date, today: date) -> date | None:
+    """Clamp a business date to the pipeline window [pipeline_start, today].
 
     Anything before pipeline_start becomes pipeline_start (day-1 backfill).
+    Anything after today is dropped (returns None) — holdback data shouldn't
+    be in bronze yet.
     """
+    if d > today:
+        return None
     if d < pipeline_start:
         return pipeline_start
     return d
@@ -86,8 +90,9 @@ def repartition_bronze_key(
 ) -> list[str]:
     """Read a bronze Parquet file and split it into per-business-date partitions.
 
-    Dates before pipeline_start_date are clamped to pipeline_start_date,
-    simulating day-1 backfill.
+    Dates before pipeline_start_date are clamped to pipeline_start_date
+    (day-1 backfill). Dates after today are dropped (holdback data that
+    the simulation Lambda hasn't released yet).
 
     Returns list of new S3 keys written.
     """
@@ -100,9 +105,19 @@ def repartition_bronze_key(
     raw = resp["Body"].read()
     table = pq.read_table(io.BytesIO(raw))
 
+    today = date.today()
     df = table.to_pandas()
     raw_dates = pd.to_datetime(df[date_col]).dt.date
-    df["_biz_date"] = raw_dates.apply(lambda d: _clamp_date(d, pipeline_start_date))
+    df["_biz_date"] = raw_dates.apply(lambda d: _clamp_date(d, pipeline_start_date, today))
+
+    # Drop rows with future dates (holdback data not yet released)
+    future_count = df["_biz_date"].isna().sum()
+    if future_count:
+        log.info("repartition_drop_future", entity=entity, rows_dropped=int(future_count))
+        df = df.dropna(subset=["_biz_date"])
+    df["_biz_date"] = df["_biz_date"].apply(
+        lambda d: d if isinstance(d, date) else date.fromisoformat(str(d))
+    )
 
     new_keys: list[str] = []
 
