@@ -611,8 +611,7 @@ DASHEOF
   if [ "$skip_seed" = true ]; then
     echo "  Skipping backfill (--skip-seed)"
   else
-    # backfill_cli uses pydantic Settings which reads .env automatically
-    (cd "$PLATFORM_REPO" && uv run python -m access_iq.ingestion.backfill_cli)
+    (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli)
   fi
 
   step_done
