@@ -109,10 +109,6 @@ class TestDailyIngestChain:
             patch("access_iq_flows.daily_ingest.task_ingest_postgres") as mock_pg,
             patch("access_iq_flows.daily_ingest.task_ingest_sftp") as mock_sftp,
             patch("access_iq_flows.daily_ingest.task_ingest_trust_s3") as mock_s3,
-            patch(
-                "access_iq_flows.daily_ingest.repartition_bronze",
-                side_effect=lambda **kw: call_order.append("repartition_bronze"),
-            ),
             patch("access_iq_flows.daily_ingest.run_dbt_spectrum", side_effect=mock_dbt_spectrum),
             patch("access_iq_flows.daily_ingest.run_dbt_silver", side_effect=mock_dbt_silver),
             patch("access_iq_flows.daily_ingest.run_ge_gate", side_effect=mock_ge_gate),
@@ -133,10 +129,6 @@ class TestDailyIngestChain:
         assert "submit_sftp" in call_order
         assert "submit_trust_s3" in call_order
 
-        # Repartition runs after ingestion, before Spectrum
-        assert call_order.index("repartition_bronze") > call_order.index("submit_postgres")
-        assert call_order.index("dbt_spectrum") > call_order.index("repartition_bronze")
-
         # Sequential steps follow ingestion
         assert call_order.index("dbt_spectrum") > call_order.index("submit_postgres")
         assert call_order.index("dbt_silver") > call_order.index("dbt_spectrum")
@@ -155,7 +147,6 @@ class TestDailyIngestChain:
             patch("access_iq_flows.daily_ingest.task_ingest_postgres") as mock_pg,
             patch("access_iq_flows.daily_ingest.task_ingest_sftp") as mock_sftp,
             patch("access_iq_flows.daily_ingest.task_ingest_trust_s3") as mock_s3,
-            patch("access_iq_flows.daily_ingest.repartition_bronze"),
             patch("access_iq_flows.daily_ingest.run_dbt_spectrum"),
             patch("access_iq_flows.daily_ingest.run_dbt_silver"),
             patch("access_iq_flows.daily_ingest.run_ge_gate"),

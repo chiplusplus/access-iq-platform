@@ -83,15 +83,15 @@ cmd_up() {
   done
 
   echo ""
-  echo "  Deploy sequence: Generate data (local) → Trust deploy + seed → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Prefect"
+  echo "  Deploy sequence: Generate data (local) → Trust deploy + seed → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Prefect → Bronze backfill → Simulation"
   [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
   [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
   [ "$skip_infra" = true ] && echo "  Skipping infrastructure deployments (reusing existing stacks)"
-  echo "  Estimated total: 20-35 minutes"
+  echo "  Estimated total: 45-55 minutes"
   echo ""
 
   # ── Step 0: Generate synthetic data locally (no AWS cost) ──
-  step_start "0/9" "Generate Trust synthetic data (local, no infra needed)" "2-5 min"
+  step_start "0/10" "Generate Trust synthetic data" "2-5 min"
   if [ -n "$skip_generate" ]; then
     echo "  Skipping data generation (--skip-generate, reusing data/staging/)"
   elif [ "$skip_seed" = true ]; then
@@ -102,7 +102,7 @@ cmd_up() {
   fi
   step_done
 
-  step_start "1/9" "Deploy Trust infrastructure + seed data" "8-12 min"
+  step_start "1/10" "Deploy Trust infrastructure + seed data" "30-45 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust deploy (--skip-infra)"
   elif [ "$skip_seed" = true ]; then
@@ -110,17 +110,18 @@ cmd_up() {
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --all --outputs-file cdk-outputs.json \
       --profile "$TRUST_PROFILE" --require-approval never)
   else
-    (cd "$TRUST_REPO" && unset VIRTUAL_ENV && AWS_PROFILE="$TRUST_PROFILE" make trust-bootstrap \
+    (cd "$TRUST_REPO" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
+      && AWS_PROFILE="$TRUST_PROFILE" make trust-bootstrap \
       ARGS="--profile $TRUST_PROFILE --skip-generate")
   fi
   step_done
 
-  step_start "2/9" "Read Trust outputs" "<5s"
+  step_start "2/10" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/9" "Deploy Platform stacks" "5-10min"
+  step_start "3/10" "Deploy Platform stacks" "~15min"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Platform deploy (--skip-infra)"
@@ -140,7 +141,7 @@ cmd_up() {
 
   step_done
 
-  step_start "4/9" "Create Spectrum external schema + pre-warm Redshift" "30-60s"
+  step_start "4/10" "Create Spectrum external schema + pre-warm Redshift" "<10s"
 
   SPECTRUM_STMT_ID=""
   if [ "$skip_seed" = true ]; then
@@ -203,7 +204,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/9" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
+  step_start "5/10" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust redeploy (--skip-infra)"
   else
@@ -225,7 +226,7 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "6/9" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/10" "Seed Platform secrets from Trust" "<30s"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping secret seeding (--skip-infra)"
@@ -463,7 +464,7 @@ DASHEOF
   fi
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/9" "Build and push ingestion image to ECR" "1-3 min"
+  step_start "7/10" "Build and push ingestion image to ECR" "2-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -506,7 +507,7 @@ DASHEOF
   fi
 
   # ── Step 8/9: Start tunnel + configure self-hosted Prefect ──
-  step_start "8/9" "Start tunnel + configure Prefect (work pool + flow deploy)" "30-60s"
+  step_start "8/10" "Start tunnel + configure Prefect (work pool + flow deploy)" "30-60s"
 
   local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
   local TUNNEL_INSTANCE_ID
@@ -722,8 +723,25 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
   fi
   step_done
 
-  # ── Step 9: Enable simulation schedule ─────────────────────────────────
-  step_start "9/9" "Enable simulation schedule" "<5s"
+  # ── Step 9/10: Historical bronze backfill ────────────────────────────────
+  step_start "9/10" "Historical bronze backfill (Postgres → partitioned bronze)" "5-15 min"
+
+  if [ "$skip_seed" = true ]; then
+    echo "  Skipping backfill (--skip-seed)"
+  else
+    # Source .env for ACCESS_IQ_* vars needed by backfill
+    set -a
+    # shellcheck disable=SC1091
+    [ -f "$PLATFORM_REPO/.env" ] && . "$PLATFORM_REPO/.env"
+    set +a
+
+    (cd "$PLATFORM_REPO" && uv run python -m access_iq.ingestion.backfill_cli)
+  fi
+
+  step_done
+
+  # ── Step 10/10: Enable simulation schedule ─────────────────────────────
+  step_start "10/10" "Enable simulation schedule" "<5s"
 
   SIMULATION_RULE_NAME=$(
     AWS_PROFILE="$TRUST_PROFILE" aws cloudformation describe-stacks \
@@ -745,16 +763,17 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
 
   session_summary
   echo ""
-  echo "  ✓ All stacks deployed, secrets seeded, image pushed."
+  echo "  ✓ All stacks deployed, historical data loaded, simulation active."
   echo "  ✓ SSM tunnel running on localhost:5439 (PID $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'unknown'))"
   echo ""
-  echo "    Run make status to check stack and tunnel health."
+  echo "    Simulation is ready. The platform has 12 months of historical data."
+  echo "    New data drops every 30 minutes via the Trust simulation Lambda."
+  echo "    Prefect ingests at :10 and :40 past each hour."
   echo ""
-  echo "    Now you can:"
-  echo "    Run 'make pipeline' to trigger ingestion via Prefect (or wait for scheduled run on the hour)."
-  echo "    Prefect UI available at http://localhost:4200"
-  echo "    If tunnel disconnects, run: make reconnect"
-  echo "    Once pipeline has successfully run at least once, you can view the dashboard by running: make dashboard"
+  echo "    Prefect UI: http://localhost:4200"
+  echo "    Dashboard:  make dashboard"
+  echo "    Status:     make status"
+  echo "    Reconnect:  make reconnect (if tunnel disconnects)"
   echo "    Stop tunnel: make down (or kill $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'PID'))"
   echo ""
 }
