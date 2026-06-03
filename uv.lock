@@ -113,6 +113,7 @@ name = "access-iq-ingestion"
 version = "0.1.0"
 source = { editable = "src/access_iq" }
 dependencies = [
+    { name = "awscrt", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "openpyxl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
@@ -121,6 +122,7 @@ dependencies = [
     { name = "pyarrow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "pydantic", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "pydantic-settings", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
+    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "python-dotenv", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "structlog", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
 ]
@@ -129,10 +131,12 @@ dependencies = [
 profiling = [
     { name = "fg-data-profiling", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "setuptools", version = "80.10.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "awscrt", specifier = ">=0.23" },
     { name = "boto3", specifier = "==1.42.53" },
     { name = "fg-data-profiling", marker = "extra == 'profiling'", specifier = ">=4.19,<5" },
     { name = "openpyxl", specifier = ">=3.1,<4" },
@@ -143,7 +147,9 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=18.0" },
     { name = "pydantic", specifier = "==2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.6,<3" },
+    { name = "python-dateutil", specifier = ">=2.9" },
     { name = "python-dotenv", specifier = "==1.2.1" },
+    { name = "setuptools", marker = "extra == 'profiling'", specifier = "<81" },
     { name = "structlog", specifier = ">=24.1,<26" },
 ]
 provides-extras = ["profiling"]
@@ -528,6 +534,29 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ce/6d/2b54697444a806257f19ed603ef34ff71b6c3beb6f916587087ffb016ff5/aws_cdk_lib-2.236.0.tar.gz", hash = "sha256:1ed9f3798101d3271fd219bc101b9eab41dead3a25dde516a3c16b8274e0e77a", size = 47209293, upload-time = "2026-01-23T17:39:34.624Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/53/82/6c47d68033aab1e778e226477d2863663ee59bac4345560a83f34f737e77/aws_cdk_lib-2.236.0-py3-none-any.whl", hash = "sha256:b724c1313a184ce5d62ff63f0594a1a4e12d098f7036fe07e7557a73229d0037", size = 47857717, upload-time = "2026-01-23T17:38:45.327Z" },
+]
+
+[[package]]
+name = "awscrt"
+version = "0.33.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/d9/088a27173098c09617f6280b5350f18023d15835400323632a1658039700/awscrt-0.33.0.tar.gz", hash = "sha256:2b4c0ff03b1942678d86f7094342dec9464b4df0ba3e3692b28417c95b95a7db", size = 36964533, upload-time = "2026-05-22T19:43:19.987Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/ba/00ffc05fcc4200d62775305de2f3e5b909f74f59c3aea9c14010bb14df5a/awscrt-0.33.0-cp311-abi3-macosx_10_15_universal2.whl", hash = "sha256:ee1295f6438e0aa354586786707e5be366d0b32957c4bfefdcc19fc883c2b7d3", size = 3422675, upload-time = "2026-05-22T19:42:09.119Z" },
+    { url = "https://files.pythonhosted.org/packages/57/d0/9b0e19895b1ac2cab78e11027729b44172e38df16b4ecc4436fc6ea6c59d/awscrt-0.33.0-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:565903ff74a9358d7a92846564044902434fded775e461fc7f508bd286beaca1", size = 3916774, upload-time = "2026-05-22T19:42:10.795Z" },
+    { url = "https://files.pythonhosted.org/packages/44/92/cb8f49fdd12ccce4263a1ade68052ed83b2dff86c9f6c6c4a76ce8f081ae/awscrt-0.33.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ddfc973933e0a1a2ec95a1fa243eaf487846ee1f03bc9cf5ad9b72910926d42a", size = 4207397, upload-time = "2026-05-22T19:42:12.054Z" },
+    { url = "https://files.pythonhosted.org/packages/50/d0/a506a051f95b80ef7aeaef16d636b2d754fb5c2c036aea89c2e4fd5dc6fa/awscrt-0.33.0-cp311-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:efda8f9510abae021b8019fd4fddddb14f4370ecabd25f317a2bae8ba0e164df", size = 3825157, upload-time = "2026-05-22T19:42:13.358Z" },
+    { url = "https://files.pythonhosted.org/packages/11/23/56b4885f7f3ce8d71ca917236a8296767c3fb8f5b7095e19631e830a3fa6/awscrt-0.33.0-cp311-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:73d46ed4ea4dc1135620b11b32c9856092430d10c53aa99fec7e2ff0aef9709b", size = 4064543, upload-time = "2026-05-22T19:42:15.233Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/ae/609ac10d9c4364576b3d7e5629cfc65bf45aa984a7513a9ba06f7d93f792/awscrt-0.33.0-cp313-abi3-macosx_10_15_universal2.whl", hash = "sha256:80a433a756a3e885546189a6d20a3d2996b173ebdbb0215390bf023625f32e99", size = 3421233, upload-time = "2026-05-22T19:42:19.578Z" },
+    { url = "https://files.pythonhosted.org/packages/77/66/fe27a13fc50eb4c54e1b5947c27a3714c3393d340f2f9670b35c5f77fa38/awscrt-0.33.0-cp313-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:57c52e97a182960e7819e2623a2ac72dacb3d3e2a2aff0cab8b48b157dc42283", size = 3907225, upload-time = "2026-05-22T19:42:20.921Z" },
+    { url = "https://files.pythonhosted.org/packages/af/9c/50a069d5437da53fce146dc1556a1339928397e92bad49278225bbc50a6b/awscrt-0.33.0-cp313-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:24e7fd20ec47aeeafa066a51498c36bf581a2568ecb924f7b9f76d37798cbf16", size = 4199329, upload-time = "2026-05-22T19:42:22.529Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/ab/56a63f6f9168016996acc9ef6903f6d7a565cc32262f989616cbf4b3b3a8/awscrt-0.33.0-cp313-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:821aaedd28c949a46a1cbfc2d9efd485b4b712a488cb0e66135dea912e759d2a", size = 3816612, upload-time = "2026-05-22T19:42:24.014Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/22/608d1b6f42521fd98b5630b5793b23a15b384e003842768f4719e9cd2b71/awscrt-0.33.0-cp313-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:d9cad35b067e5ed443b5a3a2f46af989137f478738caac476025dd758c1f5877", size = 4059353, upload-time = "2026-05-22T19:42:25.391Z" },
+    { url = "https://files.pythonhosted.org/packages/39/6e/80e8c3233bfbd188b4f048fe9a42d008ece698f1f0116c68663916d9df86/awscrt-0.33.0-cp313-cp313t-macosx_10_15_universal2.whl", hash = "sha256:06c937e6f0b09a62d365e5e72d6ebf38e88713499fd5dbf64a8387e0ec016e85", size = 3430834, upload-time = "2026-05-22T19:42:29.915Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/29/377bbad1ba13608736ce1510f1326aceb6479db474f9dc451ff6e76d0513/awscrt-0.33.0-cp313-cp313t-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:f808113c1430504650214b9356a0627f81845561de4fb04e8b5b8f5c85c0a288", size = 4037005, upload-time = "2026-05-22T19:42:31.657Z" },
+    { url = "https://files.pythonhosted.org/packages/da/04/a809071b21dbf35c28ba7c2d1db834548d1fa794409b79407c54529324a3/awscrt-0.33.0-cp313-cp313t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:0a99e7223d7cef5cbe8c927604bd748cfbe300238fc27d4adafe7000740d067c", size = 4325126, upload-time = "2026-05-22T19:42:32.972Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/2a/2b845228f4c347effa3df1f005f6eb63a47081f99e580b1f251f562f4c25/awscrt-0.33.0-cp313-cp313t-musllinux_1_1_aarch64.whl", hash = "sha256:2b072a14ad2f0ec6f6c1c0594d36cf4eb27cf6d51e364b291ca50770b3332c44", size = 3956094, upload-time = "2026-05-22T19:42:34.578Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/aa/e8d7dc17054815fd4a33032a73824d51129c607db3cc720e34e11b684994/awscrt-0.33.0-cp313-cp313t-musllinux_1_1_x86_64.whl", hash = "sha256:b99351915b0830eb89e997409970a90d164991ab765f357c9719eba9e1e45406", size = 4195537, upload-time = "2026-05-22T19:42:35.824Z" },
 ]
 
 [[package]]
@@ -3282,7 +3311,8 @@ dependencies = [
     { name = "pytz", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "scramp", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
-    { name = "setuptools", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
+    { name = "setuptools", version = "80.10.2", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-19-access-iq-ingestion-profiling') or (sys_platform == 'linux' and extra == 'extra-19-access-iq-ingestion-profiling') or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
+    { name = "setuptools", version = "82.0.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-19-access-iq-ingestion-profiling') or (sys_platform == 'linux' and extra != 'extra-19-access-iq-ingestion-profiling') or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/21/ac/2df7f48b0d5eb963d59ef3cce794267d47c362095bcf2f6a89fddd993e1a/redshift_connector-2.1.14-py3-none-any.whl", hash = "sha256:986fd6b6a09a828025a43e44a7b6f5c6ec3f41a47ce23bf075b7be324de484b3", size = 157063, upload-time = "2026-05-18T20:16:50.988Z" },
@@ -3613,8 +3643,29 @@ wheels = [
 
 [[package]]
 name = "setuptools"
+version = "80.10.2"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.13' and sys_platform == 'darwin'",
+    "python_full_version < '3.13' and sys_platform == 'darwin'",
+    "python_full_version >= '3.13' and sys_platform == 'linux'",
+    "python_full_version < '3.13' and sys_platform == 'linux'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/76/95/faf61eb8363f26aa7e1d762267a8d602a1b26d4f3a1e758e92cb3cb8b054/setuptools-80.10.2.tar.gz", hash = "sha256:8b0e9d10c784bf7d262c4e5ec5d4ec94127ce206e8738f29a437945fbc219b70", size = 1200343, upload-time = "2026-01-25T22:38:17.252Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/b8/f1f62a5e3c0ad2ff1d189590bfa4c46b4f3b6e49cef6f26c6ee4e575394d/setuptools-80.10.2-py3-none-any.whl", hash = "sha256:95b30ddfb717250edb492926c92b5221f7ef3fbcc2b07579bcd4a27da21d0173", size = 1064234, upload-time = "2026-01-25T22:38:15.216Z" },
+]
+
+[[package]]
+name = "setuptools"
 version = "82.0.1"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.13' and sys_platform == 'darwin'",
+    "python_full_version < '3.13' and sys_platform == 'darwin'",
+    "python_full_version >= '3.13' and sys_platform == 'linux'",
+    "python_full_version < '3.13' and sys_platform == 'linux'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/4f/db/cfac1baf10650ab4d1c111714410d2fbb77ac5a616db26775db562c8fab2/setuptools-82.0.1.tar.gz", hash = "sha256:7d872682c5d01cfde07da7bccc7b65469d3dca203318515ada1de5eda35efbf9", size = 1152316, upload-time = "2026-03-09T12:47:17.221Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9d/76/f789f7a86709c6b087c5a2f52f911838cad707cc613162401badc665acfe/setuptools-82.0.1-py3-none-any.whl", hash = "sha256:a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb", size = 1006223, upload-time = "2026-03-09T12:47:15.026Z" },

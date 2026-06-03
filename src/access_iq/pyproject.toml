@@ -14,11 +14,14 @@ dependencies = [
     "pandas>=2.0",
     "pyarrow>=18.0",
     "openpyxl>=3.1,<4",
+    "awscrt>=0.23",
+    "python-dateutil>=2.9",
 ]
 
 [project.optional-dependencies]
 profiling = [
     "fg-data-profiling>=4.19,<5",
+    "setuptools<81",
     "pandas>=2.0",
 ]
 
