@@ -91,7 +91,7 @@ cmd_up() {
   echo ""
 
   # ── Step 0: Generate synthetic data locally (no AWS cost) ──
-  step_start "0/10" "Generate Trust synthetic data" "2-5 min"
+  step_start "0/11" "Generate Trust synthetic data" "2-5 min"
   if [ -n "$skip_generate" ]; then
     echo "  Skipping data generation (--skip-generate, reusing data/staging/)"
   elif [ "$skip_seed" = true ]; then
@@ -102,7 +102,7 @@ cmd_up() {
   fi
   step_done
 
-  step_start "1/10" "Deploy Trust infrastructure + seed data" "30-45 min"
+  step_start "1/11" "Deploy Trust infrastructure + seed data" "30-45 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust deploy (--skip-infra)"
   elif [ "$skip_seed" = true ]; then
@@ -116,12 +116,12 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/10" "Read Trust outputs" "<5s"
+  step_start "2/11" "Read Trust outputs" "<5s"
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/10" "Deploy Platform stacks" "~15min"
+  step_start "3/11" "Deploy Platform stacks" "~15min"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Platform deploy (--skip-infra)"
@@ -141,7 +141,7 @@ cmd_up() {
 
   step_done
 
-  step_start "4/10" "Create Spectrum external schema + pre-warm Redshift" "<10s"
+  step_start "4/11" "Create Spectrum external schema + pre-warm Redshift" "<10s"
 
   SPECTRUM_STMT_ID=""
   if [ "$skip_seed" = true ]; then
@@ -204,7 +204,7 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/10" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
+  step_start "5/11" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Trust redeploy (--skip-infra)"
   else
@@ -226,7 +226,7 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "6/10" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/11" "Seed Platform secrets from Trust" "<30s"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping secret seeding (--skip-infra)"
@@ -464,7 +464,7 @@ DASHEOF
   fi
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/10" "Build and push ingestion image to ECR" "2-3 min"
+  step_start "7/11" "Build and push ingestion image to ECR" "2-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -506,8 +506,8 @@ DASHEOF
     fi
   fi
 
-  # ── Step 8/9: Start tunnel + configure self-hosted Prefect ──
-  step_start "8/10" "Start tunnel + configure Prefect (work pool + flow deploy)" "30-60s"
+  # ── Step 8/11: Start tunnels + wait for Prefect server ──
+  step_start "8/11" "Start tunnels + wait for Prefect server" "30-60s"
 
   local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
   local TUNNEL_INSTANCE_ID
@@ -596,9 +596,31 @@ DASHEOF
   fi
 
   if [ "$server_ready" = true ]; then
-    echo "  Prefect server healthy"
+    echo "  ✓ Prefect server healthy"
     export PREFECT_API_URL="http://localhost:4200/api"
+  else
+    printf "  \033[0;33mPrefect server not healthy after 150s -- configure manually\033[0m\n"
+    kill "$prefect_tunnel_pid" 2>/dev/null || true
+    rm -f "$PREFECT_TUNNEL_PID_FILE"
+  fi
+  step_done
 
+  # ── Step 9/11: Historical bronze backfill ────────────────────────────────
+  step_start "9/11" "Historical bronze backfill (Postgres → partitioned bronze)" "5-15 min"
+
+  if [ "$skip_seed" = true ]; then
+    echo "  Skipping backfill (--skip-seed)"
+  else
+    # backfill_cli uses pydantic Settings which reads .env automatically
+    (cd "$PLATFORM_REPO" && uv run python -m access_iq.ingestion.backfill_cli)
+  fi
+
+  step_done
+
+  # ── Step 10/11: Deploy Prefect flow (with schedule) ─────────────────────
+  step_start "10/11" "Deploy Prefect flow + schedule" "10-20s"
+
+  if [ "$server_ready" = true ]; then
     # Resolve CDK stack outputs for flow deployment
     local stack_name="compute-access-iq-${CDK_ENV}"
     local cluster_arn task_role_arn exec_role_arn
@@ -716,32 +738,12 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
     printf "  Prefect work pool + flow deployed (self-hosted)\n"
     printf "  Prefect UI: http://localhost:4200 (tunnel PID %s)\n" "$prefect_tunnel_pid"
   else
-    printf "  \033[0;33mPrefect server not healthy after 150s -- configure manually\033[0m\n"
-    # Kill the failed tunnel
-    kill "$prefect_tunnel_pid" 2>/dev/null || true
-    rm -f "$PREFECT_TUNNEL_PID_FILE"
+    echo "  Skipping Prefect deploy (server not healthy)"
   fi
   step_done
 
-  # ── Step 9/10: Historical bronze backfill ────────────────────────────────
-  step_start "9/10" "Historical bronze backfill (Postgres → partitioned bronze)" "5-15 min"
-
-  if [ "$skip_seed" = true ]; then
-    echo "  Skipping backfill (--skip-seed)"
-  else
-    # Source .env for ACCESS_IQ_* vars needed by backfill
-    set -a
-    # shellcheck disable=SC1091
-    [ -f "$PLATFORM_REPO/.env" ] && . "$PLATFORM_REPO/.env"
-    set +a
-
-    (cd "$PLATFORM_REPO" && uv run python -m access_iq.ingestion.backfill_cli)
-  fi
-
-  step_done
-
-  # ── Step 10/10: Enable simulation schedule ─────────────────────────────
-  step_start "10/10" "Enable simulation schedule" "<5s"
+  # ── Step 11/11: Enable simulation schedule ─────────────────────────────
+  step_start "11/11" "Enable simulation schedule" "<5s"
 
   SIMULATION_RULE_NAME=$(
     AWS_PROFILE="$TRUST_PROFILE" aws cloudformation describe-stacks \
