@@ -41,19 +41,20 @@ def main() -> None:
     settings = Settings()  # type: ignore[call-arg]
     pipeline_start = date.today() - relativedelta(months=12)
 
-    # Resolve staging directory
-    if args.staging_core_dir:
-        staging_core = Path(args.staging_core_dir)
-    else:
-        import os
+    # Resolve staging directories
+    import os
 
+    if args.staging_core_dir:
+        staging_base = Path(args.staging_core_dir).parent
+    else:
         trust_repo = os.environ.get("TRUST_REPO", "")
         if trust_repo:
-            staging_core = Path(trust_repo) / "data" / "staging" / "core"
+            staging_base = Path(trust_repo) / "data" / "staging"
         else:
-            staging_core = (
-                Path.cwd().parent / "northshire-hospital-sim" / "data" / "staging" / "core"
-            )
+            staging_base = Path.cwd().parent / "northshire-hospital-sim" / "data" / "staging"
+
+    staging_core = staging_base / "core"
+    staging_exports = staging_base / "exports"
 
     if not staging_core.exists():
         log.error("staging_dir_not_found", path=str(staging_core))
@@ -84,11 +85,13 @@ def main() -> None:
         "backfill_start",
         pipeline_start=pipeline_start.isoformat(),
         staging_core=str(staging_core),
+        staging_exports=str(staging_exports),
         env=settings.env,
     )
 
     result = backfill_from_staging(
         staging_core_dir=staging_core,
+        staging_exports_dir=staging_exports,
         platform_bucket=settings.platform_bucket,
         pipeline_start_date=pipeline_start,
         env=settings.env,

@@ -47,22 +47,77 @@ BACKFILL_SOURCES: list[dict[str, str]] = [
 ]
 
 
-def backfill_from_staging(
+def _write_partition(
+    *,
+    df: pd.DataFrame,
+    source: str,
+    entity: str,
+    biz_date: date,
+    platform_bucket: str,
+    env: str,
+    s3: Any,
+    kms_key_arn: str | None = None,
+) -> str:
+    """Write a single bronze partition (Parquet + manifest) and return the S3 key."""
+    run_id = str(uuid.uuid4())
+    started_at = utc_now_iso()
+
+    out_table = pa.Table.from_pandas(df, preserve_index=False)
+    buf = io.BytesIO()
+    pq.write_table(out_table, buf, compression="snappy")
+    buf.seek(0)
+
+    bronze_key = (
+        f"bronze/source={source}/entity={entity}/"
+        f"ingest_date={biz_date.isoformat()}/{entity}.parquet"
+    )
+
+    extra = s3_kms_args(kms_key_arn)
+    s3.upload_fileobj(
+        Fileobj=buf,
+        Bucket=platform_bucket,
+        Key=bronze_key,
+        ExtraArgs=extra if extra else None,
+    )
+
+    finished_at = utc_now_iso()
+
+    manifest = Manifest(
+        source=source,
+        env=env,
+        run_id=run_id,
+        ingest_date=biz_date.isoformat(),
+        started_at=started_at,
+        finished_at=finished_at,
+        status="success",
+        inputs={"tables": [entity], "backfill": True},
+        outputs={
+            "tables": [
+                {
+                    "table": entity,
+                    "status": "success",
+                    "s3_key": bronze_key,
+                    "rows": len(df),
+                }
+            ],
+            "tables_succeeded": 1,
+            "tables_failed": 0,
+        },
+    )
+    write_manifest(s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn)
+    return bronze_key
+
+
+def _backfill_core_csvs(
     *,
     staging_core_dir: Path,
-    platform_bucket: str,
     pipeline_start_date: date,
+    platform_bucket: str,
     env: str,
     s3: Any,
     kms_key_arn: str | None = None,
 ) -> dict[str, Any]:
-    """Read Trust staging CSVs and write bronze partitions grouped by business date.
-
-    Each CSV is read into a DataFrame, grouped by its business date column
-    (clamped to pipeline_start_date for pre-window data), then each group
-    is written as a Parquet file to the correct ingest_date partition with
-    a matching manifest.
-    """
+    """Backfill Postgres-sourced entities from core staging CSVs."""
     results: dict[str, Any] = {}
 
     for entry in BACKFILL_SOURCES:
@@ -92,65 +147,132 @@ def backfill_from_staging(
                 for biz_date, group in df.groupby("_biz_date")
             }
 
-        table_keys = []
-        for biz_date, group_df in partitions.items():
-            run_id = str(uuid.uuid4())
-            started_at = utc_now_iso()
-
-            out_table = pa.Table.from_pandas(group_df, preserve_index=False)
-            buf = io.BytesIO()
-            pq.write_table(out_table, buf, compression="snappy")
-            buf.seek(0)
-
-            bronze_key = (
-                f"bronze/source={source}/entity={entity}/"
-                f"ingest_date={biz_date.isoformat()}/{entity}.parquet"
-            )
-
-            extra = s3_kms_args(kms_key_arn)
-            s3.upload_fileobj(
-                Fileobj=buf,
-                Bucket=platform_bucket,
-                Key=bronze_key,
-                ExtraArgs=extra if extra else None,
-            )
-
-            finished_at = utc_now_iso()
-
-            manifest = Manifest(
-                source=source,
-                env=env,
-                run_id=run_id,
-                ingest_date=biz_date.isoformat(),
-                started_at=started_at,
-                finished_at=finished_at,
-                status="success",
-                inputs={"tables": [entity], "backfill": True},
-                outputs={
-                    "tables": [
-                        {
-                            "table": entity,
-                            "status": "success",
-                            "s3_key": bronze_key,
-                            "rows": len(group_df),
-                        }
-                    ],
-                    "tables_succeeded": 1,
-                    "tables_failed": 0,
-                },
-            )
-            write_manifest(
-                s3=s3, bucket=platform_bucket, manifest=manifest, kms_key_arn=kms_key_arn
-            )
-            table_keys.append(bronze_key)
-
         log.info(
-            "backfill_entity_done",
+            "backfill_entity_start",
             source=source,
             entity=entity,
             partitions=len(partitions),
             rows=len(df),
         )
+        table_keys = [
+            _write_partition(
+                df=group_df,
+                source=source,
+                entity=entity,
+                biz_date=biz_date,
+                platform_bucket=platform_bucket,
+                env=env,
+                s3=s3,
+                kms_key_arn=kms_key_arn,
+            )
+            for biz_date, group_df in partitions.items()
+        ]
+        log.info("backfill_entity_done", source=source, entity=entity, partitions=len(partitions))
         results[entity] = table_keys
+
+    return results
+
+
+def _backfill_dated_exports(
+    *,
+    exports_dir: Path,
+    subfolder: str,
+    filename_glob: str,
+    source: str,
+    entity: str,
+    pipeline_start_date: date,
+    platform_bucket: str,
+    env: str,
+    s3: Any,
+    kms_key_arn: str | None = None,
+) -> list[str]:
+    """Backfill export CSVs where the date is embedded in the filename (YYYYMMDD_*.csv)."""
+    export_path = exports_dir / subfolder
+    if not export_path.exists():
+        log.warning("backfill_export_dir_missing", path=str(export_path), entity=entity)
+        return []
+
+    files = sorted(export_path.glob(filename_glob))
+    if not files:
+        log.info("backfill_no_export_files", entity=entity)
+        return []
+
+    keys: list[str] = []
+    for csv_file in files:
+        date_str = csv_file.name[:8]
+        try:
+            file_date = date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+        except ValueError:
+            log.warning("backfill_bad_filename", file=csv_file.name, entity=entity)
+            continue
+
+        if file_date < pipeline_start_date:
+            file_date = pipeline_start_date
+
+        df = pd.read_csv(csv_file)
+        if df.empty:
+            continue
+
+        key = _write_partition(
+            df=df,
+            source=source,
+            entity=entity,
+            biz_date=file_date,
+            platform_bucket=platform_bucket,
+            env=env,
+            s3=s3,
+            kms_key_arn=kms_key_arn,
+        )
+        keys.append(key)
+
+    log.info("backfill_entity_done", source=source, entity=entity, partitions=len(keys))
+    return keys
+
+
+def backfill_from_staging(
+    *,
+    staging_core_dir: Path,
+    staging_exports_dir: Path,
+    platform_bucket: str,
+    pipeline_start_date: date,
+    env: str,
+    s3: Any,
+    kms_key_arn: str | None = None,
+) -> dict[str, Any]:
+    """Backfill all bronze entities from Trust staging (core CSVs + export CSVs)."""
+    results = _backfill_core_csvs(
+        staging_core_dir=staging_core_dir,
+        pipeline_start_date=pipeline_start_date,
+        platform_bucket=platform_bucket,
+        env=env,
+        s3=s3,
+        kms_key_arn=kms_key_arn,
+    )
+
+    results["appointments"] = _backfill_dated_exports(
+        exports_dir=staging_exports_dir,
+        subfolder="appointments",
+        filename_glob="*_appointments.csv",
+        source="sftp_appointments",
+        entity="appointments",
+        pipeline_start_date=pipeline_start_date,
+        platform_bucket=platform_bucket,
+        env=env,
+        s3=s3,
+        kms_key_arn=kms_key_arn,
+    )
+
+    results["diagnostics_orders"] = _backfill_dated_exports(
+        exports_dir=staging_exports_dir,
+        subfolder="diagnostics",
+        filename_glob="*_diagnostic_orders.csv",
+        source="trust_s3_diagnostics",
+        entity="diagnostics_orders",
+        pipeline_start_date=pipeline_start_date,
+        platform_bucket=platform_bucket,
+        env=env,
+        s3=s3,
+        kms_key_arn=kms_key_arn,
+    )
 
     return results
