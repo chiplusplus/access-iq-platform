@@ -23,9 +23,11 @@ def main() -> None:
     # Load ALL vars from .env into os.environ — pydantic Settings only reads
     # ACCESS_IQ_* prefixed fields, but the DSN vars (EHR_DSN, etc.) are raw
     # env vars referenced indirectly via postgres_sources.dsn_env.
+    from pathlib import Path
+
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(Path.cwd() / ".env")
 
     settings = Settings()  # type: ignore[call-arg]
     pipeline_start = date.today() - relativedelta(months=12)
