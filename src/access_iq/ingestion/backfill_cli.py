@@ -54,7 +54,10 @@ def main() -> None:
         log.error("staging_dir_not_found", path=str(staging_core))
         sys.exit(1)
 
-    session = boto3.Session(region_name=settings.aws_region)
+    session = boto3.Session(
+        profile_name=settings.aws_profile,
+        region_name=settings.aws_region,
+    )
     s3 = session.client("s3")
 
     log.info(
