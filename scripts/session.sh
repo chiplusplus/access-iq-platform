@@ -624,7 +624,7 @@ DASHEOF
     echo "  Skipping backfill (--skip-seed)"
   else
     local BACKFILL_ROLE_ARN
-    BACKFILL_ROLE_ARN=$(platform_output iam EcsTaskRoleArn)
+    BACKFILL_ROLE_ARN=$(platform_output iam IngestionRoleArn)
     echo "  Assuming role: $BACKFILL_ROLE_ARN"
     (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli \
       --assume-role-arn "$BACKFILL_ROLE_ARN")

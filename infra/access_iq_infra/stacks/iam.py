@@ -99,6 +99,14 @@ class IngestionRoleStack(Stack):
 
         self.ingestion_role = ingestion_role
 
+        CfnOutput(
+            self,
+            "IngestionRoleArn",
+            value=ingestion_role.role_arn,
+            export_name=f"{cfg.app_name}-{cfg.env_name}-ingestion-role-arn",
+            description="ARN of the ingestion role (assumable by SSO user for bronze writes).",
+        )
+
         # ── ECS Task Role (D-13, D-14) ──────────────────────────────────
         ecs_task_role = iam.Role(
             self,
