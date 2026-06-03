@@ -1,11 +1,11 @@
 # Data Dictionary - Bronze Layer
 
-**Generated:** 2026-05-27T13:19:26.239827+00:00
+**Generated:** 2026-06-03T15:59:21.735436+00:00
 **Source:** S3 Bronze Parquet (latest ingest_date partition)
 
 ## patient_demographics
 
-**Source:** ehr_postgres | **Rows:** 100,000 | **PK:** patient_id (unique) | **Date range:** 2026-05-27 11:33:46.129988 to 2026-05-27 11:34:02.304381
+**Source:** ehr_postgres | **Rows:** 100,000 | **PK:** patient_id (unique) | **Date range:** 2026-06-03 14:15:01.497765 to 2026-06-03 14:15:27.778169
 
 | Column | Type | Non-Null % | Distinct | Min | Max | Notes |
 |--------|------|-----------|----------|-----|-----|-------|
@@ -24,7 +24,7 @@
 | registration_start_date | object | 100.0% | 18746 |  |  |  |
 | registration_end_date | object | 10.2% | 4863 |  |  |  |
 | is_active | bool | 100.0% | 2 |  |  |  |
-| updated_at | datetime64[us] | 100.0% | 2 | 2026-05-27 11:33:46.129988 | 2026-05-27 11:34:02.304381 |  |
+| updated_at | datetime64[us] | 100.0% | 2 | 2026-06-03 14:15:01.497765 | 2026-06-03 14:15:27.778169 |  |
 
 ### Gap Analysis
 
@@ -33,15 +33,15 @@
 
 ## encounters
 
-**Source:** ehr_postgres | **Rows:** 594,676 | **PK:** encounter_id (unique) | **Date range:** 2023-01-01 00:00:00 to 2026-05-27 11:37:22.541623
+**Source:** ehr_postgres | **Rows:** 316,212 | **PK:** encounter_id (unique) | **Date range:** 2025-06-03 00:00:00 to 2026-06-14 00:00:00
 
 | Column | Type | Non-Null % | Distinct | Min | Max | Notes |
 |--------|------|-----------|----------|-----|-----|-------|
-| encounter_id | int64 | 100.0% | 594676 | 1 | 594676 |  |
-| patient_id | int64 | 100.0% | 88444 | 1 | 100000 |  |
+| encounter_id | int64 | 100.0% | 316212 | 1 | 317113 |  |
+| patient_id | int64 | 100.0% | 83763 | 1 | 100000 |  |
 | provider_id | int64 | 100.0% | 125 | 1 | 125 |  |
-| encounter_datetime_start | datetime64[us] | 100.0% | 730 | 2023-01-01 00:00:00 | 2024-12-30 00:00:00 |  |
-| encounter_datetime_end | datetime64[us] | 100.0% | 730 | 2023-01-01 00:00:00 | 2024-12-30 00:00:00 |  |
+| encounter_datetime_start | datetime64[us] | 100.0% | 376 | 2025-06-03 00:00:00 | 2026-06-14 00:00:00 |  |
+| encounter_datetime_end | datetime64[us] | 100.0% | 376 | 2025-06-03 00:00:00 | 2026-06-14 00:00:00 |  |
 | encounter_type | object | 100.0% | 6 |  |  |  |
 | source_system | object | 100.0% | 5 |  |  |  |
 | clinician_id | int64 | 100.0% | 3250 | 1 | 3250 |  |
@@ -50,8 +50,8 @@
 | first_attendance_flag | bool | 100.0% | 2 |  |  |  |
 | primary_condition_code | object | 100.0% | 7 |  |  |  |
 | wait_time_days | int64 | 100.0% | 86 | 0 | 90 |  |
-| created_at | datetime64[us] | 100.0% | 594676 | 2026-05-27 11:32:01.674935 | 2026-05-27 11:32:52.348040 |  |
-| updated_at | datetime64[us] | 100.0% | 12 | 2026-05-27 11:34:18.658382 | 2026-05-27 11:37:22.541623 |  |
+| created_at | datetime64[us] | 100.0% | 316212 | 2026-06-03 13:59:33.398885 | 2026-06-03 14:00:00.860544 |  |
+| updated_at | datetime64[us] | 100.0% | 7 | 2026-06-03 14:15:54.162631 | 2026-06-03 14:18:31.033072 |  |
 
 ### Gap Analysis
 
@@ -59,20 +59,20 @@
 
 ## referrals
 
-**Source:** ehr_postgres | **Rows:** 208,137 | **PK:** referral_id (unique) | **Date range:** 2023-01-01 00:00:00 to 2026-05-27 11:38:22.896178
+**Source:** ehr_postgres | **Rows:** 110,694 | **PK:** referral_id (unique) | **Date range:** 2025-05-27 00:00:00 to 2026-06-14 00:00:00
 
 | Column | Type | Non-Null % | Distinct | Min | Max | Notes |
 |--------|------|-----------|----------|-----|-----|-------|
-| referral_id | int64 | 100.0% | 208137 | 1 | 208137 |  |
-| patient_id | int64 | 100.0% | 75031 | 1 | 100000 |  |
+| referral_id | int64 | 100.0% | 110694 | 1 | 110990 |  |
+| patient_id | int64 | 100.0% | 59599 | 1 | 100000 |  |
 | source_provider_id | int64 | 100.0% | 125 | 1 | 125 |  |
 | target_provider_id | int64 | 100.0% | 40 | 1 | 125 |  |
-| referral_datetime | datetime64[us] | 100.0% | 731 | 2023-01-01 00:00:00 | 2024-12-31 00:00:00 |  |
+| referral_datetime | datetime64[us] | 100.0% | 383 | 2025-05-27 00:00:00 | 2026-06-14 00:00:00 |  |
 | referral_type | object | 100.0% | 2 |  |  |  |
 | referral_specialty | object | 100.0% | 9 |  |  |  |
 | status | object | 100.0% | 2 |  |  |  |
-| created_at | datetime64[us] | 100.0% | 5 | 2026-05-27 11:37:38.609376 | 2026-05-27 11:38:22.896178 |  |
-| updated_at | datetime64[us] | 100.0% | 5 | 2026-05-27 11:37:38.609376 | 2026-05-27 11:38:22.896178 |  |
+| created_at | datetime64[us] | 100.0% | 3 | 2026-06-03 14:18:41.230627 | 2026-06-03 14:19:22.239025 |  |
+| updated_at | datetime64[us] | 100.0% | 3 | 2026-06-03 14:18:41.230627 | 2026-06-03 14:19:22.239025 |  |
 
 ### Gap Analysis
 
@@ -80,29 +80,47 @@
 
 ## diagnoses
 
-*No data available for profiling.*
-
-## appointments
-
-**Source:** sftp_appointments | **Rows:** 7,363 | **PK:** appointment_id (unique) | **Date range:**  to
+**Source:** ehr_postgres | **Rows:** 316,489 | **PK:** diagnosis_id (unique) | **Date range:** 2025-06-03 00:00:00 to 2026-06-21 00:00:00
 
 | Column | Type | Non-Null % | Distinct | Min | Max | Notes |
 |--------|------|-----------|----------|-----|-----|-------|
-| appointment_id | object | 100.0% | 7363 |  |  |  |
-| patient_id | object | 100.0% | 7038 |  |  |  |
-| nhs_pseudo_id | object | 100.0% | 7038 |  |  |  |
+| diagnosis_id | int64 | 100.0% | 316489 | 1 | 317352 |  |
+| patient_id | int64 | 100.0% | 77562 | 1 | 100000 |  |
+| encounter_id | int64 | 100.0% | 221440 | 1 | 317113 |  |
+| diagnosis_code | object | 100.0% | 20 |  |  |  |
+| diagnosis_desc | object | 100.0% | 20 |  |  |  |
+| diagnosis_type | object | 100.0% | 2 |  |  |  |
+| coded_datetime | datetime64[us] | 100.0% | 384 | 2025-06-03 00:00:00 | 2026-06-21 00:00:00 |  |
+| clinical_datetime | datetime64[us] | 100.0% | 376 | 2025-06-03 00:00:00 | 2026-06-14 00:00:00 |  |
+| source_system | object | 100.0% | 1 |  |  |  |
+| created_at | datetime64[us] | 100.0% | 7 | 2026-06-03 14:19:27.644808 | 2026-06-03 14:22:03.450221 |  |
+| updated_at | datetime64[us] | 100.0% | 7 | 2026-06-03 14:19:27.644808 | 2026-06-03 14:22:03.450221 |  |
+
+### Gap Analysis
+
+- Join keys: `patient_id`, `encounter_id`
+
+## appointments
+
+**Source:** sftp_appointments | **Rows:** 197,328 | **PK:** appointment_id (unique) | **Date range:**  to
+
+| Column | Type | Non-Null % | Distinct | Min | Max | Notes |
+|--------|------|-----------|----------|-----|-----|-------|
+| appointment_id | object | 100.0% | 197328 |  |  |  |
+| patient_id | object | 100.0% | 75183 |  |  |  |
+| nhs_pseudo_id | object | 100.0% | 75183 |  |  |  |
 | registered_gp_practice_id | object | 100.0% | 50 |  |  |  |
 | service_location_id | object | 100.0% | 85 |  |  |  |
-| clinician_id | object | 100.0% | 2883 |  |  |  |
-| appointment_start_datetime | object | 100.0% | 13 |  |  |  |
-| appointment_end_datetime | object | 100.0% | 13 |  |  |  |
+| clinician_id | object | 100.0% | 3250 |  |  |  |
+| appointment_start_datetime | object | 100.0% | 366 |  |  |  |
+| appointment_end_datetime | object | 100.0% | 366 |  |  |  |
 | appointment_type | object | 100.0% | 2 |  |  |  |
 | mode | object | 100.0% | 3 |  |  |  |
 | slot_type | object | 100.0% | 2 |  |  |  |
 | booking_status | object | 100.0% | 4 |  |  |  |
-| booking_created_datetime | object | 100.0% | 89 |  |  |  |
-| booking_updated_datetime | object | 100.0% | 94 |  |  |  |
-| wait_time_days | object | 100.0% | 81 |  |  |  |
+| booking_created_datetime | object | 100.0% | 442 |  |  |  |
+| booking_updated_datetime | object | 100.0% | 444 |  |  |  |
+| wait_time_days | object | 100.0% | 84 |  |  |  |
 | imd_decile | object | 100.0% | 10 |  |  |  |
 
 ### Gap Analysis
@@ -115,24 +133,24 @@
 
 ## urgent_care_logs
 
-**Source:** urgent_care_postgres | **Rows:** 61,029 | **PK:** uc_log_id (unique) | **Date range:** 2023-01-01 00:00:00 to 2026-05-27 11:48:04.317901
+**Source:** urgent_care_postgres | **Rows:** 32,372 | **PK:** uc_log_id (unique) | **Date range:** 2025-06-03 00:00:00 to 2026-06-14 05:00:00
 
 | Column | Type | Non-Null % | Distinct | Min | Max | Notes |
 |--------|------|-----------|----------|-----|-----|-------|
-| uc_log_id | int64 | 100.0% | 61029 | 1 | 61029 |  |
-| patient_id | int64 | 100.0% | 41911 | 4 | 100000 |  |
+| uc_log_id | int64 | 100.0% | 32372 | 1 | 32458 |  |
+| patient_id | int64 | 100.0% | 26332 | 2 | 99999 |  |
 | provider_id | int64 | 100.0% | 10 | 106 | 115 |  |
-| encounter_id | int64 | 100.0% | 61029 | 27 | 594676 |  |
-| arrival_datetime | datetime64[us] | 100.0% | 730 | 2023-01-01 00:00:00 | 2024-12-30 00:00:00 |  |
-| triage_datetime | datetime64[us] | 100.0% | 21118 | 2023-01-01 00:00:00 | 2024-12-30 00:30:00 |  |
-| seen_by_clinician_datetime | datetime64[us] | 100.0% | 46718 | 2023-01-01 00:10:00 | 2024-12-30 03:00:00 |  |
-| departure_datetime | datetime64[us] | 100.0% | 3650 | 2023-01-01 01:00:00 | 2024-12-30 05:00:00 |  |
+| encounter_id | int64 | 100.0% | 32372 | 8 | 317106 |  |
+| arrival_datetime | datetime64[us] | 100.0% | 376 | 2025-06-03 00:00:00 | 2026-06-14 00:00:00 |  |
+| triage_datetime | datetime64[us] | 100.0% | 10901 | 2025-06-03 00:00:00 | 2026-06-14 00:30:00 |  |
+| seen_by_clinician_datetime | datetime64[us] | 100.0% | 24659 | 2025-06-03 00:12:00 | 2026-06-14 02:59:00 |  |
+| departure_datetime | datetime64[us] | 100.0% | 1880 | 2025-06-03 01:00:00 | 2026-06-14 05:00:00 |  |
 | triage_category | object | 100.0% | 5 |  |  |  |
 | presenting_complaint | object | 100.0% | 8 |  |  |  |
 | outcome | object | 100.0% | 4 |  |  |  |
 | source_system | object | 100.0% | 1 |  |  |  |
-| created_at | datetime64[us] | 100.0% | 2 | 2026-05-27 11:47:48.514863 | 2026-05-27 11:48:04.317901 |  |
-| updated_at | datetime64[us] | 100.0% | 2 | 2026-05-27 11:47:48.514863 | 2026-05-27 11:48:04.317901 |  |
+| created_at | datetime64[us] | 100.0% | 1 | 2026-06-03 14:34:30.950493 | 2026-06-03 14:34:30.950493 |  |
+| updated_at | datetime64[us] | 100.0% | 1 | 2026-06-03 14:34:30.950493 | 2026-06-03 14:34:30.950493 |  |
 
 ### Gap Analysis
 
@@ -140,15 +158,15 @@
 
 ## diagnostics_orders
 
-**Source:** trust_s3_diagnostics | **Rows:** 629 | **PK:** diagnostic_id (unique) | **Date range:**  to
+**Source:** trust_s3_diagnostics | **Rows:** 964 | **PK:** diagnostic_id (unique) | **Date range:**  to
 
 | Column | Type | Non-Null % | Distinct | Min | Max | Notes |
 |--------|------|-----------|----------|-----|-----|-------|
-| diagnostic_id | object | 100.0% | 629 |  |  |  |
-| patient_id | object | 100.0% | 608 |  |  |  |
-| referral_id | object | 100.0% | 460 |  |  |  |
-| encounter_id | object | 100.0% | 150 |  |  |  |
-| provider_id | object | 100.0% | 93 |  |  |  |
+| diagnostic_id | object | 100.0% | 964 |  |  |  |
+| patient_id | object | 100.0% | 888 |  |  |  |
+| referral_id | object | 100.0% | 474 |  |  |  |
+| encounter_id | object | 100.0% | 439 |  |  |  |
+| provider_id | object | 100.0% | 121 |  |  |  |
 | test_type | object | 100.0% | 6 |  |  |  |
 | test_panel | object | 100.0% | 19 |  |  |  |
 | request_date | object | 100.0% | 1 |  |  |  |

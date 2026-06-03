@@ -34,6 +34,8 @@ def handler(event: dict, context: object) -> None:
             summary = _format_prefect(payload)
             subject = _format_prefect_subject(payload)
         elif payload.get("source") == "aws.ecs":
+            if _ecs_all_exit_zero(payload):
+                continue
             summary = _format_ecs_event(payload)
             subject = _format_ecs_subject(payload)
         else:
@@ -82,6 +84,11 @@ def _format_prefect_subject(payload: dict) -> str:
     flow = payload.get("flow_name", "unknown")
     env = payload.get("env", "?")
     return f"[ALERT] {flow} pipeline failed ({env})"
+
+
+def _ecs_all_exit_zero(payload: dict) -> bool:
+    containers = payload.get("detail", {}).get("containers", [])
+    return bool(containers) and all(c.get("exitCode") == 0 for c in containers)
 
 
 def _format_ecs_event(payload: dict) -> str:
