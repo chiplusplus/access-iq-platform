@@ -19,7 +19,26 @@
 #}
 
 WITH bronze AS (
-    SELECT *
+    SELECT
+        provider_id,
+        provider_code,
+        site_name,
+        provider_type,
+        parent_trust_name,
+        ics_region,
+        address_line_1,
+        city,
+        postcode,
+        postcode_sector,
+        lsoa_code,
+        is_main_site,
+        site_status,
+        has_ed,
+        has_inpatient_beds,
+        size_band,
+        opening_hours,
+        service_lines,
+        ingest_date::varchar::date                      AS ingest_date
     FROM {{ source('bronze_external', 'provider_site_reference') }}
     {% if is_incremental() %}
     WHERE ingest_date > (SELECT MAX(_ingest_date) FROM {{ this }})

@@ -8,7 +8,22 @@
 }}
 
 WITH bronze AS (
-    SELECT *
+    SELECT
+        patient_id,
+        nhs_pseudo_id,
+        age_band,
+        sex,
+        ethnicity_ons,
+        date_of_birth::varchar::date                    AS date_of_birth,
+        postcode_sector,
+        lsoa_code,
+        chronic_conditions_count,
+        registered_gp_practice_id,
+        registration_start_date::varchar::date          AS registration_start_date,
+        registration_end_date::varchar::date            AS registration_end_date,
+        is_active,
+        updated_at::varchar::timestamp                  AS updated_at,
+        ingest_date
     FROM {{ source('bronze_external', 'patient_demographics') }}
     {% if is_incremental() %}
     WHERE ingest_date > (SELECT MAX(_ingest_date) FROM {{ this }})

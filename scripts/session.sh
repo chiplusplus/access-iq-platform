@@ -51,6 +51,41 @@ session_summary() {
   printf "\033[1;33m═══════════════════════════════════════════════\033[0m\n"
 }
 
+# ── Tunnel helpers ────────────────────────────────────────────────────
+
+ensure_prefect_tunnel() {
+  if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "  Prefect tunnel down — reconnecting..."
+  local pid_file="$PLATFORM_REPO/.prefect-tunnel.pid"
+  local old_pid
+  old_pid="$(cat "$pid_file" 2>/dev/null || true)"
+  if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
+    kill "$old_pid" 2>/dev/null || true
+  fi
+
+  local tunnel_instance
+  tunnel_instance=$(platform_output warehouse TunnelInstanceId)
+  aws ssm start-session \
+    --target "$tunnel_instance" \
+    --document-name AWS-StartPortForwardingSessionToRemoteHost \
+    --parameters '{"host":["prefect-server.access-iq.local"],"portNumber":["4200"],"localPortNumber":["4200"]}' \
+    --profile "$AWS_PROFILE" --region "$REGION" &
+  echo "$!" > "$pid_file"
+
+  for i in $(seq 1 15); do
+    if curl -sf http://localhost:4200/api/health >/dev/null 2>&1; then
+      echo "  ✓ Prefect tunnel reconnected"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "  WARNING: Prefect tunnel reconnect failed"
+  return 1
+}
+
 # ── Trust helpers ─────────────────────────────────────────────────────
 
 trust_output() {
@@ -691,26 +726,36 @@ DASHEOF
     echo "  Skipping backfill (--skip-seed)"
   else
     if [ "$skip_backfill" = true ]; then
-      echo "  Skipping bronze backfill (--skip-backfill, reusing existing data)"
+      echo "  Skipping bronze backfill + Spectrum registration (--skip-backfill)"
     else
       local BACKFILL_ROLE_ARN
       BACKFILL_ROLE_ARN=$(platform_output iam IngestionRoleArn)
       echo "  Assuming role: $BACKFILL_ROLE_ARN"
       (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli \
         --assume-role-arn "$BACKFILL_ROLE_ARN")
-    fi
 
-    # Register Spectrum partitions for all backfilled dates (one-time, not in daily pipeline)
-    echo "  Registering Spectrum partitions for backfilled data..."
-    (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
-      dbt run-operation backfill_spectrum_partitions \
-      --project-dir dbt --profiles-dir dbt --target dev)
+      # Create Spectrum external tables then register partitions for all backfilled dates
+      echo "  Creating Spectrum external tables..."
+      (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
+        dbt run-operation stage_external_sources \
+        --project-dir dbt --profiles-dir dbt --target dev)
+
+      echo "  Registering Spectrum partitions for backfilled data..."
+      (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
+        dbt run-operation backfill_spectrum_partitions \
+        --project-dir dbt --profiles-dir dbt --target dev)
+    fi
   fi
 
   step_done
 
   # ── Step 10/12: Deploy Prefect flow (schedule paused until pipeline completes) ──
   step_start "10/12" "Deploy Prefect flow (schedule paused)" "10-20s"
+
+  # Reconnect Prefect tunnel if it dropped during step 9
+  if [ "$server_ready" = true ]; then
+    ensure_prefect_tunnel || server_ready=false
+  fi
 
   if [ "$server_ready" = true ]; then
     # Resolve CDK stack outputs for flow deployment
@@ -834,6 +879,11 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
 
   # ── Step 11/12: Run pipeline over backfilled data ────────────────────────
   step_start "11/12" "Run pipeline (Spectrum → Silver → Gold → Export)" "10-20 min"
+
+  # Reconnect Prefect tunnel if it dropped
+  if [ "$server_ready" = true ]; then
+    ensure_prefect_tunnel || server_ready=false
+  fi
 
   if [ "$skip_seed" = true ]; then
     echo "  Skipping pipeline run (--skip-seed)"
@@ -1032,19 +1082,13 @@ cmd_down() {
     rm -f "$RS_TUNNEL_PID_FILE"
   fi
 
-  step_start "2/4" "Destroy Platform stacks" "3-5 min"
+  step_start "2/3" "Destroy Platform stacks" "~20 min"
   (cd "$PLATFORM_REPO/infra" && AWS_PROFILE="$AWS_PROFILE" uv run cdk destroy --all --force \
     -c "env=$CDK_ENV" \
     -c "trust_vpc_id=$TRUST_VPC")
   step_done
 
-  step_start "3/4" "Destroy Trust budget stack" "<1 min"
-  (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
-    && AWS_PROFILE="$TRUST_PROFILE" cdk destroy TrustBudgetStack --force) 2>/dev/null \
-    || echo "  Trust budget stack not deployed or already destroyed"
-  step_done
-
-  step_start "4/4" "Destroy Trust stack" "3-5 min"
+  step_start "3/3" "Destroy Trust stack" "~20 min"
   if [ -f "$TRUST_REPO/.tunnel.pid" ]; then
     local tunnel_pid
     tunnel_pid="$(cat "$TRUST_REPO/.tunnel.pid" 2>/dev/null || true)"
@@ -1059,6 +1103,7 @@ cmd_down() {
   session_summary
   echo ""
   echo "  ✓ Both stacks destroyed."
+  echo "  Run make status to verify clean teardown."
   echo ""
 }
 
