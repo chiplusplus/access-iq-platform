@@ -732,7 +732,7 @@ DASHEOF
       echo "  Clearing old bronze, manifests, and gold_export data..."
       for prefix in bronze/ _manifests/ gold_export/; do
         aws s3 rm "s3://${PLATFORM_BUCKET}/${prefix}" --recursive \
-          --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || true
+          --profile "$AWS_PROFILE" --region "$REGION" --quiet 2>/dev/null || true
       done
       echo "  ✅ Platform S3 cleared"
 
