@@ -74,26 +74,43 @@ cmd_up() {
   local skip_generate=""
   local skip_seed=false
   local skip_infra=false
+  local skip_backfill=false
+  local skip_trust=false
   for arg in "$@"; do
     case "$arg" in
       --skip-generate) skip_generate="--skip-generate" ;;
       --skip-seed) skip_seed=true ;;
       --skip-infra) skip_infra=true ;;
+      --skip-backfill) skip_backfill=true ;;
+      --skip-trust) skip_trust=true ;;
     esac
   done
 
   echo ""
-  echo "  Deploy sequence: Generate data (local) → Trust deploy + seed → Platform → Redshift pre-warm → Trust (routes + SGs) → Secrets → Docker → Prefect → Bronze backfill → Simulation"
-  [ -n "$skip_generate" ] && echo "  Skipping data generation (reusing existing data/staging/)"
-  [ "$skip_seed" = true ] && echo "  Skipping data seeding (deploy infrastructure only)"
-  [ "$skip_infra" = true ] && echo "  Skipping infrastructure deployments (reusing existing stacks)"
-  echo "  Estimated total: 45-55 minutes"
+  printf "\033[1;35m  🚀 Access-IQ Platform Bootstrap\033[0m\n"
+  printf "\033[0;35m  ─────────────────────────────────\033[0m\n"
+  echo "  📋 13 steps · ⏱️  ~55-75 minutes"
+  echo ""
+  echo "  ☕ We'll be here a while - grab a coffee, catch up on some Netflix, finally reply to"
+  echo "     that message you've been 'meaning to get back to'..."
+  echo ""
+  echo "  🔧 Infra    Data gen → Trust → Platform → Spectrum → Routes → Secrets"
+  echo "  🐳 Compute  Docker → Tunnels → Prefect deploy"
+  echo "  📊 Data     Bronze backfill → Pipeline (Silver + Gold) → Simulation"
+  echo ""
+  [ -n "$skip_generate" ] && echo "  ⏭️  Skipping data generation (reusing existing data/staging/)"
+  [ "$skip_seed" = true ] && echo "  ⏭️  Skipping data seeding (deploy infrastructure only)"
+  [ "$skip_infra" = true ] && echo "  ⏭️  Skipping infrastructure deployments (reusing existing stacks)"
+  [ "$skip_backfill" = true ] && echo "  ⏭️  Skipping bronze backfill (reusing existing data, Spectrum still runs)"
+  [ "$skip_trust" = true ] && echo "  ⏭️  Skipping Trust steps (data gen, deploy, outputs, routes)"
   echo ""
 
   # ── Step 0: Generate synthetic data locally (no AWS cost) ──
-  step_start "0/11" "Generate Trust synthetic data" "2-5 min"
+  step_start "0/12" "Generate Trust synthetic data" "2-5 min"
   if [ -n "$skip_generate" ]; then
     echo "  Skipping data generation (--skip-generate, reusing data/staging/)"
+  elif [ "$skip_trust" = true ]; then
+    echo "  Skipping (--skip-trust)"
   elif [ "$skip_seed" = true ]; then
     echo "  Skipping data generation (--skip-seed)"
   else
@@ -102,8 +119,10 @@ cmd_up() {
   fi
   step_done
 
-  step_start "1/11" "Deploy Trust infrastructure + seed data" "30-45 min"
-  if [ "$skip_infra" = true ]; then
+  step_start "1/12" "Deploy Trust infrastructure + seed data" "30-45 min"
+  if [ "$skip_trust" = true ]; then
+    echo "  Skipping (--skip-trust)"
+  elif [ "$skip_infra" = true ]; then
     echo "  Skipping Trust deploy (--skip-infra)"
   elif [ "$skip_seed" = true ]; then
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
@@ -116,12 +135,15 @@ cmd_up() {
   fi
   step_done
 
-  step_start "2/11" "Read Trust outputs" "<5s"
+  step_start "2/12" "Read Trust outputs" "<5s"
+  if [ "$skip_trust" = true ]; then
+    echo "  Skipping (--skip-trust)"
+  fi
   TRUST_VPC=$(trust_output VpcId)
   echo "  Trust VPC: $TRUST_VPC"
   step_done
 
-  step_start "3/11" "Deploy Platform stacks" "~15min"
+  step_start "3/12" "Deploy Platform stacks" "~15min"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping Platform deploy (--skip-infra)"
@@ -139,9 +161,13 @@ cmd_up() {
   export BRONZE_S3_PREFIX="s3://${PLATFORM_BUCKET}/bronze"
   echo "  BRONZE_S3_PREFIX=${BRONZE_S3_PREFIX}"
 
+  local LAKE_KMS_KEY_ARN
+  LAKE_KMS_KEY_ARN=$(platform_output lake KmsKeyArn)
+  echo "  LAKE_KMS_KEY_ARN=${LAKE_KMS_KEY_ARN}"
+
   step_done
 
-  step_start "4/11" "Create Spectrum external schema + pre-warm Redshift" "<10s"
+  step_start "4/12" "Create Spectrum external schema + pre-warm Redshift" "<10s"
 
   SPECTRUM_STMT_ID=""
   if [ "$skip_seed" = true ]; then
@@ -204,8 +230,10 @@ cmd_up() {
     --query "Stacks[0].Outputs[?OutputKey==\`PeeringConnectionId\`].OutputValue" \
     --output text --profile "$AWS_PROFILE" --region "$REGION")
 
-  step_start "5/11" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
-  if [ "$skip_infra" = true ]; then
+  step_start "5/12" "Redeploy Trust with routes, peering SG rules, and budget stack" "~2 min"
+  if [ "$skip_trust" = true ]; then
+    echo "  Skipping (--skip-trust)"
+  elif [ "$skip_infra" = true ]; then
     echo "  Skipping Trust redeploy (--skip-infra)"
   else
     echo "  Platform VPC:  $PLATFORM_VPC"
@@ -226,7 +254,7 @@ cmd_up() {
   step_done
 
   # ── Step 7: Seed Platform secrets from Trust outputs ──
-  step_start "6/11" "Seed Platform secrets from Trust" "<30s"
+  step_start "6/12" "Seed Platform secrets from Trust" "<30s"
 
   if [ "$skip_infra" = true ]; then
     echo "  Skipping secret seeding (--skip-infra)"
@@ -399,6 +427,12 @@ cmd_up() {
     echo "  WARNING: Redshift admin secret not found - skipping redshift-dsn/password seeding"
   fi
 
+  # Fetch dbt env vars from warehouse stack (needed for .env and pipeline step)
+  local LAMBDA_UDF_ROLE_ARN=""
+  local HMAC_LAMBDA_NAME=""
+  LAMBDA_UDF_ROLE_ARN=$(platform_output warehouse LambdaUdfRoleArn 2>/dev/null || echo "")
+  HMAC_LAMBDA_NAME=$(platform_output warehouse HmacLambdaName 2>/dev/null || echo "")
+
   fi  # skip_infra
 
   step_done
@@ -408,6 +442,12 @@ cmd_up() {
   # Skipped with --skip-infra since .env already exists from initial run.
   if [ "$skip_infra" = true ]; then
     echo "  Skipping .env write (--skip-infra, reusing existing .env)"
+    # Source existing .env to export dbt vars for later steps
+    if [ -f "$PLATFORM_REPO/.env" ]; then
+      set -a
+      source "$PLATFORM_REPO/.env"
+      set +a
+    fi
   else
     local TRUST_BUCKET
     TRUST_BUCKET=$(trust_output ExternalBucketName 2>/dev/null || echo "northshire-trust-external-exports")
@@ -426,7 +466,13 @@ SFTP_HOST=${SFTP_ENDPOINT}
 SFTP_PORT=22
 SFTP_USER=${SFTP_USER_VAL}
 SFTP_PRIVATE_KEY_PATH=${PLATFORM_REPO}/.secrets/sftp_key.pem
+ACCESS_IQ_LAKE_KMS_KEY_ARN=${LAKE_KMS_KEY_ARN}
 BRONZE_S3_PREFIX=s3://${PLATFORM_BUCKET}/bronze
+REDSHIFT_HOST=${RS_HOST:-localhost}
+REDSHIFT_USER=${RS_USER:-admin}
+REDSHIFT_PASSWORD=${RS_PASS:-}
+REDSHIFT_LAMBDA_UDF_ROLE_ARN=${LAMBDA_UDF_ROLE_ARN}
+HMAC_LAMBDA_NAME=${HMAC_LAMBDA_NAME:-access-iq-${CDK_ENV}-hmac-nhs-udf}
 EOF
 
     # Write SFTP private key to a secured file (not inline in .env)
@@ -435,7 +481,14 @@ EOF
     printf '%s\n' "$SFTP_PRIVATE_KEY_VAL" > "$PLATFORM_REPO/.secrets/sftp_key.pem"
     chmod 600 "$PLATFORM_REPO/.secrets/sftp_key.pem"
 
-    echo "  ✓ .env written (${#PLATFORM_BUCKET} char bucket, all runtime vars)"
+    # Export dbt env vars for shell (dbt env_var() reads OS env, not .env)
+    export REDSHIFT_HOST="${RS_HOST:-localhost}"
+    export REDSHIFT_USER="${RS_USER:-admin}"
+    export REDSHIFT_PASSWORD="${RS_PASS:-}"
+    export REDSHIFT_LAMBDA_UDF_ROLE_ARN="${LAMBDA_UDF_ROLE_ARN}"
+    export HMAC_LAMBDA_NAME="${HMAC_LAMBDA_NAME:-access-iq-${CDK_ENV}-hmac-nhs-udf}"
+
+    echo "  ✓ .env written + dbt vars exported"
 
     # Populate Streamlit dashboard secrets from IAM stack outputs
     local DASH_KEY_ID DASH_SECRET_KEY
@@ -464,7 +517,7 @@ DASHEOF
   fi
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/11" "Build and push ingestion image to ECR" "2-3 min"
+  step_start "7/12" "Build and push ingestion image to ECR" "2-3 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -506,8 +559,19 @@ DASHEOF
     fi
   fi
 
-  # ── Step 8/11: Start tunnels + wait for Prefect server ──
-  step_start "8/11" "Start tunnels + wait for Prefect server" "30-60s"
+  # ── Step 8/12: Start tunnels + wait for Prefect server ──
+  step_start "8/12" "Start tunnels + wait for Prefect server + warm Redshift" "30-60s"
+
+  # Fire-and-forget: wake Redshift RPUs now so they're warm by the time dbt runs.
+  if [ -n "${RS_SECRET_ARN:-}" ]; then
+    aws redshift-data execute-statement \
+      --workgroup-name "access-iq-${CDK_ENV}" \
+      --database dev \
+      --secret-arn "$RS_SECRET_ARN" \
+      --sql "SELECT 1;" \
+      --profile "$AWS_PROFILE" --region "$REGION" >/dev/null 2>&1 || true
+    echo "  Redshift pre-warm query submitted"
+  fi
 
   local TUNNEL_PID_FILE="$PLATFORM_REPO/.tunnel.pid"
   local TUNNEL_INSTANCE_ID
@@ -617,23 +681,33 @@ DASHEOF
   fi
   step_done
 
-  # ── Step 9/11: Historical bronze backfill ────────────────────────────────
-  step_start "9/11" "Historical bronze backfill (Postgres → partitioned bronze)" "5-15 min"
+  # ── Step 9/12: Historical bronze backfill ────────────────────────────────
+  step_start "9/12" "Historical bronze backfill (Postgres → partitioned bronze)" "5-15 min"
 
   if [ "$skip_seed" = true ]; then
     echo "  Skipping backfill (--skip-seed)"
   else
-    local BACKFILL_ROLE_ARN
-    BACKFILL_ROLE_ARN=$(platform_output iam IngestionRoleArn)
-    echo "  Assuming role: $BACKFILL_ROLE_ARN"
-    (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli \
-      --assume-role-arn "$BACKFILL_ROLE_ARN")
+    if [ "$skip_backfill" = true ]; then
+      echo "  Skipping bronze backfill (--skip-backfill, reusing existing data)"
+    else
+      local BACKFILL_ROLE_ARN
+      BACKFILL_ROLE_ARN=$(platform_output iam IngestionRoleArn)
+      echo "  Assuming role: $BACKFILL_ROLE_ARN"
+      (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli \
+        --assume-role-arn "$BACKFILL_ROLE_ARN")
+    fi
+
+    # Register Spectrum partitions for all backfilled dates (one-time, not in daily pipeline)
+    echo "  Registering Spectrum partitions for backfilled data..."
+    (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
+      dbt run-operation backfill_spectrum_partitions \
+      --project-dir dbt --profiles-dir dbt --target dev)
   fi
 
   step_done
 
-  # ── Step 10/11: Deploy Prefect flow (with schedule) ─────────────────────
-  step_start "10/11" "Deploy Prefect flow + schedule" "10-20s"
+  # ── Step 10/12: Deploy Prefect flow (schedule paused until pipeline completes) ──
+  step_start "10/12" "Deploy Prefect flow (schedule paused)" "10-20s"
 
   if [ "$server_ready" = true ]; then
     # Resolve CDK stack outputs for flow deployment
@@ -716,7 +790,7 @@ ${SUBNET_YAML}
     schedules:
       - cron: "10,40 * * * *"
         timezone: "Europe/London"
-        active: true
+        active: false
     parameters:
       env: ${CDK_ENV}
 EOYAML
@@ -748,18 +822,126 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
     (cd "$PLATFORM_REPO" && \
       uv run --package access-iq-flows prefect deploy --prefect-file "$DEPLOY_YAML" --name dev --no-prompt)
 
-    rm -f "$DEPLOY_YAML"
-
-    printf "  Prefect work pool + flow deployed (self-hosted)\n"
+    printf "  Prefect work pool + flow deployed (schedule paused until pipeline completes)\n"
     printf "  Prefect UI: http://localhost:4200 (tunnel PID %s)\n" "$prefect_tunnel_pid"
   else
     echo "  Skipping Prefect deploy (server not healthy)"
   fi
   step_done
 
-  # ── Step 11/11: Enable simulation schedule ─────────────────────────────
-  step_start "11/11" "Enable simulation schedule" "<5s"
+  # ── Step 11/12: Run pipeline over backfilled data ────────────────────────
+  step_start "11/12" "Run pipeline (Spectrum → Silver → Gold → Export)" "10-20 min"
 
+  if [ "$skip_seed" = true ]; then
+    echo "  Skipping pipeline run (--skip-seed)"
+  elif [ "$server_ready" = true ]; then
+    local run_date
+    run_date=$(date +%Y-%m-%d)
+
+    echo "  Bronze steps will skip (idempotency) — running Spectrum → Silver → Gold → Export"
+
+    local run_output
+    run_output=$(uv run --package access-iq-flows prefect deployment run 'daily-ingest/dev' \
+      --param "run_date=${run_date}" 2>&1)
+    echo "  $run_output"
+
+    local flow_run_id
+    flow_run_id=$(echo "$run_output" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+
+    if [ -n "$flow_run_id" ]; then
+      echo "  Watching flow run: $flow_run_id"
+      echo "  Prefect UI: http://localhost:4200/flow-runs/flow-run/$flow_run_id"
+
+      local flow_status="SCHEDULED"
+      local poll_count=0
+      local max_polls=120
+
+      while [ "$poll_count" -lt "$max_polls" ]; do
+        sleep 10
+        poll_count=$((poll_count + 1))
+
+        flow_status=$(curl -sf "${PREFECT_API_URL}/flow_runs/${flow_run_id}" \
+          | python3 -c "import sys,json; print(json.load(sys.stdin).get('state_type','UNKNOWN'))" 2>/dev/null \
+          || echo "UNKNOWN")
+
+        case "$flow_status" in
+          COMPLETED)
+            printf "  \033[1;32m✓ Pipeline completed — Silver + Gold layers ready for dashboard\033[0m\n"
+            break
+            ;;
+          FAILED|CRASHED|CANCELLED)
+            printf "  \033[1;33m⚠ Pipeline finished with status: %s\033[0m\n" "$flow_status"
+            printf "  \033[1;33m  Dashboard may have partial data. Check Prefect UI for details.\033[0m\n"
+            break
+            ;;
+          *)
+            if (( poll_count % 6 == 0 )); then
+              local elapsed=$((poll_count * 10))
+              printf "    Still running... (%ss elapsed, status: %s)\n" "$elapsed" "$flow_status"
+            fi
+            ;;
+        esac
+      done
+
+      if [ "$poll_count" -ge "$max_polls" ]; then
+        echo "  ⚠️  Pipeline still running after 20 min — check Prefect UI: http://localhost:4200"
+      fi
+    else
+      echo "  WARNING: Could not capture flow run ID — check Prefect UI manually"
+      echo "  Prefect UI: http://localhost:4200"
+    fi
+  else
+    echo "  Skipping pipeline run (Prefect server not healthy)"
+  fi
+
+  step_done
+
+  # ── Step 12/12: Activate Prefect schedule + enable simulation ────────────
+  step_start "12/12" "Activate schedules" "<10s"
+
+  # Activate Prefect pipeline schedule (was paused during initial pipeline run)
+  if [ "$server_ready" = true ] && [ -f "${DEPLOY_YAML:-}" ]; then
+    sed -i '' 's/active: false/active: true/' "$DEPLOY_YAML"
+    (cd "$PLATFORM_REPO" && \
+      uv run --package access-iq-flows prefect deploy --prefect-file "$DEPLOY_YAML" --name dev --no-prompt) 2>/dev/null
+    rm -f "$DEPLOY_YAML"
+    echo "  ✅ Prefect schedule activated (every :10 and :40)"
+  fi
+
+  # Inject RDS credentials into simulation Lambda env vars
+  SIMULATION_LAMBDA_NAME=$(
+    AWS_PROFILE="$TRUST_PROFILE" aws cloudformation describe-stacks \
+      --stack-name NorthshireTrustStack \
+      --query "Stacks[0].Outputs[?OutputKey=='SimulationLambdaName'].OutputValue" \
+      --output text --region "$REGION" 2>/dev/null || echo ""
+  )
+
+  if [ -n "$SIMULATION_LAMBDA_NAME" ] && [ "$SIMULATION_LAMBDA_NAME" != "None" ]; then
+    local RDS_ADMIN_SECRET_ARN
+    RDS_ADMIN_SECRET_ARN=$(
+      AWS_PROFILE="$TRUST_PROFILE" aws cloudformation describe-stacks \
+        --stack-name NorthshireTrustStack \
+        --query "Stacks[0].Outputs[?OutputKey=='RdsAdminSecretArn'].OutputValue" \
+        --output text --region "$REGION" 2>/dev/null || echo ""
+    )
+
+    if [ -n "$RDS_ADMIN_SECRET_ARN" ] && [ "$RDS_ADMIN_SECRET_ARN" != "None" ]; then
+      local RDS_ADMIN_PW
+      RDS_ADMIN_PW=$(AWS_PROFILE="$TRUST_PROFILE" aws secretsmanager get-secret-value \
+        --secret-id "$RDS_ADMIN_SECRET_ARN" --query 'SecretString' --output text \
+        --region "$REGION" | python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
+
+      AWS_PROFILE="$TRUST_PROFILE" aws lambda update-function-configuration \
+        --function-name "$SIMULATION_LAMBDA_NAME" \
+        --environment "Variables={TRUST_BUCKET=$(trust_output TrustExportsBucketName),SFTP_PREFIX=sftp-incoming/outbound/appointments,DIAGNOSTICS_PREFIX=diagnostics,RDS_HOST=$(trust_output RdsEndpoint),RDS_PORT=5432,RDS_USER=trust_admin,RDS_PASSWORD=${RDS_ADMIN_PW},RDS_DBNAME=ehr}" \
+        --region "$REGION" --no-cli-pager >/dev/null
+      echo "  ✅ Simulation Lambda credentials injected"
+    else
+      echo "  ⚠️  RDS admin secret not found — Lambda won't be able to write to RDS"
+    fi
+  fi
+
+  # Enable Trust simulation Lambda schedule
   SIMULATION_RULE_NAME=$(
     AWS_PROFILE="$TRUST_PROFILE" aws cloudformation describe-stacks \
       --stack-name NorthshireTrustStack \
@@ -780,18 +962,18 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
 
   session_summary
   echo ""
-  echo "  ✓ All stacks deployed, historical data loaded, simulation active."
+  echo "  ✓ All stacks deployed, historical data loaded, pipeline complete, simulation active."
   echo "  ✓ SSM tunnel running on localhost:5439 (PID $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'unknown'))"
   echo ""
   echo "    Simulation is ready. The platform has 12 months of historical data."
   echo "    New data drops every 30 minutes via the Trust simulation Lambda."
   echo "    Prefect ingests at :10 and :40 past each hour."
   echo ""
+  echo "    Dashboard:  make dashboard  ← ready to go"
   echo "    Prefect UI: http://localhost:4200"
-  echo "    Dashboard:  make dashboard"
   echo "    Status:     make status"
   echo "    Reconnect:  make reconnect (if tunnel disconnects)"
-  echo "    Stop tunnel: make down (or kill $(cat "$TUNNEL_PID_FILE" 2>/dev/null || echo 'PID'))"
+  echo "    Stop:       make down"
   echo ""
 }
 
@@ -1487,6 +1669,8 @@ case "${1:-}" in
     echo "  up [flags]            Deploy Trust + Platform, publish data, run ingestion (~25 min)"
     echo "                        --skip-generate: reuse existing data/staging/ instead of regenerating"
     echo "                        --skip-seed:     deploy infrastructure only, no data seeding"
+    echo "                        --skip-backfill: skip bronze backfill (Spectrum + pipeline still run)"
+    echo "                        --skip-trust:    skip Trust steps (data gen, deploy, outputs, routes)"
     echo "  down                  Destroy Platform + Trust stacks (~8 min)"
     echo "  status                Show current stack states"
     echo "  ingest                Run all 3 Bronze ingestion tasks on ECS (~5 min)"
