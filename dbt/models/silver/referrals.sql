@@ -11,7 +11,18 @@
 }}
 
 WITH bronze AS (
-    SELECT *
+    SELECT
+        referral_id,
+        patient_id,
+        source_provider_id,
+        target_provider_id,
+        referral_datetime::varchar::timestamp           AS referral_datetime,
+        referral_type,
+        referral_specialty,
+        status,
+        created_at::varchar::timestamp                  AS created_at,
+        updated_at::varchar::timestamp                  AS updated_at,
+        ingest_date
     FROM {{ source('bronze_external', 'referrals') }}
     {% if is_incremental() %}
     WHERE ingest_date > (SELECT MAX(_ingest_date) FROM {{ this }})

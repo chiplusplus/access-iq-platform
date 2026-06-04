@@ -70,7 +70,7 @@ def write_manifest(
         ContentType="application/json",
         **s3_kms_args(kms_key_arn),
     )
-    log.info(
+    log.debug(
         "manifest_written",
         key=key,
         status=manifest.status,

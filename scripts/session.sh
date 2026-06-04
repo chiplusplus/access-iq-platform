@@ -442,11 +442,14 @@ cmd_up() {
   # Skipped with --skip-infra since .env already exists from initial run.
   if [ "$skip_infra" = true ]; then
     echo "  Skipping .env write (--skip-infra, reusing existing .env)"
-    # Source existing .env to export dbt vars for later steps
+    # Export dbt vars from existing .env (only simple key=value lines, not JSON)
     if [ -f "$PLATFORM_REPO/.env" ]; then
-      set -a
-      source "$PLATFORM_REPO/.env"
-      set +a
+      while IFS='=' read -r key value; do
+        case "$key" in
+          REDSHIFT_*|HMAC_*|BRONZE_S3_PREFIX) export "$key=$value" ;;
+        esac
+      done < "$PLATFORM_REPO/.env"
+      export REDSHIFT_HOST="localhost"
     fi
   else
     local TRUST_BUCKET
@@ -468,7 +471,7 @@ SFTP_USER=${SFTP_USER_VAL}
 SFTP_PRIVATE_KEY_PATH=${PLATFORM_REPO}/.secrets/sftp_key.pem
 ACCESS_IQ_LAKE_KMS_KEY_ARN=${LAKE_KMS_KEY_ARN}
 BRONZE_S3_PREFIX=s3://${PLATFORM_BUCKET}/bronze
-REDSHIFT_HOST=${RS_HOST:-localhost}
+REDSHIFT_HOST=localhost
 REDSHIFT_USER=${RS_USER:-admin}
 REDSHIFT_PASSWORD=${RS_PASS:-}
 REDSHIFT_LAMBDA_UDF_ROLE_ARN=${LAMBDA_UDF_ROLE_ARN}
@@ -482,7 +485,7 @@ EOF
     chmod 600 "$PLATFORM_REPO/.secrets/sftp_key.pem"
 
     # Export dbt env vars for shell (dbt env_var() reads OS env, not .env)
-    export REDSHIFT_HOST="${RS_HOST:-localhost}"
+    export REDSHIFT_HOST="localhost"
     export REDSHIFT_USER="${RS_USER:-admin}"
     export REDSHIFT_PASSWORD="${RS_PASS:-}"
     export REDSHIFT_LAMBDA_UDF_ROLE_ARN="${LAMBDA_UDF_ROLE_ARN}"

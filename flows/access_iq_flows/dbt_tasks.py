@@ -10,6 +10,23 @@ from prefect import task
 log = structlog.get_logger(__name__)
 
 
+def _summarise_failures(result: object) -> str:
+    """Extract only failed/errored nodes from a dbtRunnerResult for readable logs."""
+    if not hasattr(result, "result") or not hasattr(result.result, "results"):
+        return str(result)
+
+    ok_statuses = {"success", "pass"}
+    failures = [r for r in result.result.results if r.status.value not in ok_statuses]
+    if not failures:
+        return f"result.success=False but no individual failures found (warn/skip?): {result.result.results[-1].message if result.result.results else 'empty'}"
+
+    lines = []
+    for f in failures:
+        name = getattr(f.node, "name", "unknown")
+        lines.append(f"  {name}: [{f.status.value}] {f.message}")
+    return "\n".join(lines)
+
+
 @task(retries=2, retry_delay_seconds=[60, 120], name="dbt-spectrum")
 def run_dbt_spectrum() -> None:
     """Create/refresh Spectrum external tables and register partitions."""
@@ -46,14 +63,6 @@ def run_dbt_spectrum() -> None:
         raise RuntimeError(f"add_spectrum_partitions failed: {detail}")
     log.info("spectrum_partitions_registered")
 
-    backfill_result: dbtRunnerResult = runner.invoke(
-        ["run-operation", "backfill_spectrum_partitions", *common_args]
-    )
-    if not backfill_result.success:
-        detail = backfill_result.exception or str(backfill_result.result) or "unknown error"
-        raise RuntimeError(f"backfill_spectrum_partitions failed: {detail}")
-    log.info("spectrum_backfill_partitions_registered")
-
 
 @task(retries=2, retry_delay_seconds=[60, 120], name="dbt-silver")
 def run_dbt_silver() -> None:
@@ -75,8 +84,10 @@ def run_dbt_silver() -> None:
 
     result: dbtRunnerResult = runner.invoke(["build", "--select", "silver", *common_args])
     if not result.success:
-        detail = result.exception or str(result.result) or "unknown error"
-        raise RuntimeError(f"dbt silver build failed: {detail}")
+        if result.exception:
+            raise RuntimeError(f"dbt silver build failed: {result.exception}")
+        detail = _summarise_failures(result)
+        raise RuntimeError(f"dbt silver build failed:\n{detail}")
     log.info("dbt_silver_complete")
 
 
@@ -104,6 +115,8 @@ def run_dbt_gold() -> None:
         ]
     )
     if not result.success:
-        detail = result.exception or str(result.result) or "unknown error"
-        raise RuntimeError(f"dbt gold build failed: {detail}")
+        if result.exception:
+            raise RuntimeError(f"dbt gold build failed: {result.exception}")
+        detail = _summarise_failures(result)
+        raise RuntimeError(f"dbt gold build failed:\n{detail}")
     log.info("dbt_gold_complete")

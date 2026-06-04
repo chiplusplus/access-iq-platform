@@ -11,7 +11,23 @@
 }}
 
 WITH bronze AS (
-    SELECT *
+    SELECT
+        encounter_id,
+        patient_id,
+        provider_id,
+        encounter_datetime_start::varchar::timestamp    AS encounter_datetime_start,
+        encounter_datetime_end::varchar::timestamp      AS encounter_datetime_end,
+        encounter_type,
+        source_system,
+        clinician_id,
+        priority,
+        was_attended,
+        first_attendance_flag,
+        primary_condition_code,
+        wait_time_days,
+        created_at::varchar::timestamp                  AS created_at,
+        updated_at::varchar::timestamp                  AS updated_at,
+        ingest_date
     FROM {{ source('bronze_external', 'encounters') }}
     {% if is_incremental() %}
     WHERE ingest_date > (SELECT MAX(_ingest_date) FROM {{ this }})

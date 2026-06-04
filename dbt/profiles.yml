@@ -11,6 +11,7 @@ access_iq:
       dbname: dev
       schema: bronze_external
       threads: 4
+      connect_timeout: 300
     prod:
       type: redshift
       method: database
@@ -21,6 +22,7 @@ access_iq:
       dbname: dev
       schema: bronze_external
       threads: 4
+      connect_timeout: 300
     ci:
       # Database method with dummy credentials for CI parse/compile (no live connection needed)
       type: redshift
