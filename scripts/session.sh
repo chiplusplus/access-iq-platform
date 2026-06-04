@@ -728,6 +728,34 @@ DASHEOF
     if [ "$skip_backfill" = true ]; then
       echo "  Skipping bronze backfill + Spectrum registration (--skip-backfill)"
     else
+      # Clear old Platform data so backfill starts clean
+      echo "  Clearing old bronze, manifests, and gold_export data..."
+      for prefix in bronze/ _manifests/ gold_export/; do
+        aws s3 rm "s3://${PLATFORM_BUCKET}/${prefix}" --recursive \
+          --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || true
+      done
+      echo "  ✅ Platform S3 cleared"
+
+      # Drop Redshift silver/gold schemas so dbt rebuilds from scratch
+      echo "  Dropping Redshift silver/gold schemas..."
+      local RS_WORKGROUP="access-iq-${CDK_ENV}"
+      local RS_DB="dev"
+      local RS_SECRET_ARN
+      RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+        --namespace-name "$RS_WORKGROUP" \
+        --query 'namespace.adminPasswordSecretArn' \
+        --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+      if [ -n "$RS_SECRET_ARN" ] && [ "$RS_SECRET_ARN" != "None" ]; then
+        for schema in silver silver_keys silver_quarantine gold seeds; do
+          aws redshift-data execute-statement \
+            --workgroup-name "$RS_WORKGROUP" --database "$RS_DB" \
+            --secret-arn "$RS_SECRET_ARN" \
+            --sql "DROP SCHEMA IF EXISTS ${schema} CASCADE;" \
+            --profile "$AWS_PROFILE" --region "$REGION" --no-cli-pager >/dev/null 2>&1 || true
+        done
+        echo "  ✅ Redshift schemas dropped (will be recreated by dbt)"
+      fi
+
       local BACKFILL_ROLE_ARN
       BACKFILL_ROLE_ARN=$(platform_output iam IngestionRoleArn)
       echo "  Assuming role: $BACKFILL_ROLE_ARN"
