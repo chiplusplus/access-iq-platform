@@ -8,14 +8,7 @@
 }}
 
 WITH bronze AS (
-    SELECT
-        patient_id,
-        nhs_pseudo_id,
-        date_of_birth::varchar::date                    AS date_of_birth,
-        postcode_sector,
-        lsoa_code,
-        updated_at::varchar::timestamp                  AS updated_at,
-        ingest_date
+    SELECT *
     FROM {{ source('bronze_external', 'patient_demographics') }}
     {% if is_incremental() %}
     WHERE ingest_date > (SELECT MAX(_ingest_date) FROM {{ this }})

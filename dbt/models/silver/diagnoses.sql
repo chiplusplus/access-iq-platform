@@ -17,19 +17,7 @@
 #}
 
 WITH bronze AS (
-    SELECT
-        diagnosis_id,
-        patient_id,
-        encounter_id,
-        diagnosis_code,
-        diagnosis_desc,
-        diagnosis_type,
-        coded_datetime::varchar::timestamp              AS coded_datetime,
-        clinical_datetime::varchar::timestamp           AS clinical_datetime,
-        source_system,
-        created_at::varchar::timestamp                  AS created_at,
-        updated_at::varchar::timestamp                  AS updated_at,
-        ingest_date
+    SELECT *
     FROM {{ source('bronze_external', 'diagnoses') }}
     {% if is_incremental() %}
     WHERE ingest_date > (SELECT MAX(_ingest_date) FROM {{ this }})

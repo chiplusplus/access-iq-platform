@@ -19,22 +19,7 @@
 #}
 
 WITH bronze AS (
-    SELECT
-        uc_log_id,
-        patient_id,
-        provider_id,
-        encounter_id,
-        arrival_datetime::varchar::timestamp            AS arrival_datetime,
-        triage_datetime::varchar::timestamp             AS triage_datetime,
-        seen_by_clinician_datetime::varchar::timestamp  AS seen_by_clinician_datetime,
-        departure_datetime::varchar::timestamp          AS departure_datetime,
-        triage_category,
-        presenting_complaint,
-        outcome,
-        source_system,
-        created_at::varchar::timestamp                  AS created_at,
-        updated_at::varchar::timestamp                  AS updated_at,
-        ingest_date
+    SELECT *
     FROM {{ source('bronze_external', 'urgent_care_logs') }}
     {% if is_incremental() %}
     WHERE ingest_date > (SELECT MAX(_ingest_date) FROM {{ this }})

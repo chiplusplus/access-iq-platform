@@ -477,11 +477,13 @@ cmd_up() {
   # Skipped with --skip-infra since .env already exists from initial run.
   if [ "$skip_infra" = true ]; then
     echo "  Skipping .env write (--skip-infra, reusing existing .env)"
-    # Export dbt vars from existing .env (only simple key=value lines, not JSON)
+    # Export dbt vars from existing .env (safe for special chars in values)
     if [ -f "$PLATFORM_REPO/.env" ]; then
-      while IFS='=' read -r key value; do
-        case "$key" in
-          REDSHIFT_*|HMAC_*|BRONZE_S3_PREFIX) export "$key=$value" ;;
+      while IFS= read -r line; do
+        case "$line" in
+          REDSHIFT_*=*|HMAC_*=*|BRONZE_S3_PREFIX=*)
+            export "${line?}"
+            ;;
         esac
       done < "$PLATFORM_REPO/.env"
       export REDSHIFT_HOST="localhost"
@@ -617,7 +619,7 @@ DASHEOF
   local RS_ENDPOINT
   RS_ENDPOINT=$(platform_output warehouse WorkgroupEndpoint)
 
-  # Kill stale tunnels from prior runs
+  # Kill stale tunnels from prior runs (local PIDs + remote SSM sessions)
   for pidfile in "$TUNNEL_PID_FILE" "$PLATFORM_REPO/.prefect-tunnel.pid"; do
     if [ -f "$pidfile" ]; then
       local old_pid
@@ -628,6 +630,20 @@ DASHEOF
       fi
     fi
   done
+
+  # Terminate stale SSM sessions on the bastion to avoid per-instance session limits
+  local stale_sessions
+  stale_sessions=$(aws ssm describe-sessions --state Active \
+    --filters "key=Target,value=$TUNNEL_INSTANCE_ID" \
+    --query 'Sessions[*].SessionId' --output text \
+    --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+  if [ -n "$stale_sessions" ] && [ "$stale_sessions" != "None" ]; then
+    for sid in $stale_sessions; do
+      aws ssm terminate-session --session-id "$sid" \
+        --profile "$AWS_PROFILE" --region "$REGION" >/dev/null 2>&1 || true
+    done
+    echo "  Cleaned up $(echo "$stale_sessions" | wc -w | tr -d ' ') stale SSM session(s)"
+  fi
 
   # Start SSM tunnel in background (used by Prefect and manual dbt)
   aws ssm start-session \
@@ -726,7 +742,7 @@ DASHEOF
     echo "  Skipping backfill (--skip-seed)"
   else
     if [ "$skip_backfill" = true ]; then
-      echo "  Skipping bronze backfill + Spectrum registration (--skip-backfill)"
+      echo "  Skipping bronze backfill (--skip-backfill)"
     else
       # Clear old Platform data so backfill starts clean
       echo "  Clearing old bronze, manifests, and gold_export data..."
@@ -762,17 +778,50 @@ DASHEOF
       (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli \
         --assume-role-arn "$BACKFILL_ROLE_ARN")
 
-      # Create Spectrum external tables then register partitions for all backfilled dates
-      echo "  Creating Spectrum external tables..."
-      (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
-        dbt run-operation stage_external_sources \
-        --project-dir dbt --profiles-dir dbt --target dev)
-
-      echo "  Registering Spectrum partitions for backfilled data..."
-      (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
-        dbt run-operation backfill_spectrum_partitions \
-        --project-dir dbt --profiles-dir dbt --target dev)
     fi
+
+    # Wake Redshift RPUs and wait for readiness before dbt operations
+    local RS_WORKGROUP="access-iq-${CDK_ENV}"
+    local RS_DB="dev"
+    local RS_SECRET_ARN
+    RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+      --namespace-name "$RS_WORKGROUP" \
+      --query 'namespace.adminPasswordSecretArn' \
+      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+    if [ -n "$RS_SECRET_ARN" ] && [ "$RS_SECRET_ARN" != "None" ]; then
+      local warm_stmt_id
+      warm_stmt_id=$(aws redshift-data execute-statement \
+        --workgroup-name "$RS_WORKGROUP" --database "$RS_DB" \
+        --secret-arn "$RS_SECRET_ARN" \
+        --sql "SELECT 1;" \
+        --query 'Id' --output text \
+        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+      if [ -n "$warm_stmt_id" ]; then
+        local warm_status="SUBMITTED"
+        while [ "$warm_status" != "FINISHED" ] && [ "$warm_status" != "FAILED" ]; do
+          sleep 2
+          warm_status=$(aws redshift-data describe-statement --id "$warm_stmt_id" \
+            --query 'Status' --output text \
+            --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "FAILED")
+        done
+        if [ "$warm_status" = "FINISHED" ]; then
+          echo "  ✓ Redshift warm"
+        else
+          echo "  WARNING: Redshift warm-up failed"
+        fi
+      fi
+    fi
+
+    # Create Spectrum external tables then register partitions for all backfilled dates
+    echo "  Creating Spectrum external tables..."
+    (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
+      dbt run-operation stage_external_sources \
+      --project-dir dbt --profiles-dir dbt --target dev)
+
+    echo "  Registering Spectrum partitions for backfilled data..."
+    (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
+      dbt run-operation backfill_spectrum_partitions \
+      --project-dir dbt --profiles-dir dbt --target dev)
   fi
 
   step_done

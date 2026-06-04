@@ -38,6 +38,100 @@ ENTITY_DATE_COLUMNS: dict[str, str | None] = {
     "urgent_care_logs": "arrival_datetime",
 }
 
+ENTITY_COLUMN_TYPES: dict[str, dict[str, str]] = {
+    "patient_demographics": {
+        "patient_id": "int64",
+        "nhs_pseudo_id": "str",  # Glue expects varchar; CSV reads as int64
+        "date_of_birth": "date",
+        "age": "int64",
+        "imd_decile": "int64",
+        "chronic_conditions_count": "int64",
+        "is_active": "bool",
+        "registration_start_date": "date",
+        "registration_end_date": "date",
+        "updated_at": "timestamp",
+    },
+    "encounters": {
+        "encounter_id": "int64",
+        "patient_id": "int64",
+        "provider_id": "int64",
+        "clinician_id": "int64",
+        "encounter_datetime_start": "timestamp",
+        "encounter_datetime_end": "timestamp",
+        "was_attended": "bool",
+        "first_attendance_flag": "bool",
+        "wait_time_days": "int64",
+        "created_at": "timestamp",
+        "updated_at": "timestamp",
+    },
+    "referrals": {
+        "referral_id": "int64",
+        "patient_id": "int64",
+        "source_provider_id": "int64",
+        "target_provider_id": "int64",
+        "referral_datetime": "timestamp",
+        "created_at": "timestamp",
+        "updated_at": "timestamp",
+    },
+    "diagnoses": {
+        "diagnosis_id": "int64",
+        "patient_id": "int64",
+        "encounter_id": "int64",
+        "coded_datetime": "timestamp",
+        "clinical_datetime": "timestamp",
+        "created_at": "timestamp",
+        "updated_at": "timestamp",
+    },
+    "urgent_care_logs": {
+        "uc_log_id": "int64",
+        "patient_id": "int64",
+        "provider_id": "int64",
+        "encounter_id": "int64",
+        "arrival_datetime": "timestamp",
+        "triage_datetime": "timestamp",
+        "seen_by_clinician_datetime": "timestamp",
+        "departure_datetime": "timestamp",
+        "created_at": "timestamp",
+        "updated_at": "timestamp",
+    },
+}
+
+
+def _coerce_types(df: pd.DataFrame, entity: str) -> pd.DataFrame:
+    """Cast DataFrame columns to match the Glue external table schema."""
+    type_map = ENTITY_COLUMN_TYPES.get(entity, {})
+    for col, dtype in type_map.items():
+        if col not in df.columns:
+            if dtype == "timestamp":
+                df[col] = pd.Timestamp.now(tz="UTC")
+            else:
+                continue
+        if dtype == "timestamp":
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+        elif dtype == "date":
+            df[col] = pd.to_datetime(df[col], errors="coerce").dt.date
+        elif dtype == "int64":
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+        elif dtype == "bool":
+            df[col] = (
+                df[col]
+                .map(
+                    {
+                        "True": True,
+                        "true": True,
+                        "1": True,
+                        "False": False,
+                        "false": False,
+                        "0": False,
+                    }
+                )
+                .astype("boolean")
+            )
+        elif dtype == "str":
+            df[col] = df[col].astype(str)
+    return df
+
+
 BACKFILL_SOURCES: list[dict[str, str]] = [
     {"csv": "patients.csv", "source": "ehr_postgres", "entity": "patient_demographics"},
     {"csv": "encounters.csv", "source": "ehr_postgres", "entity": "encounters"},
@@ -130,10 +224,12 @@ def _backfill_core_csvs(
             log.warning("backfill_csv_missing", path=str(csv_path), entity=entity)
             continue
 
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, dtype=str)
         if df.empty:
             log.info("backfill_empty_csv", entity=entity)
             continue
+
+        df = _coerce_types(df, entity)
 
         if date_col is None:
             partitions = {date.today(): df}
@@ -209,7 +305,7 @@ def _backfill_dated_exports(
         if file_date < pipeline_start_date:
             file_date = pipeline_start_date
 
-        df = pd.read_csv(csv_file)
+        df = pd.read_csv(csv_file, dtype=str)
         if df.empty:
             continue
 
@@ -278,7 +374,7 @@ def backfill_from_staging(
     # Provider reference — static entity, single partition at pipeline start
     provider_xlsx = staging_exports_dir / "providers" / "sites_and_services_master.xlsx"
     if provider_xlsx.exists():
-        df = pd.read_excel(provider_xlsx, engine="openpyxl")
+        df = pd.read_excel(provider_xlsx, engine="openpyxl", dtype=str)
         if not df.empty:
             key = _write_partition(
                 df=df,
