@@ -232,14 +232,14 @@ def _backfill_core_csvs(
         df = _coerce_types(df, entity)
 
         if date_col is None:
-            partitions = {date.today(): df}
+            partitions: dict[date, pd.DataFrame] = {date.today(): df}
         else:
             raw_dates = pd.to_datetime(df[date_col]).dt.date
             df["_biz_date"] = raw_dates.apply(
                 lambda d: pipeline_start_date if d < pipeline_start_date else d
             )
             partitions = {
-                biz_date: group.drop(columns=["_biz_date"])
+                date.fromisoformat(str(biz_date)): group.drop(columns=["_biz_date"])
                 for biz_date, group in df.groupby("_biz_date")
             }
 

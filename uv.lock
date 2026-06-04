@@ -185,6 +185,7 @@ dev = [
     { name = "types-boto3-s3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "types-paramiko", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
     { name = "types-psycopg2", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
+    { name = "types-python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-19-access-iq-ingestion-profiling' and extra == 'project-15-access-iq-infra')" },
 ]
 
 [package.metadata]
@@ -215,6 +216,7 @@ dev = [
     { name = "types-boto3-s3" },
     { name = "types-paramiko" },
     { name = "types-psycopg2" },
+    { name = "types-python-dateutil" },
 ]
 
 [[package]]
@@ -3994,6 +3996,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/71/9e/a78cffd63e14c45fc05664c42739b2b15938acff92ca59e22b22ced5695e/types_psycopg2-2.9.21.20260509.tar.gz", hash = "sha256:0422105f691a409e9d8048c2205aca9d694b70823248c6614393444017e9f088", size = 27215, upload-time = "2026-05-09T04:58:40.256Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/b3/f4d11df63430d7e14b2889caf73f6f6bf9147a51d866ce2da4c07d9f3c8b/types_psycopg2-2.9.21.20260509-py3-none-any.whl", hash = "sha256:69f6dae384bbea830dff23621936423035db152af901331e6f9c46f7c4f4b24f", size = 24940, upload-time = "2026-05-09T04:58:39.208Z" },
+]
+
+[[package]]
+name = "types-python-dateutil"
+version = "2.9.0.20260518"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8d/e8/c01bdf0d7c3659428c091fbd693177093639565bcbc86bc20098e6d37cc6/types_python_dateutil-2.9.0.20260518.tar.gz", hash = "sha256:51f02dc03b61c7f6a07df45797d4dfe8a1aa47f0b7db9ad89f6fd3a1a70e1b51", size = 17082, upload-time = "2026-05-18T06:05:24.508Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/22/169273273ca34e9ab0ae2f387ba72ed7e09faaaf834da01d6b89c2bea71a/types_python_dateutil-2.9.0.20260518-py3-none-any.whl", hash = "sha256:d6a9c5bd0de61460c8fdef8ab2b400f956a1a1075cce08d4e2b4434e478c50b8", size = 18431, upload-time = "2026-05-18T06:05:23.641Z" },
 ]
 
 [[package]]
