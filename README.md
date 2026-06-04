@@ -111,7 +111,7 @@ aws sso login --profile $PLATFORM_PROFILE
 aws sso login --profile $TRUST_PROFILE
 
 # Deploy everything
-make up                    # Deploy infra, seed data, start pipeline (~25 min)
+make up                    # Deploy infra, seed data, start pipeline (~65 min)
 ```
 
 `make up` invokes `scripts/session.sh` which orchestrates an 8-step deployment:
