@@ -1,0 +1,39 @@
+[project]
+name = "access-iq-ingestion"
+version = "0.1.0"
+description = "Access-IQ Bronze ingestion runtime (postgres / sftp / trust_s3)."
+requires-python = ">=3.12"
+dependencies = [
+    "boto3==1.42.53",
+    "paramiko==4.0.0",
+    "psycopg2-binary==2.9.11",
+    "pydantic==2.12.5",
+    "pydantic-settings>=2.6,<3",
+    "python-dotenv==1.2.1",
+    "structlog>=24.1,<26",
+    "pandas>=2.0",
+    "pyarrow>=18.0",
+    "openpyxl>=3.1,<4",
+    "awscrt>=0.23",
+    "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+profiling = [
+    "fg-data-profiling>=4.19,<5",
+    "setuptools<81",
+    "pandas>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.hatch.build.targets.wheel.force-include]
+"." = "access_iq"
+
+[tool.hatch.build.targets.wheel.sources]
+"." = "access_iq"

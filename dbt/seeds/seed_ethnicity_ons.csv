@@ -1,0 +1,18 @@
+ethnicity_code,ethnicity_label,ethnicity_group
+A,White - British,White
+B,White - Irish,White
+C,White - Any other White background,White
+D,Mixed - White and Black Caribbean,Mixed
+E,Mixed - White and Black African,Mixed
+F,Mixed - White and Asian,Mixed
+G,Mixed - Any other mixed background,Mixed
+H,Asian - Indian,Asian
+J,Asian - Pakistani,Asian
+K,Asian - Bangladeshi,Asian
+L,Asian - Any other Asian background,Asian
+M,Black - Caribbean,Black
+N,Black - African,Black
+P,Black - Any other Black background,Black
+R,Other - Chinese,Other
+S,Other - Any other ethnic group,Other
+Z,Not stated,Not stated

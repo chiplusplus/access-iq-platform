@@ -1,0 +1,39 @@
+graph TD
+    subgraph Sources["Trust Data Sources"]
+        EHR[EHR: patients, encounters,<br/>referrals, diagnoses]
+        UC[Urgent Care: logs]
+        APT[Appointments: SFTP drops]
+        DX[Diagnostics + Providers: S3]
+    end
+
+    subgraph Bronze["Bronze Layer (S3 Parquet)"]
+        B1[Raw Parquet<br/>append-only, partitioned by<br/>source/entity/ingest_date/run_id]
+        MAN[Manifests<br/>status + row counts + checksums]
+    end
+
+    subgraph Silver["Silver Layer (Redshift)"]
+        SP[patients<br/>HMAC pseudonymised]
+        SE[encounters + referrals<br/>+ diagnoses]
+        SA[appointments]
+        SUC[urgent_care]
+        SD[diagnostics_orders]
+        SPR[providers]
+        SQ[quarantine<br/>failed Mod-11]
+        SK[patient_identifiers<br/>keys schema]
+    end
+
+    subgraph Gold["Gold Layer (Redshift + S3 Export)"]
+        FWT[fct_wait_times<br/>RTT + DM01 breach]
+        FIN[fct_inequality<br/>IMD/ethnicity/age/gender<br/>SII/RII]
+        FUC[fct_urgent_care<br/>4h/12h breach]
+        FUT[fct_utilisation<br/>DNA rate]
+        DIM[6 dimensions<br/>patient, date, specialty,<br/>site, imd, ethnicity]
+    end
+
+    DASH[Streamlit Dashboard<br/>Wait Times / Inequality / Urgent Care]
+
+    Sources -->|ECS Fargate<br/>ingestion| Bronze
+    Bronze -->|Redshift Spectrum<br/>external tables| Silver
+    Silver -->|dbt incremental<br/>+ HMAC-SHA-256 UDF<br/>+ Mod-11 validation| Silver
+    Silver -->|DQ gate<br/>GE + dbt-expectations| Gold
+    Gold -->|Parquet export<br/>to S3| DASH

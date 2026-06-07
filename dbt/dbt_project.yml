@@ -1,0 +1,68 @@
+name: access_iq
+version: "0.1.0"
+config-version: 2
+profile: access_iq
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+dispatch:
+  - macro_namespace: dbt_external_tables
+    search_order: ["access_iq", "dbt_external_tables"]
+
+on-run-start:
+  - "CREATE SCHEMA IF NOT EXISTS silver"
+  - "CREATE SCHEMA IF NOT EXISTS silver_quarantine"
+  - "CREATE SCHEMA IF NOT EXISTS silver_keys"
+  - >
+    CREATE OR REPLACE EXTERNAL FUNCTION f_hmac_nhs_number(varchar)
+    RETURNS varchar VOLATILE
+    LAMBDA '{{ env_var("HMAC_LAMBDA_NAME", "access-iq-dev-hmac-nhs-udf") }}'
+    IAM_ROLE '{{ env_var("REDSHIFT_LAMBDA_UDF_ROLE_ARN") }}'
+  - >
+    {% if execute %}
+      {% set result = run_query("SELECT 1 FROM pg_group WHERE groname = 'analysts'") %}
+      {% if result | length == 0 %}
+        CREATE GROUP analysts
+      {% else %}
+        SELECT 1
+      {% endif %}
+    {% endif %}
+  - "GRANT USAGE ON SCHEMA silver TO GROUP analysts"
+  - "GRANT SELECT ON ALL TABLES IN SCHEMA silver TO GROUP analysts"
+  - "REVOKE USAGE ON SCHEMA silver_keys FROM GROUP analysts"
+  - "REVOKE USAGE ON SCHEMA silver_quarantine FROM GROUP analysts"
+  - "CREATE SCHEMA IF NOT EXISTS gold"
+  - "GRANT USAGE ON SCHEMA gold TO GROUP analysts"
+  - "GRANT SELECT ON ALL TABLES IN SCHEMA gold TO GROUP analysts"
+
+models:
+  access_iq:
+    bronze:
+      +schema: bronze_external
+      +materialized: ephemeral
+    silver:
+      +schema: silver
+      +materialized: incremental
+      keys:
+        +schema: silver_keys
+      quarantine:
+        +schema: silver_quarantine
+    gold:
+      +schema: gold
+      +materialized: table
+      +pre-hook: "{{ check_ge_gate() }}"
+
+seeds:
+  access_iq:
+    +schema: seeds
+
+vars:
+  bronze_database: "{{ env_var('REDSHIFT_DB', 'dev') }}"
+  bronze_schema: bronze_external
+  silver_schema: silver
+  gold_schema: gold

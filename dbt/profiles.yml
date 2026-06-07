@@ -1,0 +1,36 @@
+access_iq:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: redshift
+      method: database
+      host: "{{ env_var('REDSHIFT_HOST', 'localhost') }}"
+      port: 5439
+      user: "{{ env_var('REDSHIFT_USER', 'admin') }}"
+      password: "{{ env_var('REDSHIFT_PASSWORD', '') }}"
+      dbname: dev
+      schema: bronze_external
+      threads: 4
+      connect_timeout: 300
+    prod:
+      type: redshift
+      method: database
+      host: "{{ env_var('REDSHIFT_HOST', 'localhost') }}"
+      port: 5439
+      user: "{{ env_var('REDSHIFT_USER', 'admin') }}"
+      password: "{{ env_var('REDSHIFT_PASSWORD', '') }}"
+      dbname: dev
+      schema: bronze_external
+      threads: 4
+      connect_timeout: 300
+    ci:
+      # Database method with dummy credentials for CI parse/compile (no live connection needed)
+      type: redshift
+      method: database
+      host: localhost
+      port: 5439
+      user: ci
+      password: ci
+      dbname: dev
+      schema: bronze_external
+      threads: 4
