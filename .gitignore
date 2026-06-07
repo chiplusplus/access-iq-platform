@@ -222,6 +222,7 @@ infra/config/prod.json
 # Claude
 .planning/
 *.planning
+cdk.context.json
 infra/cdk.context.json
 */superpowers/*
 
@@ -231,6 +232,7 @@ dbt/dbt_packages/
 dbt/.dbt-venv/
 dbt/package-lock.yml
 dbt/.user.yml
+dbt/logs/
 
 # Session state
 .tunnel.pid

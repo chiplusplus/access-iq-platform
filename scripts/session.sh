@@ -742,7 +742,7 @@ DASHEOF
     echo "  Skipping backfill (--skip-seed)"
   else
     if [ "$skip_backfill" = true ]; then
-      echo "  Skipping bronze backfill (--skip-backfill)"
+      echo "  Skipping bronze backfill + Spectrum registration (--skip-backfill)"
     else
       # Clear old Platform data so backfill starts clean
       echo "  Clearing old bronze, manifests, and gold_export data..."
@@ -778,50 +778,49 @@ DASHEOF
       (cd "$PLATFORM_REPO" && uv run --package access-iq-ingestion python -m access_iq.ingestion.backfill_cli \
         --assume-role-arn "$BACKFILL_ROLE_ARN")
 
-    fi
-
-    # Wake Redshift RPUs and wait for readiness before dbt operations
-    local RS_WORKGROUP="access-iq-${CDK_ENV}"
-    local RS_DB="dev"
-    local RS_SECRET_ARN
-    RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
-      --namespace-name "$RS_WORKGROUP" \
-      --query 'namespace.adminPasswordSecretArn' \
-      --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-    if [ -n "$RS_SECRET_ARN" ] && [ "$RS_SECRET_ARN" != "None" ]; then
-      local warm_stmt_id
-      warm_stmt_id=$(aws redshift-data execute-statement \
-        --workgroup-name "$RS_WORKGROUP" --database "$RS_DB" \
-        --secret-arn "$RS_SECRET_ARN" \
-        --sql "SELECT 1;" \
-        --query 'Id' --output text \
-        --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
-      if [ -n "$warm_stmt_id" ]; then
-        local warm_status="SUBMITTED"
-        while [ "$warm_status" != "FINISHED" ] && [ "$warm_status" != "FAILED" ]; do
-          sleep 2
-          warm_status=$(aws redshift-data describe-statement --id "$warm_stmt_id" \
-            --query 'Status' --output text \
-            --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "FAILED")
-        done
-        if [ "$warm_status" = "FINISHED" ]; then
-          echo "  ✓ Redshift warm"
-        else
-          echo "  WARNING: Redshift warm-up failed"
+      # Wake Redshift RPUs and wait for readiness before dbt operations
+      local RS_WORKGROUP="access-iq-${CDK_ENV}"
+      local RS_DB="dev"
+      local RS_SECRET_ARN
+      RS_SECRET_ARN=$(aws redshift-serverless get-namespace \
+        --namespace-name "$RS_WORKGROUP" \
+        --query 'namespace.adminPasswordSecretArn' \
+        --output text --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+      if [ -n "$RS_SECRET_ARN" ] && [ "$RS_SECRET_ARN" != "None" ]; then
+        local warm_stmt_id
+        warm_stmt_id=$(aws redshift-data execute-statement \
+          --workgroup-name "$RS_WORKGROUP" --database "$RS_DB" \
+          --secret-arn "$RS_SECRET_ARN" \
+          --sql "SELECT 1;" \
+          --query 'Id' --output text \
+          --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "")
+        if [ -n "$warm_stmt_id" ]; then
+          local warm_status="SUBMITTED"
+          while [ "$warm_status" != "FINISHED" ] && [ "$warm_status" != "FAILED" ]; do
+            sleep 2
+            warm_status=$(aws redshift-data describe-statement --id "$warm_stmt_id" \
+              --query 'Status' --output text \
+              --profile "$AWS_PROFILE" --region "$REGION" 2>/dev/null || echo "FAILED")
+          done
+          if [ "$warm_status" = "FINISHED" ]; then
+            echo "  ✓ Redshift warm"
+          else
+            echo "  WARNING: Redshift warm-up failed"
+          fi
         fi
       fi
+
+      # Create Spectrum external tables then register partitions for all backfilled dates
+      echo "  Creating Spectrum external tables..."
+      (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
+        dbt run-operation stage_external_sources \
+        --project-dir dbt --profiles-dir dbt --target dev)
+
+      echo "  Registering Spectrum partitions for backfilled data..."
+      (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
+        dbt run-operation backfill_spectrum_partitions \
+        --project-dir dbt --profiles-dir dbt --target dev)
     fi
-
-    # Create Spectrum external tables then register partitions for all backfilled dates
-    echo "  Creating Spectrum external tables..."
-    (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
-      dbt run-operation stage_external_sources \
-      --project-dir dbt --profiles-dir dbt --target dev)
-
-    echo "  Registering Spectrum partitions for backfilled data..."
-    (cd "$PLATFORM_REPO" && uv run --package access-iq-flows \
-      dbt run-operation backfill_spectrum_partitions \
-      --project-dir dbt --profiles-dir dbt --target dev)
   fi
 
   step_done

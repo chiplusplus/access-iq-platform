@@ -9,16 +9,20 @@ from __future__ import annotations
 import os
 from datetime import date
 
+import boto3
 import structlog
 from prefect import flow, task
 from prefect.futures import wait
 
 from access_iq.config import Settings
-from access_iq.ingestion.postgres import ingest_postgres_source_to_bronze
+from access_iq.ingestion.manifests import discover_next_business_date
+from access_iq.ingestion.postgres import (
+    ENTITY_DATE_COLUMNS,
+    ingest_postgres_source_to_bronze,
+)
 from access_iq.ingestion.sftp import ingest_sftp_directory_to_bronze
 from access_iq.ingestion.trust_s3 import (
     ingest_trust_diagnostics_export_date_to_bronze,
-    ingest_trust_provider_ref_to_bronze,
 )
 from access_iq.logging_config import configure_logging
 from access_iq_flows.alerts import sns_on_failure
@@ -47,6 +51,7 @@ def task_ingest_postgres(run_date: str, settings: Settings) -> dict:
             env=settings.env,
             aws_region=settings.aws_region,
             kms_key_arn=settings.lake_kms_key_arn,
+            date_columns=ENTITY_DATE_COLUMNS,
         )
         manifests[db] = manifest
     return manifests
@@ -91,7 +96,7 @@ def task_ingest_trust_s3(run_date: str, settings: Settings) -> dict:
 
     base_bucket = trust_s3_cfg.base.bucket
 
-    # Diagnostics — ingest today's export_date only (historical dates
+    # Diagnostics — ingest this business date's export only (historical dates
     # are handled by the backfill during make up)
     diag_cfg = trust_s3_cfg.diagnostics
     diag_manifest = ingest_trust_diagnostics_export_date_to_bronze(
@@ -105,20 +110,8 @@ def task_ingest_trust_s3(run_date: str, settings: Settings) -> dict:
         kms_key_arn=settings.lake_kms_key_arn,
     )
 
-    # Provider reference
-    prov_cfg = trust_s3_cfg.provider_ref
-    prov_manifest = ingest_trust_provider_ref_to_bronze(
-        s3=s3,
-        trust_bucket=base_bucket,
-        trust_key=prov_cfg.key or "",
-        source_name=prov_cfg.source_name or "trust_provider_ref",
-        platform_bucket=settings.platform_bucket,
-        ingest_date=ingest_date,
-        env=settings.env,
-        kms_key_arn=settings.lake_kms_key_arn,
-    )
-
-    return {"diagnostics": diag_manifest, "provider_ref": prov_manifest}
+    # Provider reference is static — ingested once during backfill only
+    return {"diagnostics": diag_manifest}
 
 
 @flow(
@@ -139,14 +132,22 @@ def daily_ingest(run_date: str | None = None, env: str = "dev") -> None:
     configure_logging()
     structlog.contextvars.bind_contextvars(env=env)
 
-    effective_date = run_date or date.today().isoformat()
-    # Validate date format at flow entry (T-07-07); also guards export_gold_to_s3 SQL
-    date.fromisoformat(effective_date)
-
-    log.info("pipeline_start", run_date=effective_date, env=env)
-
     # Settings reads ACCESS_IQ_* env vars (injected by ECS task definition)
     settings = Settings()  # type: ignore[call-arg]
+
+    if run_date:
+        effective_date = run_date
+    else:
+        session = boto3.Session(region_name=settings.aws_region)
+        s3 = session.client("s3")
+        sources = list(settings.postgres_sources.keys())
+        next_date = discover_next_business_date(
+            s3=s3, bucket=settings.platform_bucket, sources=sources
+        )
+        effective_date = next_date.isoformat() if next_date else date.today().isoformat()
+
+    date.fromisoformat(effective_date)
+    log.info("pipeline_start", run_date=effective_date, env=env)
 
     # Step 1: Concurrent Bronze ingestion (D-03)
     pg_future = task_ingest_postgres.submit(run_date=effective_date, settings=settings)

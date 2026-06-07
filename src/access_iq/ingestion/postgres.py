@@ -23,6 +23,14 @@ from access_iq.ingestion.manifests import (
 
 log = structlog.get_logger(__name__)
 
+ENTITY_DATE_COLUMNS: dict[str, str | None] = {
+    "patient_demographics": "registration_start_date",
+    "encounters": "encounter_datetime_start",
+    "referrals": "referral_datetime",
+    "diagnoses": "clinical_datetime",
+    "urgent_care_logs": "arrival_datetime",
+}
+
 
 def ingest_table_to_bronze(
     *,
@@ -34,6 +42,7 @@ def ingest_table_to_bronze(
     s3_client: Any,
     run_id: str,
     kms_key_arn: str | None = None,
+    date_column: str | None = None,
 ) -> dict[str, Any]:
     started_at = utc_now_iso()
 
@@ -47,7 +56,9 @@ def ingest_table_to_bronze(
     try:
         extra = s3_kms_args(kms_key_arn)
         s3_client.upload_fileobj(
-            Fileobj=_parquet_buffer(cursor, table),
+            Fileobj=_parquet_buffer(
+                cursor, table, date_column=date_column, ingest_date=ingest_date
+            ),
             Bucket=platform_bucket,
             Key=bronze_key,
             ExtraArgs=extra if extra else None,
@@ -79,6 +90,7 @@ def ingest_postgres_source_to_bronze(
     aws_profile: str | None = None,
     fail_fast: bool = True,
     kms_key_arn: str | None = None,
+    date_columns: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
     run_id = str(uuid.uuid4())
     started_at = utc_now_iso()
@@ -119,6 +131,7 @@ def ingest_postgres_source_to_bronze(
                     s3_client=s3,
                     run_id=run_id,
                     kms_key_arn=kms_key_arn,
+                    date_column=date_columns.get(table) if date_columns else None,
                 )
             )
             bound_log.info("table_ingest_done", table=table, status="success")
@@ -165,9 +178,24 @@ def ingest_postgres_source_to_bronze(
     return result
 
 
-def _parquet_buffer(cursor: Any, table: str) -> io.BytesIO:
-    """Fetch all rows via SELECT and write to in-memory Parquet buffer."""
-    cursor.execute(f'SELECT * FROM "{table}"')
+def _parquet_buffer(
+    cursor: Any,
+    table: str,
+    date_column: str | None = None,
+    ingest_date: date | None = None,
+) -> io.BytesIO:
+    """Fetch rows via SELECT and write to in-memory Parquet buffer.
+
+    When date_column and ingest_date are provided, filters to rows matching
+    that business date only (incremental ingestion for simulation pipeline).
+    """
+    if date_column and ingest_date:
+        cursor.execute(
+            f'SELECT * FROM "{table}" WHERE "{date_column}"::date = %s',
+            [ingest_date.isoformat()],
+        )
+    else:
+        cursor.execute(f'SELECT * FROM "{table}"')
     columns = [desc[0] for desc in cursor.description]
     rows = cursor.fetchall()
     data = {col: [row[i] for row in rows] for i, col in enumerate(columns)}

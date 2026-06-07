@@ -27,16 +27,9 @@ from access_iq.ingestion.manifests import (
     utc_now_iso,
     write_manifest,
 )
+from access_iq.ingestion.postgres import ENTITY_DATE_COLUMNS
 
 log = structlog.get_logger(__name__)
-
-ENTITY_DATE_COLUMNS: dict[str, str | None] = {
-    "patient_demographics": "registration_start_date",
-    "encounters": "encounter_datetime_start",
-    "referrals": "referral_datetime",
-    "diagnoses": "clinical_datetime",
-    "urgent_care_logs": "arrival_datetime",
-}
 
 ENTITY_COLUMN_TYPES: dict[str, dict[str, str]] = {
     "patient_demographics": {

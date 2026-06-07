@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+import re as _re
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 import structlog
@@ -77,3 +78,60 @@ def write_manifest(
         error_count=len(manifest.error),
     )
     return key
+
+
+def discover_latest_successful_date(*, s3: Any, bucket: str, source: str) -> date | None:
+    """Find the latest ingest_date with a successful manifest for a source.
+
+    Scans manifest prefixes by ingest_date, checks from newest to oldest,
+    and returns the first date whose latest manifest has status=success.
+    """
+    prefix = normalize_manifest_prefix(f"_manifests/source={source}/")
+    paginator = s3.get_paginator("list_objects_v2")
+
+    dates: set[date] = set()
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+        for cp in page.get("CommonPrefixes", []):
+            match = _re.search(r"ingest_date=(\d{4}-\d{2}-\d{2})", cp["Prefix"])
+            if match:
+                dates.add(date.fromisoformat(match.group(1)))
+
+    if not dates:
+        return None
+
+    for d in sorted(dates, reverse=True):
+        mp = build_manifest_prefix(source=source, ingest_date=d.isoformat())
+        latest: dict[str, Any] | None = None
+        for page in paginator.paginate(Bucket=bucket, Prefix=mp):
+            for obj in page.get("Contents", []):
+                if latest is None or obj["LastModified"] > latest["LastModified"]:
+                    latest = obj
+        if not latest:
+            continue
+        body = s3.get_object(Bucket=bucket, Key=latest["Key"])["Body"].read()
+        try:
+            manifest_data = json.loads(body)
+            if isinstance(manifest_data, dict) and manifest_data.get("status") == "success":
+                return d
+        except (TypeError, json.JSONDecodeError):
+            continue
+
+    return None
+
+
+def discover_next_business_date(*, s3: Any, bucket: str, sources: list[str]) -> date | None:
+    """Discover the next business date to ingest across multiple sources.
+
+    Returns min(latest_successful_date) + 1 day across all sources, ensuring
+    all sources advance together. Returns None if no manifests exist.
+    """
+    latest_dates = []
+    for source in sources:
+        latest = discover_latest_successful_date(s3=s3, bucket=bucket, source=source)
+        if latest:
+            latest_dates.append(latest)
+
+    if not latest_dates:
+        return None
+
+    return min(latest_dates) + timedelta(days=1)
