@@ -1174,7 +1174,8 @@ cmd_down() {
     fi
     rm -f "$TRUST_REPO/.tunnel.pid"
   fi
-  (cd "$TRUST_REPO/infra" && AWS_PROFILE="$TRUST_PROFILE" uv run cdk destroy --all --force)
+  (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
+    && AWS_PROFILE="$TRUST_PROFILE" cdk destroy --all --force)
   step_done
 
   session_summary
