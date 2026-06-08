@@ -62,9 +62,9 @@ def _run() -> None:
         all_months = sorted(
             conn.execute(
                 "SELECT DISTINCT "
-                "CASE WHEN TRY_CAST(referral_month AS DATE) IS NOT NULL "
-                "     THEN STRFTIME(referral_month::DATE, '%Y-%m') "
-                "     ELSE referral_month::VARCHAR "
+                "CASE WHEN TRY_CAST(treatment_month AS DATE) IS NOT NULL "
+                "     THEN STRFTIME(treatment_month::DATE, '%Y-%m') "
+                "     ELSE treatment_month::VARCHAR "
                 "END AS rm "
                 "FROM fct_wait_times ORDER BY rm"
             )
@@ -72,7 +72,7 @@ def _run() -> None:
             .tolist()
         )
         date_range = st.sidebar.select_slider(
-            "Referral month range",
+            "Treatment month range",
             options=all_months,
             value=(all_months[0], all_months[-1]),
         )
@@ -144,24 +144,24 @@ def _run() -> None:
     else:
         st.info("No provider-level data available for current filters.")
 
-    # Chart 2: Wait time trend by referral_month (line)
+    # Chart 2: Wait time trend by treatment_month (line)
     trend_df = query_wait_trend(export_date, providers_t, specialties_t)
     if not trend_df.empty:
         # Filter to selected date range if slider is active
         if date_range is not None:
             range_start, range_end = date_range
             trend_df = trend_df[
-                (trend_df["referral_month"] >= range_start)
-                & (trend_df["referral_month"] <= range_end)
+                (trend_df["treatment_month"] >= range_start)
+                & (trend_df["treatment_month"] <= range_end)
             ]
         if not trend_df.empty:
             fig_line = line_trend(
                 trend_df,
-                "referral_month",
+                "treatment_month",
                 ["p50_wait", "p90_wait"],
                 ["P50", "P90"],
                 "Wait Time Trend by Month",
-                "Referral Month",
+                "Treatment Month",
                 "Days",
             )
             st.plotly_chart(fig_line, use_container_width=True)

@@ -28,7 +28,7 @@ WITH dim_p AS (
 wt_by_imd AS (
     SELECT
         'wait_time_median'      AS metric_name,
-        fw.referral_month       AS period,
+        fw.treatment_month       AS period,
         'imd_decile'            AS stratifier,
         dp.imd_decile::varchar  AS stratum,
         COUNT(*)                AS population_count,
@@ -42,7 +42,7 @@ wt_by_imd AS (
 wt_by_age AS (
     SELECT
         'wait_time_median'  AS metric_name,
-        fw.referral_month   AS period,
+        fw.treatment_month   AS period,
         'age_band'          AS stratifier,
         dp.age_band         AS stratum,
         COUNT(*)            AS population_count,
@@ -56,7 +56,7 @@ wt_by_age AS (
 wt_by_ethnicity AS (
     SELECT
         'wait_time_median'  AS metric_name,
-        fw.referral_month   AS period,
+        fw.treatment_month   AS period,
         'ethnicity_ons'     AS stratifier,
         dp.ethnicity_ons    AS stratum,
         COUNT(*)            AS population_count,
@@ -70,7 +70,7 @@ wt_by_ethnicity AS (
 wt_by_sex AS (
     SELECT
         'wait_time_median'  AS metric_name,
-        fw.referral_month   AS period,
+        fw.treatment_month   AS period,
         'sex'               AS stratifier,
         dp.sex              AS stratum,
         COUNT(*)            AS population_count,

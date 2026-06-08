@@ -134,7 +134,7 @@ def query_wait_by_provider(
 def query_wait_trend(
     export_date: str, providers: tuple[str, ...], specialties: tuple[str, ...]
 ) -> pd.DataFrame:
-    """Wait time trend by referral_month (D-06)."""
+    """Wait time trend by treatment_month (D-06)."""
     conn = get_connection()
     where_clauses = ["1=1"]
     params: list = []
@@ -148,10 +148,10 @@ def query_wait_trend(
     return conn.execute(
         f"""
         SELECT
-            CASE WHEN TRY_CAST(fw.referral_month AS DATE) IS NOT NULL
-                 THEN STRFTIME(fw.referral_month::DATE, '%Y-%m')
-                 ELSE fw.referral_month::VARCHAR
-            END AS referral_month,
+            CASE WHEN TRY_CAST(fw.treatment_month AS DATE) IS NOT NULL
+                 THEN STRFTIME(fw.treatment_month::DATE, '%Y-%m')
+                 ELSE fw.treatment_month::VARCHAR
+            END AS treatment_month,
             MEDIAN(fw.wait_days) AS p50_wait,
             QUANTILE_CONT(fw.wait_days, 0.9) AS p90_wait
         FROM fct_wait_times fw
@@ -167,7 +167,7 @@ def query_wait_trend(
 
 @st.cache_data(ttl=3600)
 def query_wait_month_bounds(export_date: str) -> pd.DataFrame:
-    """Unfiltered min/max referral_month for date range slider bounds (D-07).
+    """Unfiltered min/max treatment_month for date range slider bounds (D-07).
 
     Separate from filtered query to avoid circular dependency --
     slider bounds must be known before filters are applied.
@@ -175,13 +175,13 @@ def query_wait_month_bounds(export_date: str) -> pd.DataFrame:
     conn = get_connection()
     return conn.execute("""
         SELECT
-            CASE WHEN TRY_CAST(MIN(referral_month) AS DATE) IS NOT NULL
-                 THEN STRFTIME(MIN(referral_month)::DATE, '%Y-%m')
-                 ELSE MIN(referral_month)::VARCHAR
+            CASE WHEN TRY_CAST(MIN(treatment_month) AS DATE) IS NOT NULL
+                 THEN STRFTIME(MIN(treatment_month)::DATE, '%Y-%m')
+                 ELSE MIN(treatment_month)::VARCHAR
             END AS min_month,
-            CASE WHEN TRY_CAST(MAX(referral_month) AS DATE) IS NOT NULL
-                 THEN STRFTIME(MAX(referral_month)::DATE, '%Y-%m')
-                 ELSE MAX(referral_month)::VARCHAR
+            CASE WHEN TRY_CAST(MAX(treatment_month) AS DATE) IS NOT NULL
+                 THEN STRFTIME(MAX(treatment_month)::DATE, '%Y-%m')
+                 ELSE MAX(treatment_month)::VARCHAR
             END AS max_month
         FROM fct_wait_times
     """).df()

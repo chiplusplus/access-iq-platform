@@ -153,8 +153,8 @@ models:
         description: "Calendar days between dm01_request_date and dm01_result_date"
       - name: dm01_breach_flag
         description: "TRUE when dm01_wait_days > 42 (NHS 6-week DM01 standard)"
-      - name: referral_month
-        description: "Month truncation of referral_datetime for time-series aggregation"
+      - name: treatment_month
+        description: "Month the patient was treated (completed pathway). Used for NHS RTT time-series reporting."
       - name: referral_specialty
         description: "Raw specialty code from the referral"
       - name: status
