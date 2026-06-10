@@ -2,7 +2,7 @@
 
 ![Access-IQ Dashboard](docs/images/dashboard-screenshot.png)
 
-### **[View the Live Dashboard →](https://access-iq-platform-h7uetia39pda9vbx3afhxl.streamlit.app/)**
+### **[View the Live Dashboard →](https://access-iq-platform-v1.streamlit.app/)**
 
 [Case Study](docs/case-study.md) | [Architecture Decisions](docs/adr/)
 

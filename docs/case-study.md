@@ -70,7 +70,7 @@ See also: [ADR-001 Medallion](adr/ADR-001-medallion-architecture.md), [ADR-003 K
 - **Documentation**: 9 Architecture Decision Records, operational runbook, data flow map, asset register.
 - **Quality**: dbt-expectations tests on all models. Great Expectations person-level validation. DQ gate blocks Gold promotion on failure. Quarantine table retains failed records for audit.
 - **Security**: HMAC-SHA-256 pseudonymisation with per-environment keys. KMS CMK encryption at rest. IAM prefix-scoped roles. No raw NHS numbers in Silver or Gold.
-- **Dashboard**: [3 interactive pages](https://access-iq-platform-h7uetia39pda9vbx3afhxl.streamlit.app/) covering wait times, inequality (SII/RII), and urgent care. Hosted at $0/month with 24/7 availability.
+- **Dashboard**: [3 interactive pages](https://access-iq-platform-v1.streamlit.app/) covering wait times, inequality (SII/RII), and urgent care. Hosted at $0/month with 24/7 availability.
 
 ---
 
