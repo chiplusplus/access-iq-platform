@@ -1,0 +1,7 @@
+{
+  "app": "python3 app.py",
+  "context": {
+    "app_name": "access-iq",
+    "default_region": "eu-west-2"
+  }
+}

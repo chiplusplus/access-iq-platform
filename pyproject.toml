@@ -1,0 +1,97 @@
+[project]
+name = "access-iq-workspace"
+version = "0.1.0"
+description = "Access-IQ workspace root (uv workspace)"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+# NO runtime deps here - members own their own.
+
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+conflicts = [[
+    { package = "access-iq-ingestion", extra = "profiling" },
+    { package = "access-iq-infra" },
+]]
+
+[tool.uv.sources]
+access-iq-ingestion = { workspace = true }
+
+[tool.uv.workspace]
+members = ["src/access_iq", "infra", "dbt", "flows", "dashboard"]
+
+[dependency-groups]
+dev = [
+    "pre-commit==4.5.1",
+    "pytest==9.0.2",
+    "pytest-cov==7.0.0",
+    "ruff==0.14.13",
+    "mypy==1.19.1",
+    "types-psycopg2",
+    "types-boto3",
+    "types-boto3-s3",
+    "boto3-stubs",
+    "types-paramiko",
+    "types-python-dateutil",
+    "pandas-stubs",
+    "moto[s3]>=5.0,<6",
+    "pydantic>=2.12,<3",
+    "pydantic-settings>=2.6,<3",
+    "structlog>=24.1,<26",
+    "pandas>=2.0",
+    "pyarrow>=18.0",
+    "openpyxl>=3.1,<4",
+    "psycopg2-binary>=2.9,<3",
+    "paramiko>=4.0,<5",
+    "python-dotenv>=1.0,<2",
+    "plotly>=5.24",
+    "duckdb>=1.1,<2",
+    "streamlit>=1.41",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "infra", "dashboard"]
+fix = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "infra", "flows", "dashboard"]
+addopts = "--maxfail=1 -m 'not integration'"
+markers = [
+    "integration: tests that run against live AWS infrastructure (requires deployed stacks)",
+]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = ["src", "infra"]
+packages = ["access_iq", "access_iq_infra"]
+warn_return_any = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+exclude = "(infra/cdk\\.out/.*|dashboard/)"
+
+[[tool.mypy.overrides]]
+module = "data_profiling.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["dashboard.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["structlog", "structlog.*", "pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["access_iq", "access_iq_infra"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true

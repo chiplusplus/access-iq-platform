@@ -1,0 +1,22 @@
+icd10_code,description,chapter,block
+A00-B99,Certain infectious and parasitic diseases,I,A00-B99
+C00-D48,Neoplasms,II,C00-D48
+D50-D89,Diseases of the blood,III,D50-D89
+E00-E90,Endocrine nutritional and metabolic diseases,IV,E00-E90
+F00-F99,Mental and behavioural disorders,V,F00-F99
+G00-G99,Diseases of the nervous system,VI,G00-G99
+H00-H59,Diseases of the eye,VII,H00-H59
+H60-H95,Diseases of the ear,VIII,H60-H95
+I00-I99,Diseases of the circulatory system,IX,I00-I99
+J00-J99,Diseases of the respiratory system,X,J00-J99
+K00-K93,Diseases of the digestive system,XI,K00-K93
+L00-L99,Diseases of the skin,XII,L00-L99
+M00-M99,Diseases of the musculoskeletal system,XIII,M00-M99
+N00-N99,Diseases of the genitourinary system,XIV,N00-N99
+O00-O99,Pregnancy childbirth and the puerperium,XV,O00-O99
+P00-P96,Conditions originating in the perinatal period,XVI,P00-P96
+Q00-Q99,Congenital malformations,XVII,Q00-Q99
+R00-R99,Symptoms signs and abnormal findings,XVIII,R00-R99
+S00-T98,Injury poisoning and external causes,XIX,S00-T98
+V01-Y98,External causes of morbidity and mortality,XX,V01-Y98
+Z00-Z99,Factors influencing health status,XXI,Z00-Z99

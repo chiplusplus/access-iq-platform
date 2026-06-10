@@ -1,0 +1,44 @@
+{
+  "app_name": "access-iq",
+  "env_name": "prod",
+  "account_id": "YOUR_PLATFORM_ACCOUNT_ID",
+  "user_name": "YOUR_ROLE_NAME/YOUR_USER",
+  "region": "eu-west-2",
+  "tags": {
+    "Environment": "prod",
+    "Project": "access-iq",
+    "ManagedBy": "cdk",
+    "CostCenter": "project"
+  },
+  "s3": {
+    "removal_policy": "RETAIN"
+  },
+  "iam": {
+    "external_bucket": "YOUR_TRUST_EXPORTS_BUCKET",
+    "trust_account_id": "YOUR_TRUST_ACCOUNT_ID"
+  },
+  "vpc": {
+    "platform_cidr": "10.10.0.0/16",
+    "trust_cidr": "10.0.0.0/16",
+    "max_azs": 2,
+    "nat_gateways": 1
+  },
+  "ecs": {
+    "cpu": 1024,
+    "memory_limit_mib": 2048
+  },
+  "obs": {
+    "log_retention_days": 90,
+    "alert_email": "YOUR_ALERT_EMAIL",
+    "slack_channel_id": "",
+    "slack_workspace_id": "",
+    "slack_webhook_url": ""
+  },
+  "redshift": {
+    "base_capacity": 8,
+    "usage_limit_rpu_hours": 8,
+    "snapshot_retention_days": 7,
+    "db_name": "prod"
+  },
+  "dashboard": {}
+}
