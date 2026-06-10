@@ -98,6 +98,11 @@ cd northshire-hospital-sim
 python -m venv .northshire-hospital-sim
 .northshire-hospital-sim/bin/pip install -r requirements.txt
 
+# Configure Trust CDK context (required for cross-account VPC peering)
+cp infra/cdk.context.example.json infra/cdk.context.json
+# Edit infra/cdk.context.json — set platformAccountId to your Platform AWS account ID
+# See northshire-hospital-sim README for full variable reference
+
 # Set up the platform
 cd ../access-iq-platform
 cp .env.example .env       # Fill in AWS profile, bucket name, secret ARNs

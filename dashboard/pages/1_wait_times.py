@@ -22,8 +22,19 @@ from lib.s3 import get_bucket
 def _run() -> None:
     # --- Title + freshness badge ---
     st.title("Wait Times")
-    export_date = st.session_state.get("export_date")
     bucket = st.session_state.get("bucket") or get_bucket()
+    export_date = st.session_state.get("export_date")
+    if export_date is None:
+        from lib.s3 import get_data_source, list_export_dates, list_local_export_dates
+
+        source = get_data_source()
+        if source == "s3" and bucket:
+            dates = list_export_dates(bucket)
+        else:
+            dates = list_local_export_dates()
+        if dates:
+            export_date = dates[0]
+            st.session_state["export_date"] = export_date
     st.caption(data_freshness_text(export_date))
 
     # --- Register tables (D-02 lazy-load) ---
@@ -66,7 +77,7 @@ def _run() -> None:
                 "     THEN STRFTIME(treatment_month::DATE, '%Y-%m') "
                 "     ELSE treatment_month::VARCHAR "
                 "END AS rm "
-                "FROM fct_wait_times ORDER BY rm"
+                "FROM fct_wait_times WHERE treatment_month IS NOT NULL ORDER BY rm"
             )
             .df()["rm"]
             .tolist()

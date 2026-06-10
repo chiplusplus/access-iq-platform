@@ -32,7 +32,9 @@ diagnostics AS (
     GROUP BY referral_id
 ),
 
--- First attended encounter per patient after each referral (approximate - no FK between referrals and encounters)
+-- Match referral to its originating encounter via wait_time_days gap
+-- referral_datetime = encounter_start - wait_time_days - jitter(0-7)
+-- so: DATEDIFF(referral_datetime, encounter_start) BETWEEN wait_time_days AND wait_time_days + 7
 first_treatment AS (
     SELECT referral_id, treatment_date, enc_wait_time_days
     FROM (
@@ -44,7 +46,8 @@ first_treatment AS (
         FROM referrals r
         JOIN {{ ref('encounters') }} e
             ON  e.patient_sk = r.patient_sk
-            AND e.encounter_datetime_start > r.referral_datetime
+            AND DATEDIFF('day', r.referral_datetime::date, e.encounter_datetime_start::date)
+                BETWEEN e.wait_time_days AND e.wait_time_days + 7
             AND e.was_attended = TRUE
     ) ranked
     WHERE rn = 1

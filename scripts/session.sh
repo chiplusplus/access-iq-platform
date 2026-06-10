@@ -124,7 +124,7 @@ cmd_up() {
   echo ""
   printf "\033[1;35m  🚀 Access-IQ Platform Bootstrap\033[0m\n"
   printf "\033[0;35m  ─────────────────────────────────\033[0m\n"
-  echo "  📋 13 steps · ⏱️  ~55-75 minutes"
+  echo "  📋 13 steps · ⏱️  ~85-120 minutes"
   echo ""
   echo "  ☕ We'll be here a while - grab a coffee, catch up on some Netflix, finally reply to"
   echo "     that message you've been 'meaning to get back to'..."
@@ -160,9 +160,18 @@ cmd_up() {
   elif [ "$skip_infra" = true ]; then
     echo "  Skipping Trust deploy (--skip-infra)"
   elif [ "$skip_seed" = true ]; then
+    # Read platformAccountId from cdk.context.json if available
+    _trust_ctx_file="$TRUST_REPO/infra/cdk.context.json"
+    _trust_ctx_args=""
+    if [ -f "$_trust_ctx_file" ]; then
+      for _key in platformAccountId platformVpcId peeringConnectionId; do
+        _val=$(python3 -c "import json; d=json.load(open('$_trust_ctx_file')); print(d.get('$_key',''))" 2>/dev/null)
+        [ -n "$_val" ] && _trust_ctx_args="$_trust_ctx_args -c $_key=$_val"
+      done
+    fi
     (cd "$TRUST_REPO/infra" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" cdk deploy --all --outputs-file cdk-outputs.json \
-      --profile "$TRUST_PROFILE" --require-approval never)
+      --profile "$TRUST_PROFILE" --require-approval never $_trust_ctx_args)
   else
     (cd "$TRUST_REPO" && unset VIRTUAL_ENV && . "$TRUST_REPO/.northshire-hospital-sim/bin/activate" \
       && AWS_PROFILE="$TRUST_PROFILE" make trust-bootstrap \
@@ -202,7 +211,7 @@ cmd_up() {
 
   step_done
 
-  step_start "4/12" "Create Spectrum external schema + pre-warm Redshift" "<10s"
+  step_start "4/12" "Create Spectrum external schema + pre-warm Redshift" "<5s"
 
   SPECTRUM_STMT_ID=""
   if [ "$skip_seed" = true ]; then
@@ -557,7 +566,7 @@ DASHEOF
   fi
 
   # ── Step 8: Build and push Docker image to ECR ──
-  step_start "7/12" "Build and push ingestion image to ECR" "2-3 min"
+  step_start "7/12" "Build and push ingestion image to ECR" "~2 min"
 
   local ECR_URI
   ECR_URI=$(platform_output ecr IngestionRepoUri)
@@ -600,7 +609,7 @@ DASHEOF
   fi
 
   # ── Step 8/12: Start tunnels + wait for Prefect server ──
-  step_start "8/12" "Start tunnels + wait for Prefect server + warm Redshift" "30-60s"
+  step_start "8/12" "Start tunnels + wait for Prefect server + warm Redshift" "<30s"
 
   # Fire-and-forget: wake Redshift RPUs now so they're warm by the time dbt runs.
   if [ -n "${RS_SECRET_ARN:-}" ]; then
@@ -736,7 +745,7 @@ DASHEOF
   step_done
 
   # ── Step 9/12: Historical bronze backfill ────────────────────────────────
-  step_start "9/12" "Historical bronze backfill (Postgres → partitioned bronze)" "5-15 min"
+  step_start "9/12" "Historical bronze backfill (Postgres → partitioned bronze)" "30-40 min"
 
   if [ "$skip_seed" = true ]; then
     echo "  Skipping backfill (--skip-seed)"
@@ -826,7 +835,7 @@ DASHEOF
   step_done
 
   # ── Step 10/12: Deploy Prefect flow (schedule paused until pipeline completes) ──
-  step_start "10/12" "Deploy Prefect flow (schedule paused)" "10-20s"
+  step_start "10/12" "Deploy Prefect flow (schedule paused)" "<30s"
 
   # Reconnect Prefect tunnel if it dropped during step 9
   if [ "$server_ready" = true ]; then
@@ -954,7 +963,7 @@ client.patch(f'/work_pools/{pool[\"name\"]}', json={'base_job_template': tmpl})
   step_done
 
   # ── Step 11/12: Run pipeline over backfilled data ────────────────────────
-  step_start "11/12" "Run pipeline (Spectrum → Silver → Gold → Export)" "10-20 min"
+  step_start "11/12" "Run pipeline (Spectrum → Silver → Gold → Export)" "5-10 min"
 
   # Reconnect Prefect tunnel if it dropped
   if [ "$server_ready" = true ]; then
