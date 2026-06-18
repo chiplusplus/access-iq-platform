@@ -103,8 +103,11 @@ def _run() -> None:
     # Convert metric_value to numeric (stored as object in parquet)
     df["metric_value"] = pd.to_numeric(df["metric_value"], errors="coerce")
 
-    # Filter for specific metrics
+    # Filter for specific metrics. fct_inequality is grained per month, so collapse
+    # periods to one value per stratum (mean of monthly medians) before plotting --
+    # otherwise the bar chart stacks the ~12 monthly rows and inflates each bar ~12x.
     df_wait = df[df["metric_name"] == "wait_time_median"].copy()
+    df_wait = df_wait.groupby("stratum", as_index=False)["metric_value"].mean()
 
     # Chart 1 (full width): Wait time by selected stratifier with suppression
     if not df_wait.empty:
@@ -124,6 +127,7 @@ def _run() -> None:
     with col_left:
         # DNA rate by selected stratifier
         df_dna = df[df["metric_name"] == "dna_rate"].copy()
+        df_dna = df_dna.groupby("stratum", as_index=False)["metric_value"].mean()
         if not df_dna.empty:
             if df_dna["metric_value"].fillna(0).eq(0).all():
                 st.info(f"All DNA rates are 0% for {selected_stratifier}.")
